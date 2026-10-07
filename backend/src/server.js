@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const { Server } = require('socket.io');
+const path = require('path');
+const fs = require('fs');
 
 const config = require('./config');
 const { testConnection } = require('./db/connection');
@@ -44,6 +46,16 @@ app.get('/health', async (req, res) => {
 
 // 3. Mount API Routes
 app.use('/api', apiRoutes);
+
+// 3b. Serve Built Frontend SPA (dist) if available
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health')) return next();
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // 4. Setup Socket.IO for Real-time Streaming
 const io = new Server(server, {

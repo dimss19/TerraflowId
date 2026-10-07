@@ -119,7 +119,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
         {/* Center Readout Overlay */}
         <div style={{
           position: 'absolute',
-          top: '52px',
+          top: '74px',
           left: 0,
           right: 0,
           display: 'flex',
@@ -132,7 +132,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
           {/* Main Water Level Number */}
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
             <span style={{
-              fontSize: '2.6rem',
+              fontSize: '2.45rem',
               fontWeight: 800,
               color: '#0f172a',
               letterSpacing: '-0.03em',
@@ -141,7 +141,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
               {waterLevel.toFixed(1)}
             </span>
             <span style={{
-              fontSize: '0.95rem',
+              fontSize: '0.92rem',
               fontWeight: 700,
               color: '#64748b'
             }}>
@@ -151,13 +151,14 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
 
           {/* Elevation in Meters Badge */}
           <div style={{
-            fontSize: '0.82rem',
+            fontSize: '0.8rem',
             fontWeight: 700,
             color: '#003882',
-            marginTop: '8px',
+            marginTop: '6px',
             background: '#edf2fc',
             padding: '3px 12px',
-            borderRadius: '20px'
+            borderRadius: '20px',
+            border: '1px solid #dbeafe'
           }}>
             {(waterLevel / 100.0).toFixed(2)} Meter DPL
           </div>

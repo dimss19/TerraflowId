@@ -146,7 +146,7 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
             PT Tanah Airku Teknologi &bull; Portal Autentikasi AWLR
           </div>
 
-          {/* Argon2 Security Pill */}
+          {/* Security Pill */}
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -161,7 +161,7 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
             marginTop: '12px'
           }}>
             <ShieldCheck size={14} />
-            <span>PROTEKSI HASH ARGON2ID ENKRIPSI</span>
+            <span>PORTAL TERENKRIPSI &bull; AKSES RESMI</span>
           </div>
         </div>
 
@@ -305,7 +305,7 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
                   borderRadius: '50%',
                   animation: 'spin 1s linear infinite'
                 }} />
-                <span>Memverifikasi Argon2...</span>
+                <span>Memverifikasi Kredensial...</span>
               </>
             ) : (
               <>
@@ -325,7 +325,7 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
           border: '1px solid #d0deff'
         }}>
           <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#003882', textTransform: 'uppercase', marginBottom: '8px' }}>
-            AKUN TERSEDIA (ARGON2 ENCRYPTED):
+            AKUN OPERASIONAL TERSEDIA:
           </div>
           
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -377,7 +377,7 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
           textAlign: 'center',
           lineHeight: 1.5
         }}>
-          Hashing: <strong>Argon2id</strong> (m=64MB, t=3, p=4) &bull; Token JWT 24 Jam
+          Sistem Autentikasi Terenkripsi &bull; Sesi Token JWT 24 Jam
         </div>
       </div>
     </div>

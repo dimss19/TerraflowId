@@ -12,7 +12,8 @@ import {
   HardDrive, 
   RotateCcw, 
   RefreshCw, 
-  AlertTriangle 
+  AlertTriangle,
+  Users
 } from 'lucide-react';
 
 import Header from './components/Header';
@@ -24,6 +25,7 @@ import HistoricalView from './components/HistoricalView';
 import DiagnosticsView from './components/DiagnosticsView';
 import LandingPageView from './components/LandingPageView';
 import LoginView from './components/LoginView';
+import UserManagementView from './components/UserManagementView';
 
 export default function App() {
   // Navigation & Authentication States
@@ -68,7 +70,7 @@ export default function App() {
     sessionStorage.setItem('terraflow_token', token);
     sessionStorage.setItem('terraflow_user', JSON.stringify(user));
     setViewMode('dashboard');
-    showActionToast(`Selamat datang, ${user.fullName || user.username}! Autentikasi Argon2 berhasil.`);
+    showActionToast(`Selamat datang, ${user.fullName || user.username}! Anda telah berhasil masuk.`);
   };
 
   const handleLogout = () => {
@@ -135,9 +137,8 @@ export default function App() {
       setIsConnected(false);
     });
 
-    // Real-time telemetry event
-    socket.on('telemetry', (payload) => {
-      const data = payload?.data;
+    // Real-time telemetry event (supports both payload.data and raw record)
+    const handleNewData = (data) => {
       if (data) {
         setLatestReading(data);
         setRealtimeReadings((prev) => {
@@ -145,11 +146,21 @@ export default function App() {
           return updated.slice(-60);
         });
       }
-    });
+    };
+
+    socket.on('telemetry', (payload) => handleNewData(payload?.data || payload));
+    socket.on('sensor:data', (data) => handleNewData(data));
 
     // Device alert notification event
     socket.on('device:alert', (payload) => {
-      const alert = payload?.data;
+      const alert = payload?.data || payload;
+      if (alert) {
+        showActionToast(`⚠️ Peringatan Sensor [${alert.alert_code}]: ${alert.message}`);
+        setActiveAlertsCount((prev) => prev + 1);
+      }
+    });
+
+    socket.on('alert:new', (alert) => {
       if (alert) {
         showActionToast(`⚠️ Peringatan Sensor [${alert.alert_code}]: ${alert.message}`);
         setActiveAlertsCount((prev) => prev + 1);
@@ -312,6 +323,28 @@ export default function App() {
             )}
           </button>
 
+          {/* Admin User Management Tab (RBAC Protected) */}
+          {currentUser?.role === 'admin' && (
+            <button 
+              className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <Users size={16} />
+              <span>Kelola Pengguna</span>
+              <span style={{
+                marginLeft: '4px',
+                padding: '1px 6px',
+                borderRadius: '4px',
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                background: '#003882',
+                color: '#ffffff'
+              }}>
+                ADMIN
+              </span>
+            </button>
+          )}
+
           {/* Quick Refresh Button on Far Right of Tab Bar */}
           <div style={{ marginLeft: 'auto', paddingRight: '4px' }}>
             <button
@@ -438,6 +471,14 @@ export default function App() {
             device={device} 
             activeAlertsCount={activeAlertsCount}
             onActionTriggered={triggerSimulatorAction}
+          />
+        )}
+
+        {activeTab === 'users' && (
+          <UserManagementView 
+            authToken={authToken}
+            currentUser={currentUser}
+            onActionToast={showActionToast}
           />
         )}
 

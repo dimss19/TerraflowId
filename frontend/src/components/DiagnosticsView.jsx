@@ -83,8 +83,9 @@ export default function DiagnosticsView({ device, onAlertResolved }) {
     }
   };
 
-  const activeAlerts = alerts.filter(a => !a.is_resolved);
-  const resolvedAlerts = alerts.filter(a => a.is_resolved);
+  const isAlertResolved = (a) => a.resolved === true || a.is_resolved === true;
+  const activeAlerts = alerts.filter(a => !isAlertResolved(a));
+  const resolvedAlerts = alerts.filter(a => isAlertResolved(a));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>

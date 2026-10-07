@@ -20,14 +20,21 @@ function initSubscriber() {
   mqttClient.on('connect', () => {
     console.log('[MQTT Subscriber] Connected to broker successfully!');
     
-    // Subscribe to all device topics
+    // Subscribe to all device topics (supporting both direct and devices namespace patterns)
     const topics = [
       'terraflow/+/data',
       'terraflow/+/data/bulk',
       'terraflow/+/alert',
       'terraflow/+/diagnostics',
       'terraflow/+/status',
-      'terraflow/+/calibration/response'
+      'terraflow/+/calibration/response',
+      'terraflow/devices/+/telemetry',
+      'terraflow/devices/+/data',
+      'terraflow/devices/+/data/bulk',
+      'terraflow/devices/+/alert',
+      'terraflow/devices/+/diagnostics',
+      'terraflow/devices/+/status',
+      'terraflow/devices/+/calibration/response'
     ];
 
     mqttClient.subscribe(topics, (err) => {
@@ -44,10 +51,21 @@ function initSubscriber() {
       const parts = topic.split('/');
       if (parts.length < 3 || parts[0] !== 'terraflow') return;
 
-      const deviceId = parts[1];
-      const subtopic = parts.slice(2).join('/');
-      const data = JSON.parse(payload.toString());
+      let deviceId;
+      let subtopic;
+      if (parts[1] === 'devices' && parts.length >= 4) {
+        deviceId = parts[2];
+        subtopic = parts.slice(3).join('/');
+      } else {
+        deviceId = parts[1];
+        subtopic = parts.slice(2).join('/');
+      }
 
+      if (subtopic === 'telemetry') {
+        subtopic = 'data';
+      }
+
+      const data = JSON.parse(payload.toString());
       await handleMessage(deviceId, subtopic, data);
     } catch (err) {
       console.error(`[MQTT Subscriber Error] Topic: ${topic} | Error:`, err.message);
@@ -62,9 +80,9 @@ function initSubscriber() {
 }
 
 async function handleMessage(deviceId, subtopic, data) {
-  // Update device last_seen
+  // Update device last_seen and status
   await query(
-    'UPDATE devices SET last_seen = NOW() WHERE device_id = $1',
+    'UPDATE devices SET last_seen = NOW(), is_active = true WHERE device_id = $1',
     [deviceId]
   ).catch(() => {});
 
@@ -76,6 +94,15 @@ async function handleMessage(deviceId, subtopic, data) {
     await handleAlert(deviceId, data);
   } else if (subtopic === 'diagnostics') {
     await handleDiagnostics(deviceId, data);
+  } else if (subtopic === 'status') {
+    const isOnline = data.status === 'online';
+    await query(
+      'UPDATE devices SET is_active = $1, last_seen = NOW() WHERE device_id = $2',
+      [isOnline, deviceId]
+    ).catch(() => {});
+    if (ioInstance) {
+      ioInstance.emit('device:status', { device_id: deviceId, status: data.status, is_active: isOnline });
+    }
   } else if (subtopic === 'calibration/response') {
     console.log(`[MQTT Calibration ACK] Device ${deviceId} confirmed calibration:`, data);
     if (ioInstance) {
@@ -118,9 +145,10 @@ async function handleSingleReading(deviceId, data) {
   const res = await query(insertSql, values);
   const savedRow = res.rows[0];
 
-  // Broadcast to Web Dashboard via WebSocket
+  // Broadcast to Web Dashboard via WebSocket (dual event emission for backwards & forward compatibility)
   if (ioInstance && savedRow) {
     ioInstance.emit('sensor:data', savedRow);
+    ioInstance.emit('telemetry', { device_id: deviceId, data: savedRow });
   }
 }
 

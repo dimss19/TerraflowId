@@ -93,7 +93,7 @@ export default function Header({
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
+            gap: '12px',
             background: '#f8fafc',
             border: '1px solid #e2e8f0',
             padding: '5px 14px',
@@ -131,12 +131,54 @@ export default function Header({
               </span>
             </div>
 
+            {/* Device ID & Device Name Sub-Chip */}
+            <div style={{ width: '1px', height: '22px', background: '#cbd5e1' }} />
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#ffffff',
+              padding: '3px 10px',
+              borderRadius: '16px',
+              border: '1px solid #e2e8f0'
+            }} title={`ID Perangkat: ${device?.device_id || 'AWLR-001'} | Nama: ${device?.name || 'AWLR Portable Alpha'}`}>
+              <div style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                background: '#003882'
+              }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  color: '#003882',
+                  letterSpacing: '0.02em'
+                }}>
+                  {device?.device_id || 'AWLR-001'}
+                </span>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>&bull;</span>
+                <span style={{
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  color: '#334155',
+                  maxWidth: '170px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {device?.name || 'AWLR Portable Alpha'}
+                </span>
+              </div>
+            </div>
+
             {/* Logout Action */}
             <button
               onClick={onLogout}
               title="Keluar (Logout)"
               style={{
-                marginLeft: '4px',
+                marginLeft: '2px',
                 background: 'none',
                 border: 'none',
                 color: '#94a3b8',

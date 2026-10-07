@@ -81,7 +81,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               Layanan
             </a>
             <a href="#keamanan" style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
-              Keamanan Argon2
+              Keamanan &amp; Akses
             </a>
             <a href="#kontak" style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
               Kontak
@@ -162,7 +162,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               maxWidth: '640px',
               marginBottom: '32px'
             }}>
-              Solusi instrumentasi Automatic Water Level Recorder (AWLR) portabel industri. Terintegrasi sensor ultrasonik RS485 Modbus A16, transmisi MQTT real-time, pencatatan MicroSD mandiri, dan <strong>keamanan kriptografi memori-keras Argon2id</strong>.
+              Solusi instrumentasi Automatic Water Level Recorder (AWLR) portabel industri. Terintegrasi sensor ultrasonik RS485 Modbus A16, transmisi MQTT real-time, pencatatan MicroSD mandiri, dan <strong>sistem keamanan akses terenkripsi</strong>.
             </p>
 
             {/* Action Buttons */}
@@ -207,7 +207,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
             <div style={{ display: 'flex', gap: '28px', marginTop: '36px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: '#334155', fontWeight: 600 }}>
                 <CheckCircle2 size={18} color="#059669" />
-                <span>Enkripsi Password Argon2id</span>
+                <span>Keamanan Akses Terenkripsi</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: '#334155', fontWeight: 600 }}>
                 <CheckCircle2 size={18} color="#059669" />
@@ -272,9 +272,9 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                 </div>
               </div>
               <div className="subtle-panel" style={{ padding: '12px' }}>
-                <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>AUTENTIKASI SISTEM</div>
+                <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>STATUS INTEGRITAS</div>
                 <div className="mono-text" style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
-                  ARGON2ID
+                  TERVERIFIKASI
                 </div>
               </div>
             </div>
@@ -360,17 +360,17 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                 <ShieldCheck size={22} />
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginBottom: '10px' }}>
-                Keamanan Hashing Argon2
+                Keamanan Sistem &amp; Hak Akses
               </h3>
               <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.6 }}>
-                Seluruh kredensial operator dan administrator dilindungi algoritma Argon2id berstandar RFC 9106 dengan parameter memori keras 64MB untuk menangkal serangan brute-force.
+                Seluruh kredensial operator dan administrator dilindungi enkripsi terstandar untuk menangkal akses tidak sah serta menjamin integritas monitoring hidrologi.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 4. Argon2 Security Spotlight Section */}
+      {/* 4. Security & Architecture Spotlight Section */}
       <section id="keamanan" style={{ padding: '80px 40px', background: '#f8fafc' }}>
         <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
           <div style={{
@@ -401,29 +401,29 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                   color: '#93c5fd'
                 }}>
                   <Lock size={14} />
-                  <span>STANDAR KRIPTOGRAFI ENTERPRISE</span>
+                  <span>STANDAR INDUSTRI &amp; KEAMANAN SISTEM</span>
                 </div>
 
                 <h2 style={{ fontSize: '2.4rem', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 18px', lineHeight: 1.2 }}>
-                  Mengapa TerraFlow Menggunakan Argon2id?
+                  Arsitektur Keandalan &amp; Standar Keamanan TerraFlow
                 </h2>
 
                 <p style={{ fontSize: '0.96rem', color: '#dbeafe', lineHeight: 1.7, marginBottom: '24px' }}>
-                  Argon2 merupakan pemenang resmi Password Hashing Competition (PHC) dan standar IETF RFC 9106. Tidak seperti MD5, SHA-256, atau bahkan bcrypt tradisional, Argon2id dirancang khusus untuk memblokir serangan perangkat keras modern (GPU, FPGA, dan ASIC) menggunakan memori-keras (*memory-hardness*).
+                  TerraFlow menggabungkan keandalan hardware industri dengan sistem keamanan modern. Setiap transmisi data telemetri, perintah kalibrasi jarak jauh, dan autentikasi personel diproteksi dengan enkripsi serta pengawasan multi-tier untuk menjamin integritas monitoring hidrologi.
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <CheckCircle2 size={18} color="#67e8f9" />
-                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Memory Cost: 65,536 KB (64 MB per hash)</span>
+                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Enkripsi Kredensial: Hashing kriptografis memori tinggi &amp; proteksi brute-force</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <CheckCircle2 size={18} color="#67e8f9" />
-                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Time Cost: 3 iterasi penuh</span>
+                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Integritas Telemetri: Protokol MQTT terautentikasi &amp; failover MicroSD lokal</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <CheckCircle2 size={18} color="#67e8f9" />
-                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Token Sesi: JSON Web Token (JWT) tersignatur kriptografis</span>
+                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Sesi Akses: Token JSON Web Token (JWT) dengan pembatasan masa berlaku aman</span>
                   </div>
                 </div>
 
@@ -444,7 +444,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                       gap: '8px'
                     }}
                   >
-                    <span>Uji Autentikasi Argon2 Sekarang</span>
+                    <span>Buka Portal Monitoring Sekarang</span>
                     <ArrowRight size={16} />
                   </button>
                 </div>
@@ -463,15 +463,13 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                   // ARSITEKTUR ALIRAN AUTENTIKASI:
                 </div>
                 <div style={{ color: '#e2e8f0', lineHeight: 1.8 }}>
-                  1. Input Kredensial Pengguna<br />
-                  &nbsp;&nbsp;&darr; (HTTPS POST /api/auth/login)<br />
-                  2. Query Database PostgreSQL ($1 parameterized)<br />
-                  &nbsp;&nbsp;&darr; Ambil Password Hash Terproteksi<br />
-                  3. <span style={{ color: '#67e8f9', fontWeight: 800 }}>argon2.verify(hash, password)</span><br />
-                  &nbsp;&nbsp;&darr; Memori 64MB &bull; 3 Pass &bull; 4 Thread<br />
-                  4. Sign JWT Token Payload (HS256)<br />
+                  1. Akses Portal &amp; Autentikasi Personel<br />
+                  &nbsp;&nbsp;&darr; (Koneksi Terenkripsi)<br />
+                  2. Validasi Kredensial &amp; Role-Based Access (RBAC)<br />
+                  &nbsp;&nbsp;&darr; (Pengecekan Hash Aman)<br />
+                  3. Penerbitan Token Sesi Terproteksi<br />
                   &nbsp;&nbsp;&darr;<br />
-                  5. Hak Akses Operator Diberikan
+                  4. Akses Real-Time Telemetri &amp; Analisis Diberikan
                 </div>
               </div>
             </div>
@@ -584,7 +582,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               Portal Akses
             </h4>
             <p style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '16px' }}>
-              Akses sistem monitoring telemetri dengan autentikasi Argon2id.
+              Akses sistem monitoring telemetri dengan kredensial resmi.
             </p>
             <button
               onClick={onGoToLogin}
@@ -612,7 +610,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
             &copy; 2024 <strong>PT Tanah Airku Teknologi</strong> &bull; Terraflow Indonesia. Precision in Every Pixel.
           </div>
           <div>
-            Dilindungi oleh Hashing Memori-Keras <strong>Argon2id</strong>
+            Dilindungi oleh Sistem Keamanan Terenkripsi
           </div>
         </div>
       </footer>

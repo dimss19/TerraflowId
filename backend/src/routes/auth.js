@@ -91,7 +91,7 @@ router.post('/login', async (req, res) => {
       success: true,
       token,
       user: tokenPayload,
-      message: 'Autentikasi berhasil menggunakan Argon2'
+      message: 'Autentikasi berhasil'
     });
   } catch (err) {
     console.error('[Auth Error /login]', err.message);

@@ -1,0 +1,25 @@
+{
+  "name": "terraflow-backend",
+  "version": "1.0.0",
+  "description": "Backend services, MQTT broker/subscriber, and REST API for TerraFlow AWLR System",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node src/db/migrate.js",
+    "seed": "node src/db/seed.js",
+    "simulate": "node src/simulator/awlr_simulator.js"
+  },
+  "dependencies": {
+    "aedes": "^0.51.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "helmet": "^8.0.0",
+    "mqtt": "^5.10.1",
+    "pg": "^8.13.0",
+    "socket.io": "^4.8.0"
+  },
+  "author": "PT Tanah Airku Teknologi",
+  "license": "UNLICENSED"
+}

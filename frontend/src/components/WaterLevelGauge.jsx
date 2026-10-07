@@ -2,12 +2,15 @@ import React from 'react';
 import { Waves, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStatus }) {
-  const waterLevel = Number(reading?.water_level_cm) || 0;
-  const rawDistance = Number(reading?.raw_distance_cm) || 0;
-  const maxScale = Number(sensorHeight) || 600;
+  // A16 Ultrasonic Sensor Datasheet: Measuring Range = 50 cm to 1500 cm (Max 15.00 Meter)
+  const MAX_SENSOR_RANGE_M = 15.0; // 1500 cm dari Datasheet DYP-A16
+  const waterLevelCm = Number(reading?.water_level_cm) || 0;
+  const waterLevelM = waterLevelCm / 100.0;
+  const rawDistanceCm = Number(reading?.raw_distance_cm) || 0;
+  const rawDistanceM = rawDistanceCm / 100.0;
 
-  // Percentage for gauge (0 to 100)
-  const percent = Math.min(100, Math.max(0, (waterLevel / maxScale) * 100));
+  // Percentage for gauge based on max sensor reading distance (15.0 Meter)
+  const percent = Math.min(100, Math.max(0, (waterLevelM / MAX_SENSOR_RANGE_M) * 100));
 
   // Gauge SVG geometry for 240-degree arc
   const stroke = 14;
@@ -60,7 +63,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             Elevasi Permukaan Air
           </h3>
         </div>
-        <span className="badge badge-navy">INTERVAL 1 MENIT</span>
+        <span className="badge badge-navy">SKALA SENSOR A16 (15 M)</span>
       </div>
 
       {/* Radial SVG Gauge Container */}
@@ -111,9 +114,9 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             strokeLinecap="round"
           />
 
-          {/* Min / Max Labels at the ends of arc */}
-          <text x="56" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">0</text>
-          <text x="224" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">{maxScale.toFixed(0)}</text>
+          {/* Min / Max Labels at the ends of arc (0 m and 15 m based on A16 datasheet) */}
+          <text x="56" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">0 m</text>
+          <text x="224" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">15 m</text>
         </svg>
 
         {/* Center Readout Overlay */}
@@ -129,38 +132,38 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
           textAlign: 'center',
           pointerEvents: 'none'
         }}>
-          {/* Main Water Level Number */}
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+          {/* Main Water Level Number in METERS */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
             <span style={{
-              fontSize: '2.45rem',
+              fontSize: '2.5rem',
               fontWeight: 800,
               color: '#0f172a',
               letterSpacing: '-0.03em',
               lineHeight: 1
             }}>
-              {waterLevel.toFixed(1)}
+              {waterLevelM.toFixed(2)}
             </span>
             <span style={{
-              fontSize: '0.92rem',
-              fontWeight: 700,
-              color: '#64748b'
+              fontSize: '1.05rem',
+              fontWeight: 800,
+              color: '#003882'
             }}>
-              cm
+              m
             </span>
           </div>
 
-          {/* Elevation in Meters Badge */}
+          {/* Sub-badge: cm equivalent */}
           <div style={{
-            fontSize: '0.8rem',
+            fontSize: '0.78rem',
             fontWeight: 700,
-            color: '#003882',
+            color: '#475569',
             marginTop: '6px',
             background: '#edf2fc',
             padding: '3px 12px',
             borderRadius: '20px',
             border: '1px solid #dbeafe'
           }}>
-            {(waterLevel / 100.0).toFixed(2)} Meter DPL
+            {waterLevelCm.toFixed(1)} cm &bull; Elevasi Air
           </div>
         </div>
       </div>
@@ -186,7 +189,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
           <span>{statusText}</span>
         </div>
         <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
-          {percent.toFixed(0)}% Kapasitas Tiang
+          {percent.toFixed(1)}% Jangkauan Sensor (15 m)
         </span>
       </div>
 
@@ -197,16 +200,18 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             Jarak Sensor (Raw)
           </div>
           <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-            {rawDistance.toFixed(1)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748b' }}>cm</span>
+            {rawDistanceM.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#003882' }}>m</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b', marginLeft: '4px' }}>({rawDistanceCm.toFixed(1)} cm)</span>
           </div>
         </div>
 
         <div className="subtle-panel">
           <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Tinggi Referensi
+            Jangkauan Maksimal A16
           </div>
           <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-            {maxScale.toFixed(1)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748b' }}>cm</span>
+            15.00 <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#003882' }}>m</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b', marginLeft: '4px' }}>(1500 cm)</span>
           </div>
         </div>
       </div>

@@ -256,10 +256,10 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                 ELEVASI PASANG SURUT TERKINI
               </div>
               <div style={{ fontSize: '2.8rem', fontWeight: 800, margin: '8px 0 4px', letterSpacing: '-0.03em' }}>
-                {latestReading?.water_level_cm ? Number(latestReading.water_level_cm).toFixed(1) : '226.2'} <span style={{ fontSize: '1.2rem', fontWeight: 600 }}>cm</span>
+                {latestReading?.water_level_cm ? (Number(latestReading.water_level_cm) / 100).toFixed(2) : '2.26'} <span style={{ fontSize: '1.2rem', fontWeight: 600 }}>m</span>
               </div>
               <div style={{ fontSize: '0.88rem', color: '#e0f2fe', fontWeight: 600 }}>
-                {latestReading?.water_level_cm ? (Number(latestReading.water_level_cm) / 100).toFixed(2) : '2.26'} Meter DPL
+                {latestReading?.water_level_cm ? Number(latestReading.water_level_cm).toFixed(1) : '226.2'} cm &bull; Jangkauan Maks 15.0 m
               </div>
             </div>
 
@@ -268,7 +268,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               <div className="subtle-panel" style={{ padding: '12px' }}>
                 <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>JARAK SENSOR (RAW)</div>
                 <div className="mono-text" style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                  {latestReading?.raw_distance_cm ? Number(latestReading.raw_distance_cm).toFixed(1) : '373.8'} cm
+                  {latestReading?.raw_distance_cm ? (Number(latestReading.raw_distance_cm) / 100).toFixed(2) : '3.74'} m
                 </div>
               </div>
               <div className="subtle-panel" style={{ padding: '12px' }}>

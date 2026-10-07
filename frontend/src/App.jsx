@@ -396,9 +396,10 @@ export default function App() {
                   <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>JARAK SENSOR (RAW)</span>
                 </div>
                 <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', marginTop: '10px' }}>
-                  {latestReading?.raw_distance_cm ? Number(latestReading.raw_distance_cm).toFixed(1) : '373.8'} <span style={{ fontSize: '0.8rem', color: '#64748b' }}>cm</span>
+                  {latestReading?.raw_distance_cm ? (Number(latestReading.raw_distance_cm) / 100).toFixed(2) : '3.74'} <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#003882' }}>m</span>
+                  <span style={{ fontSize: '0.76rem', color: '#94a3b8', fontWeight: 500, marginLeft: '6px' }}>({latestReading?.raw_distance_cm ? Number(latestReading.raw_distance_cm).toFixed(1) : '373.8'} cm)</span>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>A16 Modbus Terkalibrasi</div>
+                <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>A16 Modbus (Jangkauan Maks 15 m)</div>
               </div>
 
               <div className="corporate-card" style={{ padding: '20px' }}>

@@ -10,19 +10,9 @@ import {
   Thermometer, 
   Radio, 
   HardDrive, 
-  Compass, 
-  MapPin,
-  Phone,
-  Mail,
-  Send,
-  RotateCcw,
-  RefreshCw,
-  HardDriveDownload,
-  AlertTriangle,
-  Globe,
-  Share2,
-  CheckCircle2,
-  ArrowRight
+  RotateCcw, 
+  RefreshCw, 
+  AlertTriangle 
 } from 'lucide-react';
 
 import Header from './components/Header';
@@ -32,8 +22,31 @@ import TidalAnalysisView from './components/TidalAnalysisView';
 import CalibrationView from './components/CalibrationView';
 import HistoricalView from './components/HistoricalView';
 import DiagnosticsView from './components/DiagnosticsView';
+import LandingPageView from './components/LandingPageView';
+import LoginView from './components/LoginView';
 
 export default function App() {
+  // Navigation & Authentication States
+  // 'landing' | 'login' | 'dashboard'
+  const [viewMode, setViewMode] = useState(() => {
+    const savedToken = sessionStorage.getItem('terraflow_token');
+    return savedToken ? 'dashboard' : 'landing';
+  });
+
+  const [authToken, setAuthToken] = useState(() => {
+    return sessionStorage.getItem('terraflow_token') || null;
+  });
+
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = sessionStorage.getItem('terraflow_user');
+    try {
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Telemetry & Device States
   const [device, setDevice] = useState(null);
   const [latestReading, setLatestReading] = useState(null);
   const [realtimeReadings, setRealtimeReadings] = useState([]);
@@ -46,6 +59,24 @@ export default function App() {
   const showActionToast = (msg) => {
     setActionMessage(msg);
     setTimeout(() => setActionMessage(null), 4000);
+  };
+
+  // Auth Handlers
+  const handleLoginSuccess = (token, user) => {
+    setAuthToken(token);
+    setCurrentUser(user);
+    sessionStorage.setItem('terraflow_token', token);
+    sessionStorage.setItem('terraflow_user', JSON.stringify(user));
+    setViewMode('dashboard');
+    showActionToast(`Selamat datang, ${user.fullName || user.username}! Autentikasi Argon2 berhasil.`);
+  };
+
+  const handleLogout = () => {
+    setAuthToken(null);
+    setCurrentUser(null);
+    sessionStorage.removeItem('terraflow_token');
+    sessionStorage.removeItem('terraflow_user');
+    setViewMode('landing');
   };
 
   // Initialize data fetching
@@ -104,18 +135,25 @@ export default function App() {
       setIsConnected(false);
     });
 
-    // Real-time sensor reading pushed from MQTT
-    socket.on('sensor:data', (newReading) => {
-      setLatestReading(newReading);
-      setRealtimeReadings(prev => {
-        const updated = [...prev, newReading];
-        return updated.slice(-60);
-      });
+    // Real-time telemetry event
+    socket.on('telemetry', (payload) => {
+      const data = payload?.data;
+      if (data) {
+        setLatestReading(data);
+        setRealtimeReadings((prev) => {
+          const updated = [...prev, data];
+          return updated.slice(-60);
+        });
+      }
     });
 
-    // Real-time alerts
-    socket.on('device:alert', (alert) => {
-      setActiveAlertsCount(prev => prev + 1);
+    // Device alert notification event
+    socket.on('device:alert', (payload) => {
+      const alert = payload?.data;
+      if (alert) {
+        showActionToast(`⚠️ Peringatan Sensor [${alert.alert_code}]: ${alert.message}`);
+        setActiveAlertsCount((prev) => prev + 1);
+      }
     });
 
     return () => {
@@ -123,30 +161,56 @@ export default function App() {
     };
   }, []);
 
+  // Simulator test triggers
   const triggerSimulatorAction = async (endpoint, label) => {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ device_id: device?.device_id || 'AWLR-001' })
       });
       const data = await res.json();
       if (data.success) {
-        showActionToast(`✅ ${label} berhasil dikirim!`);
+        showActionToast(`✅ ${label} berhasil dieksekusi!`);
+        refreshAllData();
       } else {
         showActionToast(`❌ Gagal: ${data.error}`);
       }
     } catch (e) {
       showActionToast(`❌ Error: ${e.message}`);
-    } finally {
-      refreshAllData();
     }
   };
 
+  // Render Landing Page View
+  if (viewMode === 'landing') {
+    return (
+      <LandingPageView 
+        onGoToLogin={() => setViewMode('login')} 
+        latestReading={latestReading}
+        device={device}
+      />
+    );
+  }
+
+  // Render Dedicated Login View
+  if (viewMode === 'login') {
+    return (
+      <LoginView 
+        onLoginSuccess={handleLoginSuccess}
+        onBackToLanding={() => setViewMode('landing')}
+      />
+    );
+  }
+
+  // Render AWLR Monitoring Dashboard (Authenticated View)
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
       
-      {/* 1. Official Corporate Header & Hero Banner */}
+      {/* 1. Header with corporate branding, user profile & logout */}
       <Header 
         device={device}
         isConnected={isConnected}
@@ -154,24 +218,38 @@ export default function App() {
         onRefresh={refreshAllData}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onGoToLanding={() => setViewMode('landing')}
       />
 
       {/* Main Container */}
-      <main style={{ maxWidth: '1440px', width: '100%', margin: '0 auto', padding: '0 40px', flex: 1 }}>
+      <main style={{
+        maxWidth: '1440px',
+        margin: '0 auto',
+        padding: '0 40px 60px',
+        width: '100%',
+        boxSizing: 'border-box',
+        flex: 1
+      }}>
         
-        {/* Toast feedback */}
+        {/* Action Toast Alert Banner */}
         {actionMessage && (
           <div style={{
-            marginBottom: '20px',
-            padding: '12px 20px',
-            borderRadius: '8px',
-            background: '#ffffff',
+            background: '#eff6ff',
             border: '1px solid #bfdbfe',
             color: '#003882',
-            fontWeight: 700,
+            padding: '12px 20px',
+            borderRadius: '10px',
+            marginBottom: '24px',
             fontSize: '0.88rem',
-            boxShadow: '0 4px 16px rgba(0, 56, 130, 0.08)'
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            boxShadow: '0 4px 12px rgba(0, 56, 130, 0.05)'
           }}>
+            <AlertTriangle size={18} color="#003882" />
             {actionMessage}
           </div>
         )}
@@ -186,7 +264,8 @@ export default function App() {
           border: '1px solid #e2e8f0',
           boxShadow: '0 2px 10px rgba(0, 56, 130, 0.03)',
           marginBottom: '28px',
-          overflowX: 'auto'
+          overflowX: 'auto',
+          alignItems: 'center'
         }}>
           <button 
             className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
@@ -232,6 +311,30 @@ export default function App() {
               </span>
             )}
           </button>
+
+          {/* Quick Refresh Button on Far Right of Tab Bar */}
+          <div style={{ marginLeft: 'auto', paddingRight: '4px' }}>
+            <button
+              onClick={refreshAllData}
+              title="Perbarui Data Telemetri"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                background: '#edf2fc',
+                color: '#003882',
+                border: 'none',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              <RefreshCw size={14} />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* 3. Tab Contents */}
@@ -326,25 +429,26 @@ export default function App() {
         {activeTab === 'historical' && (
           <HistoricalView 
             device={device} 
+            onDataExported={() => showActionToast('File CSV data telemetri berhasil diunduh.')}
           />
         )}
 
         {activeTab === 'diagnostics' && (
           <DiagnosticsView 
             device={device} 
-            onAlertResolved={refreshAllData} 
+            activeAlertsCount={activeAlertsCount}
+            onActionTriggered={triggerSimulatorAction}
           />
         )}
 
       </main>
 
-      {/* 4. Official Mitra & Akreditasi Industri (Matching Image 2) */}
+      {/* 4. Partner Accreditation Bar */}
       <section style={{
-        marginTop: '60px',
         padding: '36px 40px',
-        background: '#f4f8fd',
-        borderTop: '1px solid #e2e8f0',
-        borderBottom: '1px solid #e2e8f0',
+        borderTop: '1px solid #eef2f7',
+        borderBottom: '1px solid #eef2f7',
+        background: '#ffffff',
         textAlign: 'center'
       }}>
         <div style={{

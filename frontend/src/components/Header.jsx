@@ -3,12 +3,12 @@ import {
   Radio, 
   RotateCcw, 
   AlertTriangle, 
-  RefreshCw,
-  HardDriveDownload,
-  ShieldCheck,
-  Compass,
-  ArrowRight,
-  ExternalLink
+  RefreshCw, 
+  HardDriveDownload, 
+  ShieldCheck, 
+  Compass, 
+  Globe, 
+  LogOut 
 } from 'lucide-react';
 
 export default function Header({ 
@@ -16,10 +16,10 @@ export default function Header({
   isConnected, 
   activeAlertsCount,
   onRefresh,
-  activeTab,
-  setActiveTab
+  currentUser,
+  onLogout,
+  onGoToLanding
 }) {
-  const [triggerLoading, setTriggerLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
   const showToast = (msg) => {
@@ -27,31 +27,9 @@ export default function Header({
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const triggerSimulatorAction = async (endpoint, label) => {
-    try {
-      setTriggerLoading(true);
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: device?.device_id || 'AWLR-001' })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(`✅ ${label} berhasil dipicu via MQTT!`);
-      } else {
-        showToast(`❌ Gagal: ${data.error}`);
-      }
-    } catch (e) {
-      showToast(`❌ Error: ${e.message}`);
-    } finally {
-      setTriggerLoading(false);
-      if (onRefresh) onRefresh();
-    }
-  };
-
   return (
     <header style={{ marginBottom: '28px' }}>
-      {/* 1. Official Corporate Top Navigation Bar (Matching Image 2) */}
+      {/* 1. Official Corporate Top Navigation Bar */}
       <div style={{
         background: '#ffffff',
         borderBottom: '1px solid #eef2f7',
@@ -64,7 +42,11 @@ export default function Header({
         boxShadow: '0 2px 8px rgba(0, 56, 130, 0.03)'
       }}>
         {/* Brand Logo & Name */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+        <div 
+          onClick={onGoToLanding}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+          title="Ke Beranda Utama Terraflow"
+        >
           <div style={{
             width: '36px',
             height: '36px',
@@ -87,9 +69,79 @@ export default function Header({
           </div>
         </div>
 
+        {/* Right Controls: Landing Toggle, User Chip & Logout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            onClick={onGoToLanding}
+            style={{
+              background: '#edf2fc',
+              border: '1px solid #bfdbfe',
+              color: '#003882',
+              borderRadius: '8px',
+              padding: '7px 14px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <Globe size={14} />
+            <span>Landing Page</span>
+          </button>
+
+          {currentUser && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.82rem'
+            }}>
+              <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                👤 {currentUser.fullName || currentUser.username}
+              </span>
+              <span style={{
+                background: currentUser.role === 'admin' ? '#003882' : '#059669',
+                color: '#ffffff',
+                fontSize: '0.66rem',
+                fontWeight: 800,
+                padding: '2px 8px',
+                borderRadius: '10px',
+                textTransform: 'uppercase'
+              }}>
+                {currentUser.role || 'Operator'}
+              </span>
+            </div>
+          )}
+
+          <button
+            onClick={onLogout}
+            style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              color: '#dc2626',
+              borderRadius: '8px',
+              padding: '7px 14px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <LogOut size={14} />
+            <span>Keluar</span>
+          </button>
+        </div>
       </div>
 
-      {/* 2. Official Corporate Hero Header (Matching Image 2 "Hubungi Kami.") */}
+      {/* 2. Official Corporate Hero Header */}
       <div style={{
         padding: '36px 40px 20px',
         maxWidth: '1440px',

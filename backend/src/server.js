@@ -11,6 +11,7 @@ const { testConnection } = require('./db/connection');
 const { startBroker } = require('./mqtt/broker');
 const { initSubscriber, setSocketIO } = require('./mqtt/subscriber');
 const apiRoutes = require('./routes/api');
+const { router: authRoutes } = require('./routes/auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,6 +46,7 @@ app.get('/health', async (req, res) => {
 });
 
 // 3. Mount API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
 
 // 3b. Serve Built Frontend SPA (dist) if available

@@ -1,21 +1,23 @@
 import React, { useState } from 'react';
 import { 
-  Waves, 
-  Activity, 
   Radio, 
   RotateCcw, 
   AlertTriangle, 
   RefreshCw,
   HardDriveDownload,
   ShieldCheck,
-  CheckCircle2
+  Compass,
+  ArrowRight,
+  ExternalLink
 } from 'lucide-react';
 
 export default function Header({ 
   device, 
   isConnected, 
   activeAlertsCount,
-  onRefresh
+  onRefresh,
+  activeTab,
+  setActiveTab
 }) {
   const [triggerLoading, setTriggerLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
@@ -48,125 +50,150 @@ export default function Header({
   };
 
   return (
-    <header className="glass-panel" style={{ marginBottom: '24px', padding: '16px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-        
-        {/* Brand identity */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <img 
-            src="/logo.png" 
-            alt="TerraFlow Logo" 
-            style={{ 
-              width: '56px', 
-              height: '56px', 
-              objectFit: 'contain',
-              filter: 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.4))'
-            }} 
-          />
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1 style={{ fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(to right, #38bdf8, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                TERRAFLOW
-              </h1>
-              <span className="badge badge-cyan">AWLR PORTABLE</span>
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-              PT Tanah Airku Teknologi &bull; Industrial Hydro-Tidal Telemetry
-            </p>
+    <header style={{ marginBottom: '28px' }}>
+      {/* 1. Official Corporate Top Navigation Bar (Matching Image 2) */}
+      <div style={{
+        background: '#ffffff',
+        borderBottom: '1px solid #eef2f7',
+        padding: '14px 40px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '20px',
+        boxShadow: '0 2px 8px rgba(0, 56, 130, 0.03)'
+      }}>
+        {/* Brand Logo & Name */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            border: '2.5px solid #003882',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#003882'
+          }}>
+            <Compass size={22} strokeWidth={2.5} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#003882', letterSpacing: '-0.02em' }}>
+              Terraflow
+            </span>
+            <span style={{ fontSize: '1.25rem', fontWeight: 500, color: '#003882' }}>
+              Indonesia
+            </span>
           </div>
         </div>
 
-        {/* Device & Status controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-          
-          {/* Active Device Info */}
-          <div style={{ 
-            background: 'rgba(15, 23, 42, 0.6)', 
-            border: '1px solid rgba(59, 130, 246, 0.2)', 
-            padding: '8px 14px', 
-            borderRadius: '10px',
+        {/* Corporate Navigation Links */}
+        <nav style={{ display: 'flex', alignItems: 'center', gap: '28px', flexWrap: 'wrap' }}>
+          <a href="#beranda" style={{ fontSize: '0.9rem', color: '#003882', fontWeight: 700, textDecoration: 'none' }}>
+            Beranda
+          </a>
+          <a href="#tentang" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            Tentang Kami
+          </a>
+          <a href="#layanan" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            Layanan
+          </a>
+          <a href="#portofolio" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            Portofolio
+          </a>
+          <a href="#artikel" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            Artikel
+          </a>
+          <a href="#peralatan" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            Peralatan
+          </a>
+        </nav>
+
+        {/* Right Action / Status CTA */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            background: isConnected ? '#ecfdf5' : '#fef2f2',
+            color: isConnected ? '#059669' : '#dc2626',
+            border: `1px solid ${isConnected ? '#a7f3d0' : '#fecaca'}`,
+            padding: '6px 12px',
+            borderRadius: '20px',
+            fontSize: '0.78rem',
+            fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
-            gap: '10px'
+            gap: '8px'
           }}>
-            <Radio size={16} color="#38bdf8" />
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>DEVICE ID</div>
-              <div className="mono-text" style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc' }}>
-                {device?.device_id || 'AWLR-001'}
-              </div>
-            </div>
+            <span className={isConnected ? 'pulse-dot' : ''} style={{ background: isConnected ? '#10b981' : '#dc2626' }}></span>
+            {isConnected ? 'LIVE WEBSOCKET' : 'OFFLINE'}
           </div>
 
-          {/* Connection Status */}
-          <div className={`badge ${isConnected ? 'badge-emerald' : 'badge-rose'}`} style={{ padding: '8px 14px' }}>
-            <span className={isConnected ? 'pulse-dot' : ''} style={!isConnected ? { width: 8, height: 8, borderRadius: '50%', background: '#ef4444' } : {}} />
-            <span>{isConnected ? 'LIVE WEBSOCKET' : 'CONNECTING...'}</span>
-          </div>
-
-          {/* Alert Counter Badge */}
-          {activeAlertsCount > 0 && (
-            <div className="badge badge-rose" style={{ padding: '8px 14px' }}>
-              <AlertTriangle size={14} />
-              <span>{activeAlertsCount} ALERT AKTIF</span>
-            </div>
-          )}
-
-          {/* Quick Simulation Trigger Toolbar */}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              className="btn btn-secondary" 
-              title="Picu Sinkronisasi SD Card Massal"
-              disabled={triggerLoading}
-              onClick={() => triggerSimulatorAction('/api/devices/AWLR-001/sync', 'Sinkronisasi SD Card')}
-            >
-              <HardDriveDownload size={14} color="#38bdf8" />
-              <span>Sync SD</span>
-            </button>
-
-            <button 
-              className="btn btn-warning" 
-              title="Injeksi Watchdog Reset untuk Verifikasi"
-              disabled={triggerLoading}
-              onClick={() => triggerSimulatorAction('/api/simulator/trigger-wdt', 'Uji Watchdog Reset')}
-            >
-              <RotateCcw size={14} />
-              <span>Sim WDT</span>
-            </button>
-
-            <button 
-              className="btn btn-danger" 
-              title="Injeksi Sensor RS485 Gagal untuk Uji Alert"
-              disabled={triggerLoading}
-              onClick={() => triggerSimulatorAction('/api/simulator/trigger-sensor-fail', 'Uji Sensor Fail')}
-            >
-              <AlertTriangle size={14} />
-              <span>Sim Fail</span>
-            </button>
-          </div>
-
+          <a 
+            href="#kontak"
+            className="btn-corporate-primary"
+            style={{ textDecoration: 'none', padding: '9px 18px', fontSize: '0.8rem' }}
+          >
+            TERHUBUNG DENGAN KAMI
+          </a>
         </div>
       </div>
 
-      {/* Floating Action Toast Notification */}
-      {toastMessage && (
+      {/* 2. Official Corporate Hero Header (Matching Image 2 "Hubungi Kami.") */}
+      <div style={{
+        padding: '36px 40px 20px',
+        maxWidth: '1440px',
+        margin: '0 auto'
+      }}>
         <div style={{
-          marginTop: '12px',
-          padding: '10px 16px',
-          borderRadius: '8px',
-          background: 'rgba(30, 41, 59, 0.95)',
-          border: '1px solid rgba(6, 182, 212, 0.4)',
-          fontSize: '0.85rem',
-          color: '#f8fafc',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.4)'
+          fontSize: '0.78rem',
+          fontWeight: 800,
+          color: '#003882',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          marginBottom: '8px'
         }}>
-          <CheckCircle2 size={16} color="#38bdf8" />
-          <span>{toastMessage}</span>
+          SISTEM MONITORING TELEMETRI AWLR
         </div>
-      )}
+        
+        <h1 style={{
+          fontSize: '2.6rem',
+          fontWeight: 800,
+          color: '#0f172a',
+          letterSpacing: '-0.03em',
+          marginBottom: '10px',
+          lineHeight: 1.15
+        }}>
+          Pemantauan AWLR.
+        </h1>
+
+        <p style={{
+          fontSize: '1.02rem',
+          color: '#64748b',
+          maxWidth: '780px',
+          lineHeight: 1.6
+        }}>
+          Siap mendukung monitoring elevasi pasang surut air laut, muara, dan sungai secara terpadu dengan transmisi MQTT real-time, pencatatan MicroSD mandiri, dan kompensasi cerdas.
+        </p>
+
+        {/* Toast Notification */}
+        {toastMessage && (
+          <div style={{
+            marginTop: '16px',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            background: '#ffffff',
+            border: '1px solid #bfdbfe',
+            boxShadow: '0 4px 14px rgba(0, 56, 130, 0.08)',
+            color: '#003882',
+            fontSize: '0.88rem',
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            {toastMessage}
+          </div>
+        )}
+      </div>
     </header>
   );
 }

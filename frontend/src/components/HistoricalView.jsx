@@ -63,150 +63,156 @@ export default function HistoricalView({ device }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
       {/* Title & Filter Bar */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
+      <div className="corporate-card" style={{ padding: '28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <FileText size={24} color="#06b6d4" />
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f8fafc' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
+                background: '#edf2fc',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#003882'
+              }}>
+                <FileText size={22} />
+              </div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}>
                 Riwayat Telemetri &amp; Ekspor Data
               </h2>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              Telusuri arsip data elevasi muka air dan ekspor laporan terstandar untuk analisis hidrologi
+            <p style={{ fontSize: '0.88rem', color: '#64748b', marginTop: '4px' }}>
+              Telusuri arsip data elevasi muka air dan ekspor laporan CSV terstandar untuk analisis hidrologi
             </p>
           </div>
 
-          <button onClick={handleExportCSV} className="btn btn-primary">
-            <Download size={16} />
-            <span>Ekspor Format CSV</span>
+          <button onClick={handleExportCSV} className="btn-corporate-primary">
+            <Download size={18} />
+            <span>UNDUH LAPORAN CSV</span>
           </button>
         </div>
 
-        {/* Date Filter Inputs */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '14px', 
-          marginTop: '20px', 
-          padding: '16px', 
-          background: 'rgba(15, 23, 42, 0.6)', 
-          borderRadius: '10px',
-          border: '1px solid rgba(59, 130, 246, 0.15)',
-          flexWrap: 'wrap'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Calendar size={18} color="#38bdf8" />
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Rentang Waktu:</span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input
-              type="datetime-local"
-              className="form-input"
-              style={{ width: 'auto' }}
-              value={startDate}
+        {/* Date Filters Form */}
+        <div style={{ display: 'flex', gap: '16px', marginTop: '24px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: '1 1 200px' }}>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+              DARI TANGGAL &amp; WAKTU
+            </label>
+            <input 
+              type="datetime-local" 
+              className="input-corporate"
+              value={startDate} 
               onChange={e => setStartDate(e.target.value)}
             />
-            <span style={{ color: 'var(--text-muted)' }}>s/d</span>
-            <input
-              type="datetime-local"
-              className="form-input"
-              style={{ width: 'auto' }}
-              value={endDate}
+          </div>
+
+          <div style={{ flex: '1 1 200px' }}>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
+              HINGGA TANGGAL &amp; WAKTU
+            </label>
+            <input 
+              type="datetime-local" 
+              className="input-corporate"
+              value={endDate} 
               onChange={e => setEndDate(e.target.value)}
             />
           </div>
 
-          <button onClick={fetchHistorical} disabled={loading} className="btn btn-secondary">
-            {loading ? <RefreshCw size={14} className="animate-spin" /> : <Filter size={14} />}
-            <span>Filter Data</span>
+          <button onClick={fetchHistorical} className="btn-corporate-outline" style={{ height: '44px' }}>
+            {loading ? <RefreshCw size={16} className="animate-spin" /> : <Filter size={16} />}
+            <span>TERAPKAN FILTER</span>
           </button>
-
-          <div style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Ditemukan: <strong style={{ color: '#38bdf8' }}>{readings.length}</strong> Rekaman
-          </div>
         </div>
       </div>
 
       {/* Historical Data Table */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
+      <div className="corporate-card" style={{ padding: '28px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>
+            Ditemukan <strong style={{ color: '#003882' }}>{readings.length}</strong> baris data arsip
+          </div>
+          <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+            Halaman {page} dari {totalPages}
+          </div>
+        </div>
+
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid rgba(59, 130, 246, 0.2)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 8px' }}>Waktu (Timestamp)</th>
-                <th style={{ padding: '12px 8px' }}>Elevasi Air (cm)</th>
-                <th style={{ padding: '12px 8px' }}>Jarak Sensor (cm)</th>
-                <th style={{ padding: '12px 8px' }}>Temperatur Air (°C)</th>
-                <th style={{ padding: '12px 8px' }}>Baterai / Aki</th>
-                <th style={{ padding: '12px 8px' }}>Sinyal RSSI</th>
-                <th style={{ padding: '12px 8px' }}>Sumber Data</th>
+              <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                <th style={{ padding: '12px 14px', fontWeight: 700 }}>Waktu Pencatatan</th>
+                <th style={{ padding: '12px 14px', fontWeight: 700 }}>Tinggi Muka Air</th>
+                <th style={{ padding: '12px 14px', fontWeight: 700 }}>Jarak Sensor (Raw)</th>
+                <th style={{ padding: '12px 14px', fontWeight: 700 }}>Suhu Udara</th>
+                <th style={{ padding: '12px 14px', fontWeight: 700 }}>Baterai Aki</th>
+                <th style={{ padding: '12px 14px', fontWeight: 700 }}>Kanal Sinkron</th>
               </tr>
             </thead>
             <tbody>
-              {paginatedData.map((row, idx) => (
-                <tr key={idx} style={{ borderBottom: '1px solid rgba(148, 163, 184, 0.08)' }}>
-                  <td className="mono-text" style={{ padding: '12px 8px', color: '#f8fafc' }}>
-                    {new Date(row.timestamp).toLocaleString('id-ID')}
-                  </td>
-                  <td className="mono-text" style={{ padding: '12px 8px', fontWeight: 700, color: '#38bdf8' }}>
-                    {Number(row.water_level_cm).toFixed(1)} cm
-                  </td>
-                  <td className="mono-text" style={{ padding: '12px 8px', color: '#94a3b8' }}>
-                    {Number(row.raw_distance_cm).toFixed(1)} cm
-                  </td>
-                  <td className="mono-text" style={{ padding: '12px 8px', color: '#94a3b8' }}>
-                    {row.temperature_c ? `${Number(row.temperature_c).toFixed(1)} °C` : '-'}
-                  </td>
-                  <td className="mono-text" style={{ padding: '12px 8px' }}>
-                    <span style={{ color: Number(row.battery_voltage) < 11.5 ? '#f59e0b' : '#34d399' }}>
-                      {row.battery_voltage ? `${Number(row.battery_voltage).toFixed(2)} V` : '-'}
-                    </span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginLeft: '6px' }}>
-                      ({row.battery_percent}%)
-                    </span>
-                  </td>
-                  <td className="mono-text" style={{ padding: '12px 8px', color: 'var(--text-muted)' }}>
-                    {row.signal_quality ? `${row.signal_quality} dBm` : '-'}
-                  </td>
-                  <td style={{ padding: '12px 8px' }}>
-                    <span className={`badge ${row.source === 'live' ? 'badge-emerald' : 'badge-cyan'}`}>
-                      {row.source === 'live' ? <Radio size={12} /> : <HardDrive size={12} />}
-                      {row.source === 'live' ? 'LIVE MQTT' : 'SD BUFFER'}
-                    </span>
+              {paginatedData.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
+                    {loading ? 'Memuat rekaman data...' : 'Tidak ada data rekaman pada rentang waktu ini.'}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                paginatedData.map((r, i) => (
+                  <tr key={r.id || i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '12px 14px', color: '#475569' }}>
+                      {new Date(r.recorded_at).toLocaleString('id-ID')}
+                    </td>
+                    <td className="mono-text" style={{ padding: '12px 14px', fontWeight: 800, color: '#003882' }}>
+                      {Number(r.water_level_cm).toFixed(1)} cm
+                    </td>
+                    <td className="mono-text" style={{ padding: '12px 14px', color: '#64748b' }}>
+                      {Number(r.raw_distance_cm).toFixed(1)} cm
+                    </td>
+                    <td className="mono-text" style={{ padding: '12px 14px', color: '#64748b' }}>
+                      {Number(r.temperature_c).toFixed(1)} &deg;C
+                    </td>
+                    <td className="mono-text" style={{ padding: '12px 14px' }}>
+                      <span style={{ color: Number(r.battery_voltage) > 11.5 ? '#059669' : '#d97706', fontWeight: 700 }}>
+                        {Number(r.battery_voltage).toFixed(2)}V
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span className="badge badge-navy" style={{ fontSize: '0.7rem' }}>
+                        {r.sync_source || 'REALTIME_MQTT'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(59, 130, 246, 0.15)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Halaman {page} dari {totalPages}
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              className="btn btn-secondary"
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '24px' }}>
+            <button 
               disabled={page <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => setPage(p => p - 1)}
+              className="btn-corporate-outline"
+              style={{ padding: '6px 12px' }}
             >
-              <ChevronLeft size={16} />
-              <span>Sebelumnya</span>
+              <ChevronLeft size={16} /> Sebelumnya
             </button>
-            <button
-              className="btn btn-secondary"
+            <span style={{ display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: '0.85rem', fontWeight: 700, color: '#003882' }}>
+              {page} / {totalPages}
+            </span>
+            <button 
               disabled={page >= totalPages}
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              onClick={() => setPage(p => p + 1)}
+              className="btn-corporate-outline"
+              style={{ padding: '6px 12px' }}
             >
-              <span>Berikutnya</span>
-              <ChevronRight size={16} />
+              Berikutnya <ChevronRight size={16} />
             </button>
           </div>
-        </div>
+        )}
       </div>
 
     </div>

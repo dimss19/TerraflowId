@@ -11,11 +11,18 @@ import {
   Radio, 
   HardDrive, 
   Compass, 
-  Hash,
-  Clock,
-  Layers,
-  ArrowUpRight,
-  ShieldCheck
+  MapPin,
+  Phone,
+  Mail,
+  Send,
+  RotateCcw,
+  RefreshCw,
+  HardDriveDownload,
+  AlertTriangle,
+  Globe,
+  Share2,
+  CheckCircle2,
+  ArrowRight
 } from 'lucide-react';
 
 import Header from './components/Header';
@@ -34,7 +41,12 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [activeAlertsCount, setActiveAlertsCount] = useState(0);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [livePulse, setLivePulse] = useState(false);
+  const [actionMessage, setActionMessage] = useState(null);
+
+  const showActionToast = (msg) => {
+    setActionMessage(msg);
+    setTimeout(() => setActionMessage(null), 4000);
+  };
 
   // Initialize data fetching
   const refreshAllData = async () => {
@@ -97,17 +109,13 @@ export default function App() {
       setLatestReading(newReading);
       setRealtimeReadings(prev => {
         const updated = [...prev, newReading];
-        return updated.slice(-60); // Keep last 60 points
+        return updated.slice(-60);
       });
-
-      // Trigger pulse animation
-      setLivePulse(true);
-      setTimeout(() => setLivePulse(false), 800);
     });
 
-    // New alert received
-    socket.on('alert:new', () => {
-      setActiveAlertsCount(c => c + 1);
+    // Real-time alerts
+    socket.on('device:alert', (alert) => {
+      setActiveAlertsCount(prev => prev + 1);
     });
 
     return () => {
@@ -115,205 +123,559 @@ export default function App() {
     };
   }, []);
 
-  const navItems = [
-    { id: 'dashboard', label: 'Ringkasan Real-Time', icon: Activity },
-    { id: 'tidal', label: 'Analisis Pasang Surut', icon: Waves },
-    { id: 'calibration', label: 'Kalibrasi Sensor', icon: Sliders },
-    { id: 'history', label: 'Riwayat & Ekspor CSV', icon: FileText },
-    { id: 'diagnostics', label: 'Diagnostik & Alert', icon: ShieldAlert, badge: activeAlertsCount },
-  ];
+  const triggerSimulatorAction = async (endpoint, label) => {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: device?.device_id || 'AWLR-001' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showActionToast(`✅ ${label} berhasil dikirim!`);
+      } else {
+        showActionToast(`❌ Gagal: ${data.error}`);
+      }
+    } catch (e) {
+      showActionToast(`❌ Error: ${e.message}`);
+    } finally {
+      refreshAllData();
+    }
+  };
 
   return (
-    <div className="container" style={{ paddingTop: '20px', paddingBottom: '40px' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
       
-      {/* 1. Header with Brand Identity */}
-      <Header
+      {/* 1. Official Corporate Header & Hero Banner */}
+      <Header 
         device={device}
         isConnected={isConnected}
         activeAlertsCount={activeAlertsCount}
         onRefresh={refreshAllData}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
       />
 
-      {/* 2. Navigation Tabs */}
-      <nav className="glass-panel" style={{ padding: '8px', marginBottom: '24px', display: 'flex', gap: '8px', overflowX: 'auto' }}>
-        {navItems.map(item => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 18px',
-                borderRadius: '8px',
-                border: 'none',
-                background: isActive ? 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)' : 'transparent',
-                color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                fontWeight: isActive ? 700 : 500,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <Icon size={18} color={isActive ? '#ffffff' : '#94a3b8'} />
-              <span>{item.label}</span>
-              {item.badge > 0 && (
-                <span style={{ 
-                  background: '#ef4444', 
-                  color: '#ffffff', 
-                  fontSize: '0.7rem', 
-                  padding: '2px 6px', 
-                  borderRadius: '999px',
-                  fontWeight: 700 
-                }}>
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
+      {/* Main Container */}
+      <main style={{ maxWidth: '1440px', width: '100%', margin: '0 auto', padding: '0 40px', flex: 1 }}>
+        
+        {/* Toast feedback */}
+        {actionMessage && (
+          <div style={{
+            marginBottom: '20px',
+            padding: '12px 20px',
+            borderRadius: '8px',
+            background: '#ffffff',
+            border: '1px solid #bfdbfe',
+            color: '#003882',
+            fontWeight: 700,
+            fontSize: '0.88rem',
+            boxShadow: '0 4px 16px rgba(0, 56, 130, 0.08)'
+          }}>
+            {actionMessage}
+          </div>
+        )}
 
-      {/* 3. Main Content Views */}
-      <main>
+        {/* 2. Sub-Navigation Tabs */}
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          background: '#ffffff',
+          padding: '6px',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 2px 10px rgba(0, 56, 130, 0.03)',
+          marginBottom: '28px',
+          overflowX: 'auto'
+        }}>
+          <button 
+            className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <Waves size={16} />
+            <span>Ringkasan Real-Time</span>
+          </button>
+
+          <button 
+            className={`tab-btn ${activeTab === 'tidal' ? 'active' : ''}`}
+            onClick={() => setActiveTab('tidal')}
+          >
+            <Activity size={16} />
+            <span>Analisis Pasang Surut</span>
+          </button>
+
+          <button 
+            className={`tab-btn ${activeTab === 'calibration' ? 'active' : ''}`}
+            onClick={() => setActiveTab('calibration')}
+          >
+            <Sliders size={16} />
+            <span>Kalibrasi Sensor</span>
+          </button>
+
+          <button 
+            className={`tab-btn ${activeTab === 'historical' ? 'active' : ''}`}
+            onClick={() => setActiveTab('historical')}
+          >
+            <FileText size={16} />
+            <span>Riwayat &amp; Ekspor CSV</span>
+          </button>
+
+          <button 
+            className={`tab-btn ${activeTab === 'diagnostics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('diagnostics')}
+          >
+            <ShieldAlert size={16} />
+            <span>Diagnostik &amp; Alert</span>
+            {activeAlertsCount > 0 && (
+              <span className="badge badge-rose" style={{ marginLeft: '4px', padding: '2px 6px', fontSize: '0.68rem' }}>
+                {activeAlertsCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* 3. Tab Contents */}
         {activeTab === 'dashboard' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
             
-            {/* Top Grid: Gauge + Realtime Chart */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
-              <div style={{ flex: '1' }}>
-                <WaterLevelGauge
-                  reading={latestReading}
-                  sensorHeight={device?.sensor_height_cm || 600}
+            {/* Top Grid: Left Telemetry (Gauge + Chart) & Right Navy Highlight Card (Matching Image 2) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(320px, 1fr)', gap: '24px' }}>
+              
+              {/* Left Column: Gauge & Realtime Chart */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(360px, 1.5fr)', gap: '20px' }}>
+                <WaterLevelGauge 
+                  reading={latestReading} 
+                  sensorHeight={device?.sensor_height_cm}
                   tidalStatus={tidalData?.currentStatus}
+                />
+                <RealtimeChart 
+                  readings={realtimeReadings} 
                 />
               </div>
 
-              <div style={{ flex: '2', minWidth: '340px' }}>
-                <RealtimeChart readings={realtimeReadings} />
+              {/* Right Column: Navy Highlight Card (Detail Kantor Pusat Style from Image 2) & Map */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* Solid Navy Card (Detail Kantor Pusat Style) */}
+                <div className="navy-card">
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', marginBottom: '20px' }}>
+                    Detail Stasiun AWLR &amp; Kantor Pusat
+                  </h3>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Item 1: Location */}
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '8px',
+                        background: 'rgba(255, 255, 255, 0.14)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        <MapPin size={18} color="#ffffff" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          LOKASI STASIUN / KANTOR
+                        </div>
+                        <div style={{ fontSize: '0.86rem', color: '#ffffff', fontWeight: 600, marginTop: '2px', lineHeight: 1.4 }}>
+                          Perumahan Griyashanta Blok L/249, Kota Malang
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Item 2: WhatsApp */}
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '8px',
+                        background: 'rgba(255, 255, 255, 0.14)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        <Phone size={18} color="#ffffff" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          WHATSAPP BUSINESS
+                        </div>
+                        <div style={{ fontSize: '0.86rem', color: '#ffffff', fontWeight: 700, marginTop: '2px' }}>
+                          +62 813 5858 3775
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Item 3: Email */}
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '8px',
+                        background: 'rgba(255, 255, 255, 0.14)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        <Mail size={18} color="#ffffff" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          EMAIL TEKNIKAL
+                        </div>
+                        <div style={{ fontSize: '0.86rem', color: '#ffffff', fontWeight: 600, marginTop: '2px' }}>
+                          terraflow.pt@gmail.com
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Item 4: Sensor & System */}
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '8px',
+                        background: 'rgba(255, 255, 255, 0.14)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        <Radio size={18} color="#ffffff" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          STATUS PERANGKAT AKTIF
+                        </div>
+                        <div style={{ fontSize: '0.86rem', color: '#ffffff', fontWeight: 700, marginTop: '2px' }}>
+                          {device?.device_id || 'AWLR-001'} &bull; RS485 Modbus A16
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Simulator Control Shortcuts */}
+                  <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.15)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button 
+                      onClick={() => triggerSimulatorAction('/api/simulator/watchdog-alert', 'Watchdog Alert')}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        background: 'rgba(255, 255, 255, 0.12)',
+                        color: '#ffffff',
+                        border: '1px solid rgba(255, 255, 255, 0.25)',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Simulasi WDT
+                    </button>
+
+                    <button 
+                      onClick={() => triggerSimulatorAction('/api/simulator/sync-offline', 'Sync Offline SD')}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        background: 'rgba(255, 255, 255, 0.12)',
+                        color: '#ffffff',
+                        border: '1px solid rgba(255, 255, 255, 0.25)',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Sync MicroSD
+                    </button>
+
+                    <button 
+                      onClick={refreshAllData}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        background: 'rgba(255, 255, 255, 0.12)',
+                        color: '#ffffff',
+                        border: '1px solid rgba(255, 255, 255, 0.25)',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+
+                {/* Map Coordinates Card (Styled like Map Card in Image 2) */}
+                <div className="corporate-card" style={{
+                  padding: '20px',
+                  minHeight: '190px',
+                  background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'flex-end',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                  {/* Subtle Grid Map Lines */}
+                  <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0.25 }}>
+                    <line x1="0" y1="40" x2="100%" y2="40" stroke="#003882" strokeWidth="1" />
+                    <line x1="0" y1="90" x2="100%" y2="90" stroke="#003882" strokeWidth="1" />
+                    <line x1="0" y1="140" x2="100%" y2="140" stroke="#003882" strokeWidth="1" />
+                    <line x1="60" y1="0" x2="60" y2="100%" stroke="#003882" strokeWidth="1" />
+                    <line x1="160" y1="0" x2="160" y2="100%" stroke="#003882" strokeWidth="1" />
+                    <line x1="260" y1="0" x2="260" y2="100%" stroke="#003882" strokeWidth="1" />
+                  </svg>
+
+                  {/* Coordinates Overlay Tag (Exact style from Image 2) */}
+                  <div className="map-coords-badge" style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                        KOORDINAT LOKASI
+                      </div>
+                      <div className="mono-text" style={{ fontSize: '0.82rem', fontWeight: 800, color: '#003882', marginTop: '2px' }}>
+                        -7.9390125&deg; S, 112.6187622&deg; E
+                      </div>
+                    </div>
+                    <div style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '6px',
+                      background: '#003882',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Compass size={16} />
+                    </div>
+                  </div>
+                </div>
+
               </div>
+
             </div>
 
-            {/* Bottom Grid: Live Sensor Telemetry Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-              
-              {/* Card 1: Raw Distance */}
-              <div className="glass-panel" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>JARAK SENSOR (RAW)</span>
-                  <Compass size={18} color="#06b6d4" />
+            {/* Quick System Telemetry Metric Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              <div className="corporate-card" style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
+                    <Radio size={16} />
+                  </div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>JARAK SENSOR (RAW)</span>
                 </div>
-                <div className="mono-text" style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', marginTop: '8px' }}>
-                  {latestReading?.raw_distance_cm ? `${Number(latestReading.raw_distance_cm).toFixed(1)} cm` : '420.5 cm'}
+                <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', marginTop: '10px' }}>
+                  {latestReading?.raw_distance_cm ? Number(latestReading.raw_distance_cm).toFixed(1) : '373.8'} <span style={{ fontSize: '0.8rem', color: '#64748b' }}>cm</span>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  Transmisi RS485 Modbus RTU
-                </div>
+                <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>A16 Modbus Terkalibrasi</div>
               </div>
 
-              {/* Card 2: Temperature */}
-              <div className="glass-panel" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>TEMPERATUR SENSOR / AIR</span>
-                  <Thermometer size={18} color="#10b981" />
+              <div className="corporate-card" style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
+                    <Thermometer size={16} />
+                  </div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>TEMPERATUR UDARA</span>
                 </div>
-                <div className="mono-text" style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', marginTop: '8px' }}>
-                  {latestReading?.temperature_c ? `${Number(latestReading.temperature_c).toFixed(1)} °C` : '28.5 °C'}
+                <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', marginTop: '10px' }}>
+                  {latestReading?.temperature_c ? Number(latestReading.temperature_c).toFixed(1) : '28.5'} <span style={{ fontSize: '0.8rem', color: '#64748b' }}>&deg;C</span>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  Kompensasi Termal Ultrasonik
-                </div>
+                <div style={{ fontSize: '0.72rem', color: '#003882', fontWeight: 600, marginTop: '2px' }}>Kompensasi Kecepatan Suara</div>
               </div>
 
-              {/* Card 3: Battery */}
-              <div className="glass-panel" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>TEGANGAN AKI / BATERAI</span>
-                  <Battery size={18} color={latestReading?.battery_voltage < 11.5 ? '#f59e0b' : '#38bdf8'} />
+              <div className="corporate-card" style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
+                    <Battery size={16} />
+                  </div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>TEGANGAN AKI</span>
                 </div>
-                <div className="mono-text" style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', marginTop: '8px' }}>
-                  {latestReading?.battery_voltage ? `${Number(latestReading.battery_voltage).toFixed(2)} V` : '12.45 V'}
+                <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#059669', marginTop: '10px' }}>
+                  {latestReading?.battery_voltage ? Number(latestReading.battery_voltage).toFixed(2) : '12.45'} <span style={{ fontSize: '0.8rem', color: '#64748b' }}>V</span>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  Kapasitas: <strong style={{ color: '#34d399' }}>{latestReading?.battery_percent ?? 88}%</strong>
-                </div>
+                <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>Daya Solar Panel Normal</div>
               </div>
 
-              {/* Card 4: Signal & SD Card */}
-              <div className="glass-panel" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>SINYAL &amp; MICROSD</span>
-                  <Radio size={18} color="#818cf8" />
+              <div className="corporate-card" style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
+                    <HardDrive size={16} />
+                  </div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>STATUS MICROSD</span>
                 </div>
-                <div className="mono-text" style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', marginTop: '8px' }}>
-                  {latestReading?.signal_quality ? `${latestReading.signal_quality} dBm` : '-65 dBm'}
+                <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#003882', marginTop: '10px' }}>
+                  READY
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  SD Card SPI: <span className="badge badge-emerald" style={{ padding: '2px 6px', fontSize: '0.65rem' }}>SIAP (OK)</span>
-                </div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>Pencatatan Offline Aktif</div>
               </div>
-
-              {/* Card 5: Sample Counter */}
-              <div className="glass-panel" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>TOTAL SAMPEL</span>
-                  <Hash size={18} color="#f472b6" />
-                </div>
-                <div className="mono-text" style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', marginTop: '8px' }}>
-                  {latestReading?.reading_count ?? 1520}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  Sumber: <strong style={{ color: '#38bdf8' }}>{latestReading?.source === 'live' ? 'Live Telemetry' : 'SD Buffer'}</strong>
-                </div>
-              </div>
-
             </div>
 
           </div>
         )}
 
         {activeTab === 'tidal' && (
-          <TidalAnalysisView
-            tidalData={tidalData}
-            onTimeframeChange={refreshAllData}
+          <TidalAnalysisView 
+            tidalData={tidalData} 
+            onTimeframeChange={refreshAllData} 
           />
         )}
 
         {activeTab === 'calibration' && (
-          <CalibrationView
-            device={device}
-            latestReading={latestReading}
-            onCalibrationUpdated={refreshAllData}
+          <CalibrationView 
+            device={device} 
+            latestReading={latestReading} 
+            onCalibrationUpdated={refreshAllData} 
           />
         )}
 
-        {activeTab === 'history' && (
-          <HistoricalView device={device} />
+        {activeTab === 'historical' && (
+          <HistoricalView 
+            device={device} 
+          />
         )}
 
         {activeTab === 'diagnostics' && (
-          <DiagnosticsView
-            device={device}
-            onAlertResolved={refreshAllData}
+          <DiagnosticsView 
+            device={device} 
+            onAlertResolved={refreshAllData} 
           />
         )}
+
       </main>
 
-      {/* 4. Footer */}
-      <footer style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px solid rgba(59, 130, 246, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-        <div>
-          &copy; 2026 <strong style={{ color: '#f8fafc' }}>PT Tanah Airku Teknologi</strong> &bull; TerraFlow Portable AWLR
+      {/* 4. Official Mitra & Akreditasi Industri (Matching Image 2) */}
+      <section style={{
+        marginTop: '60px',
+        padding: '36px 40px',
+        background: '#f4f8fd',
+        borderTop: '1px solid #e2e8f0',
+        borderBottom: '1px solid #e2e8f0',
+        textAlign: 'center'
+      }}>
+        <div style={{
+          fontSize: '0.75rem',
+          fontWeight: 800,
+          color: '#64748b',
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          marginBottom: '20px'
+        }}>
+          MITRA &amp; AKREDITASI INDUSTRI
         </div>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <span>ESP32-S3 Industrial Firmware v1.2</span>
-          <span>&bull;</span>
-          <span>Sensor A16 (RS485 Modbus RTU)</span>
-          <span>&bull;</span>
-          <span>PostgreSQL Time-Series Partitioning</span>
+
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '48px',
+          flexWrap: 'wrap'
+        }}>
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>ASRI</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>ISO 9001</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>ISI</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>BIG</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>KADIN</span>
+        </div>
+      </section>
+
+      {/* 5. Official Corporate 4-Column Footer (Matching Image 2) */}
+      <footer style={{
+        background: '#edf3fb',
+        padding: '48px 40px 24px',
+        marginTop: 'auto'
+      }}>
+        <div style={{
+          maxWidth: '1440px',
+          margin: '0 auto',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '36px',
+          paddingBottom: '36px',
+          borderBottom: '1px solid #d8e4f4'
+        }}>
+          {/* Column 1: Company Profile */}
+          <div>
+            <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#003882', marginBottom: '14px' }}>
+              Terraflow Indonesia
+            </h4>
+            <p style={{ fontSize: '0.84rem', color: '#475569', lineHeight: 1.6 }}>
+              <strong>PT Tanah Airku Teknologi</strong> menghadirkan layanan pemetaan pada bidang geospatial untuk mendukung kebutuhan survei, analisis, serta pengolahan data spasial secara efektif dan terukur.
+            </p>
+          </div>
+
+          {/* Column 2: Layanan */}
+          <div>
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>
+              Layanan
+            </h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.84rem', color: '#475569' }}>
+              <li>Survei Topografi</li>
+              <li>Survei GNSS</li>
+              <li>Aerial Mapping</li>
+              <li>Survei Batimetri &amp; AWLR</li>
+            </ul>
+          </div>
+
+          {/* Column 3: Perusahaan */}
+          <div>
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>
+              Perusahaan
+            </h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.84rem', color: '#475569' }}>
+              <li>Tentang Kami</li>
+              <li>Portofolio</li>
+              <li>Karir</li>
+              <li>Kontak</li>
+            </ul>
+          </div>
+
+          {/* Column 4: Hubungi Kami */}
+          <div>
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>
+              Hubungi Kami
+            </h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.84rem', color: '#475569' }}>
+              <div>terraflow.pt@gmail.com</div>
+              <div>+62 813 5858 3775</div>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', border: '1px solid #cbd5e1' }}>
+                  <Globe size={14} />
+                </div>
+                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', border: '1px solid #cbd5e1' }}>
+                  <Share2 size={14} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Copyright & Legal */}
+        <div style={{
+          maxWidth: '1440px',
+          margin: '0 auto',
+          paddingTop: '20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px',
+          fontSize: '0.78rem',
+          color: '#64748b'
+        }}>
+          <div>
+            &copy; 2024 TerraflowID Geospatial &amp; Engineering. Precision in Every Pixel.
+          </div>
+          <div style={{ display: 'flex', gap: '20px' }}>
+            <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
+            <span style={{ cursor: 'pointer' }}>Terms of Service</span>
+          </div>
         </div>
       </footer>
 

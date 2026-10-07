@@ -1,5 +1,5 @@
 import React from 'react';
-import { Waves, TrendingUp, TrendingDown, Minus, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Waves, TrendingUp, TrendingDown, Minus, Ruler, Layers } from 'lucide-react';
 
 export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStatus }) {
   const waterLevel = reading?.water_level_cm != null ? Number(reading.water_level_cm) : 0;
@@ -19,32 +19,49 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
   const strokeDashoffset = arcLength - (percent / 100) * arcLength;
 
   // Status badge logic
-  let statusColor = '#38bdf8';
+  let statusBg = '#eff6ff';
+  let statusColor = '#003882';
+  let statusBorder = '#bfdbfe';
   let StatusIcon = Minus;
   let statusText = 'AIR TENANG (SLACK)';
 
   if (tidalStatus?.status === 'RISING' || (reading?.water_level_cm && reading?.prev_level && reading.water_level_cm > reading.prev_level)) {
-    statusColor = '#10b981';
+    statusBg = '#ecfdf5';
+    statusColor = '#059669';
+    statusBorder = '#a7f3d0';
     StatusIcon = TrendingUp;
-    statusText = 'PASANG SEDANG NAIK';
+    statusText = 'PASANG (AIR NAIK)';
   } else if (tidalStatus?.status === 'FALLING' || (reading?.water_level_cm && reading?.prev_level && reading.water_level_cm < reading.prev_level)) {
-    statusColor = '#f59e0b';
+    statusBg = '#fffbeb';
+    statusColor = '#d97706';
+    statusBorder = '#fde68a';
     StatusIcon = TrendingDown;
-    statusText = 'AIR SURUT SEDANG TURUN';
+    statusText = 'SURUT (AIR TURUN)';
   }
 
   return (
-    <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+    <div className="corporate-card" style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
       
       {/* Header */}
-      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Waves size={20} color="#06b6d4" />
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            background: '#edf2fc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#003882'
+          }}>
+            <Waves size={18} />
+          </div>
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
             Elevasi Permukaan Air
           </h3>
         </div>
-        <span className="badge badge-cyan">INTERVAL 1 MENIT</span>
+        <span className="badge badge-navy">INTERVAL 1 MENIT</span>
       </div>
 
       {/* Radial SVG Gauge */}
@@ -53,26 +70,17 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
           height="220"
           width="260"
           viewBox="0 0 260 220"
-          style={{ transform: 'rotate(0deg)' }}
         >
           <defs>
             <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#06b6d4" />
-              <stop offset="50%" stopColor="#3b82f6" />
-              <stop offset="100%" stopColor="#818cf8" />
+              <stop offset="0%" stopColor="#0284c7" />
+              <stop offset="100%" stopColor="#003882" />
             </linearGradient>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
-              <feMerge>
-                <feMergeNode in="coloredBlur"/>
-                <feMergeNode in="SourceGraphic"/>
-              </feMerge>
-            </filter>
           </defs>
 
-          {/* Background Track Arc (240 degrees) */}
+          {/* Background Track Arc */}
           <circle
-            stroke="rgba(30, 41, 59, 0.7)"
+            stroke="#e2e8f0"
             fill="transparent"
             strokeWidth={stroke}
             strokeDasharray={`${arcLength} ${circumference}`}
@@ -93,7 +101,6 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             strokeWidth={stroke}
             strokeDasharray={`${arcLength} ${circumference}`}
             strokeDashoffset={strokeDashoffset}
-            filter="url(#glow)"
             style={{
               transformOrigin: '130px 130px',
               transform: 'rotate(150deg)',
@@ -106,74 +113,69 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
           />
         </svg>
 
-        {/* Center Readout Value */}
+        {/* Center Readout Overlay */}
         <div style={{
           position: 'absolute',
           top: '65px',
-          left: '0',
-          right: '0',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
-          pointerEvents: 'none'
+          textAlign: 'center'
         }}>
-          <div className="mono-text" style={{ fontSize: '2.8rem', fontWeight: 800, color: '#f8fafc', lineHeight: 1 }}>
+          <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
             {waterLevel.toFixed(1)}
-          </div>
-          <div style={{ fontSize: '0.9rem', color: '#38bdf8', fontWeight: 600, marginTop: '4px' }}>
+          </span>
+          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.08em', marginTop: '4px' }}>
             CENTIMETER (cm)
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-            {(waterLevel / 100).toFixed(2)} Meter DPL
-          </div>
-        </div>
-      </div>
-
-      {/* Dynamic Status Ribbon */}
-      <div style={{
-        marginTop: '-10px',
-        width: '100%',
-        padding: '10px 16px',
-        borderRadius: '10px',
-        background: 'rgba(15, 23, 42, 0.75)',
-        border: `1px solid ${statusColor}44`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '10px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <StatusIcon size={18} color={statusColor} />
-          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: statusColor }}>
-            {tidalStatus?.label || statusText}
+          </span>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#003882', marginTop: '4px' }}>
+            {(waterLevel / 100.0).toFixed(2)} Meter DPL
           </span>
         </div>
-        <div className="mono-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-          {percent.toFixed(0)}% Rentang Tiang
-        </div>
       </div>
 
-      {/* Metrics Footer */}
+      {/* Tidal Dynamic Indicator Badge */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '12px',
+        marginTop: '10px',
+        padding: '8px 16px',
+        borderRadius: '8px',
+        background: statusBg,
+        border: `1px solid ${statusBorder}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontSize: '0.82rem',
+        fontWeight: 700,
+        color: statusColor,
         width: '100%',
-        marginTop: '16px',
-        paddingTop: '16px',
-        borderTop: '1px solid rgba(59, 130, 246, 0.15)'
+        justifyContent: 'space-between'
       }}>
-        <div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>JARAK SENSOR (RAW)</div>
-          <div className="mono-text" style={{ fontSize: '1.05rem', fontWeight: 700, color: '#94a3b8' }}>
-            {rawDistance.toFixed(1)} cm
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <StatusIcon size={16} />
+          <span>{statusText}</span>
+        </div>
+        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+          {percent.toFixed(0)}% Kapasitas Tiang
+        </span>
+      </div>
+
+      {/* Secondary Metric Tiles */}
+      <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '16px' }}>
+        <div className="subtle-panel">
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Jarak Sensor (Raw)
+          </div>
+          <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
+            {rawDistance.toFixed(1)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748b' }}>cm</span>
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>TINGGI REFERENSI</div>
-          <div className="mono-text" style={{ fontSize: '1.05rem', fontWeight: 700, color: '#94a3b8' }}>
-            {sensorHeight} cm
+
+        <div className="subtle-panel">
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Tinggi Referensi
+          </div>
+          <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
+            {maxScale.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748b' }}>cm</span>
           </div>
         </div>
       </div>

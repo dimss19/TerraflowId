@@ -9,8 +9,8 @@ export default function RealtimeChart({ readings = [] }) {
 
   if (displayData.length === 0) {
     return (
-      <div className="glass-panel" style={{ padding: '24px', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Menunggu aliran data telemetri real-time...</p>
+      <div className="corporate-card" style={{ padding: '24px', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Menunggu aliran data telemetri real-time...</p>
       </div>
     );
   }
@@ -42,23 +42,34 @@ export default function RealtimeChart({ readings = [] }) {
     : '';
 
   return (
-    <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="corporate-card" style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Activity size={20} color="#38bdf8" />
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            background: '#edf2fc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#003882'
+          }}>
+            <Activity size={18} />
+          </div>
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
             Grafik Telemetri Real-Time (60 Menit Terakhir)
           </h3>
         </div>
         
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Min: <span className="mono-text" style={{ color: '#38bdf8', fontWeight: 600 }}>{minVal + 5} cm</span> &bull; 
-            Max: <span className="mono-text" style={{ color: '#818cf8', fontWeight: 600 }}> {maxVal - 5} cm</span>
+          <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+            Min: <span className="mono-text" style={{ color: '#003882', fontWeight: 700 }}>{minVal + 5} cm</span> &bull; 
+            Max: <span className="mono-text" style={{ color: '#003882', fontWeight: 700 }}> {maxVal - 5} cm</span>
           </div>
-          <span className="badge badge-cyan">
+          <span className="badge badge-navy">
             <Clock size={12} /> {displayData.length} Sampel
           </span>
         </div>
@@ -73,25 +84,21 @@ export default function RealtimeChart({ readings = [] }) {
         >
           <defs>
             <linearGradient id="realtimeAreaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
-              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
-            </linearGradient>
-            <linearGradient id="realtimeLineGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#06b6d4" />
-              <stop offset="100%" stopColor="#818cf8" />
+              <stop offset="0%" stopColor="#003882" stopOpacity="0.18" />
+              <stop offset="100%" stopColor="#003882" stopOpacity="0.0" />
             </linearGradient>
           </defs>
 
           {/* Grid lines */}
-          <line x1={paddingX} y1={paddingY} x2={svgWidth - paddingX} y2={paddingY} stroke="rgba(148, 163, 184, 0.1)" strokeDasharray="4 4" />
-          <line x1={paddingX} y1={svgHeight / 2} x2={svgWidth - paddingX} y2={svgHeight / 2} stroke="rgba(148, 163, 184, 0.1)" strokeDasharray="4 4" />
-          <line x1={paddingX} y1={svgHeight - paddingY} x2={svgWidth - paddingX} y2={svgHeight - paddingY} stroke="rgba(148, 163, 184, 0.1)" strokeDasharray="4 4" />
+          <line x1={paddingX} y1={paddingY} x2={svgWidth - paddingX} y2={paddingY} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1.5" />
+          <line x1={paddingX} y1={svgHeight / 2} x2={svgWidth - paddingX} y2={svgHeight / 2} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1.5" />
+          <line x1={paddingX} y1={svgHeight - paddingY} x2={svgWidth - paddingX} y2={svgHeight - paddingY} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1.5" />
 
           {/* Area Fill */}
           <path d={areaD} fill="url(#realtimeAreaGrad)" />
 
           {/* Line Stroke */}
-          <path d={pathD} fill="none" stroke="url(#realtimeLineGrad)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={pathD} fill="none" stroke="#003882" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
 
           {/* Data Points on Hover / End */}
           {points.map((p, idx) => (
@@ -99,10 +106,10 @@ export default function RealtimeChart({ readings = [] }) {
               key={idx}
               cx={p.x}
               cy={p.y}
-              r={hoveredPoint?.data === p.data ? 6 : idx === points.length - 1 ? 4.5 : 2.5}
-              fill={idx === points.length - 1 ? '#06b6d4' : '#38bdf8'}
-              stroke="#0f172a"
-              strokeWidth="1.5"
+              r={hoveredPoint?.data === p.data ? 6 : (idx === points.length - 1 ? 5 : 2.5)}
+              fill={idx === points.length - 1 ? "#003882" : "#38bdf8"}
+              stroke="#ffffff"
+              strokeWidth={idx === points.length - 1 ? 2.5 : 1}
               style={{ cursor: 'pointer', transition: 'r 0.15s ease' }}
               onMouseEnter={() => setHoveredPoint(p)}
               onMouseLeave={() => setHoveredPoint(null)}
@@ -115,32 +122,32 @@ export default function RealtimeChart({ readings = [] }) {
           <div style={{
             position: 'absolute',
             left: `${(hoveredPoint.x / svgWidth) * 100}%`,
-            top: `${(hoveredPoint.y / svgHeight) * 100}%`,
-            transform: 'translate(-50%, -120%)',
-            background: 'rgba(15, 23, 42, 0.95)',
-            border: '1px solid rgba(6, 182, 212, 0.5)',
-            padding: '8px 12px',
+            top: `${(hoveredPoint.y / svgHeight) * 100 - 35}%`,
+            transform: 'translate(-50%, -100%)',
+            background: '#ffffff',
+            border: '1px solid #d0deee',
+            padding: '6px 12px',
             borderRadius: '8px',
+            boxShadow: '0 4px 16px rgba(0, 56, 130, 0.12)',
             pointerEvents: 'none',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-            whiteSpace: 'nowrap',
-            zIndex: 10
+            zIndex: 10,
+            whiteSpace: 'nowrap'
           }}>
-            <div className="mono-text" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#38bdf8' }}>
+            <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#003882' }}>
               {Number(hoveredPoint.data.water_level_cm).toFixed(1)} cm
             </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {new Date(hoveredPoint.data.timestamp).toLocaleTimeString('id-ID')}
+            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+              Dist: {Number(hoveredPoint.data.raw_distance_cm).toFixed(1)} cm
             </div>
           </div>
         )}
       </div>
 
-      {/* Axis Footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+      {/* Time axis footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>
         <span>60 Menit Lalu</span>
         <span>30 Menit Lalu</span>
-        <span style={{ color: '#06b6d4', fontWeight: 600 }}>Terkini ({currentVal ? currentVal.toFixed(1) : 0} cm)</span>
+        <span style={{ color: '#003882', fontWeight: 800 }}>Terkini ({currentVal?.toFixed(1)} cm)</span>
       </div>
 
     </div>

@@ -7,8 +7,8 @@ import {
   HardDriveDownload, 
   ShieldCheck, 
   Compass, 
-  Globe, 
-  LogOut 
+  LogOut,
+  User
 } from 'lucide-react';
 
 export default function Header({ 
@@ -69,75 +69,91 @@ export default function Header({
           </div>
         </div>
 
-        {/* Right Controls: Landing Toggle, User Chip & Logout */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <button
-            onClick={onGoToLanding}
-            style={{
-              background: '#edf2fc',
-              border: '1px solid #bfdbfe',
-              color: '#003882',
-              borderRadius: '8px',
-              padding: '7px 14px',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <Globe size={14} />
-            <span>Landing Page</span>
-          </button>
+        {/* Right Section: Only Live WebSocket & Profile */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          
+          {/* 1. LIVE WEBSOCKET Pill */}
+          <div style={{
+            background: isConnected ? '#ecfdf5' : '#fef2f2',
+            color: isConnected ? '#059669' : '#dc2626',
+            border: `1px solid ${isConnected ? '#a7f3d0' : '#fecaca'}`,
+            padding: '6px 14px',
+            borderRadius: '20px',
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span className={isConnected ? 'pulse-dot' : ''} style={{ background: isConnected ? '#10b981' : '#dc2626' }}></span>
+            <span>{isConnected ? 'LIVE WEBSOCKET' : 'OFFLINE'}</span>
+          </div>
 
-          {currentUser && (
+          {/* 2. User Profile Chip */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            padding: '5px 14px',
+            borderRadius: '24px',
+            boxShadow: '0 1px 4px rgba(0, 56, 130, 0.04)'
+          }}>
+            {/* Avatar Circle */}
             <div style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              background: '#003882',
+              color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              padding: '6px 14px',
-              borderRadius: '20px',
-              fontSize: '0.82rem'
+              justifyContent: 'center',
+              fontSize: '0.8rem',
+              fontWeight: 800
             }}>
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>
-                👤 {currentUser.fullName || currentUser.username}
+              {(currentUser?.fullName || currentUser?.username || 'A')[0].toUpperCase()}
+            </div>
+
+            {/* Name & Role */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
+                {currentUser?.fullName || currentUser?.username || 'Administrator'}
               </span>
               <span style={{
-                background: currentUser.role === 'admin' ? '#003882' : '#059669',
-                color: '#ffffff',
-                fontSize: '0.66rem',
-                fontWeight: 800,
-                padding: '2px 8px',
-                borderRadius: '10px',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                color: currentUser?.role === 'admin' ? '#003882' : '#059669',
                 textTransform: 'uppercase'
               }}>
-                {currentUser.role || 'Operator'}
+                {currentUser?.role || 'Operator'}
               </span>
             </div>
-          )}
 
-          <button
-            onClick={onLogout}
-            style={{
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              color: '#dc2626',
-              borderRadius: '8px',
-              padding: '7px 14px',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <LogOut size={14} />
-            <span>Keluar</span>
-          </button>
+            {/* Logout Action */}
+            <button
+              onClick={onLogout}
+              title="Keluar (Logout)"
+              style={{
+                marginLeft: '4px',
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                borderRadius: '4px',
+                transition: 'color 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#dc2626'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+            >
+              <LogOut size={15} />
+            </button>
+          </div>
+
         </div>
       </div>
 

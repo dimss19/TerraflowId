@@ -97,13 +97,13 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '10px 22px',
+                padding: '10px 20px',
                 fontSize: '0.88rem',
                 cursor: 'pointer'
               }}
             >
               <KeyRound size={16} />
-              <span>Masuk ke Sistem (Login)</span>
+              <span>Login</span>
             </button>
           </div>
         </div>
@@ -173,7 +173,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                   cursor: 'pointer'
                 }}
               >
-                <span>Buka Portal Monitoring (Login)</span>
+                <span>Login ke Portal Monitoring</span>
                 <ArrowRight size={18} />
               </button>
 
@@ -571,7 +571,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               className="btn-corporate-primary"
               style={{ padding: '8px 18px', fontSize: '0.82rem', cursor: 'pointer' }}
             >
-              Masuk ke Portal Login
+              Login ke Portal
             </button>
           </div>
         </div>

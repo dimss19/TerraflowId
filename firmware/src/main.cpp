@@ -40,20 +40,21 @@ void samplingTask(void *pvParameters) {
     readingCount++;
     Serial.printf("\n[CYCLE #%d] Starting 1-minute AWLR sampling...\n", readingCount);
 
-    // 1. Read A16 Ultrasonic Sensor via RS485
-    A16Reading reading = sensor.readDistance();
+    // 1. Read A16 Ultrasonic Sensor via RS485 with Wave Filtering & Acoustic Compensation
+    A16Reading reading = sensor.readFilteredDistance(5);
     float batteryV = readBatteryVoltage();
     int batteryPct = min(100, max(0, (int)(((batteryV - 10.5f) / 2.3f) * 100.0f)));
 
     if (reading.isValid) {
       // 2. Apply NVS Calibration Formula:
-      // Water Level = Sensor Height - (Raw Distance * Slope + Offset)
+      // Water Level = Sensor Height - (Filtered Distance * Slope + Offset)
       CalibrationData calib = mqttMgr.getCalibration();
-      float waterLevel = calib.sensorHeightCm - (reading.rawDistanceCm * calib.slope + calib.offsetCm);
+      float effectiveDist = (reading.filteredDistanceCm > 0.0f) ? reading.filteredDistanceCm : reading.rawDistanceCm;
+      float waterLevel = calib.sensorHeightCm - (effectiveDist * calib.slope + calib.offsetCm);
 
       LogRecord record;
       record.timestamp = millis() / 1000;
-      record.rawDistanceCm = reading.rawDistanceCm;
+      record.rawDistanceCm = effectiveDist;
       record.waterLevelCm = waterLevel;
       record.temperatureC = reading.temperatureC;
       record.batteryVoltage = batteryV;

@@ -1,6 +1,7 @@
 #ifndef SDCARD_LOGGER_H
 #define SDCARD_LOGGER_H
 
+#include <stdint.h>
 #include <Arduino.h>
 #include <FS.h>
 #include <SD.h>
@@ -23,6 +24,9 @@ public:
   bool begin();
   bool isReady() const { return ready; }
   
+  // Autonomous Self-Healing SPI / Card Re-mount
+  bool autoRecover();
+  
   bool appendRecord(const String &filename, const LogRecord &record);
   bool markRecordSent(const String &filename, uint32_t timestamp);
   void logCrash(const String &reason, const String &details);
@@ -38,6 +42,7 @@ private:
   bool ready;
   SPIClass spiBus;
   int pendingCount;
+  int consecutiveErrors;
   void initDirectories();
 };
 

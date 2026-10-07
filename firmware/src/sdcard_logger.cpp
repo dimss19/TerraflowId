@@ -1,7 +1,7 @@
 #include "sdcard_logger.h"
 #include "config.h"
 
-SdCardLogger::SdCardLogger() : ready(false), spiBus(FSPI), pendingCount(0) {}
+SdCardLogger::SdCardLogger() : ready(false), spiBus(FSPI), pendingCount(0), consecutiveErrors(0) {}
 
 bool SdCardLogger::begin() {
   // Initialize dedicated SPI bus with specified GPIOs (10, 11, 12, 13)
@@ -22,8 +22,35 @@ bool SdCardLogger::begin() {
 
   Serial.printf("[SD] MicroSD Card mounted successfully. Size: %llu MB\n", SD.cardSize() / (1024 * 1024));
   ready = true;
+  consecutiveErrors = 0;
   initDirectories();
   return true;
+}
+
+bool SdCardLogger::autoRecover() {
+  Serial.println("[SD AUTO-HEAL] Attempting MicroSD re-mount & SPI bus recovery...");
+  SD.end();
+  delay(200);
+  spiBus.end();
+  delay(100);
+
+  spiBus.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, PIN_SD_CS);
+  delay(100);
+
+  if (SD.begin(PIN_SD_CS, spiBus, 20000000)) {
+    uint8_t cardType = SD.cardType();
+    if (cardType != CARD_NONE) {
+      ready = true;
+      consecutiveErrors = 0;
+      initDirectories();
+      Serial.println("[SD AUTO-HEAL] MicroSD Card successfully recovered & re-mounted!");
+      return true;
+    }
+  }
+
+  ready = false;
+  Serial.println("[SD AUTO-HEAL] Card recovery failed. Slot may be unseated.");
+  return false;
 }
 
 void SdCardLogger::initDirectories() {
@@ -34,16 +61,32 @@ void SdCardLogger::initDirectories() {
 }
 
 bool SdCardLogger::appendRecord(const String &filename, const LogRecord &record) {
-  if (!ready) return false;
+  if (!ready) {
+    autoRecover();
+    if (!ready) return false;
+  }
 
   String path = "/data/" + filename;
   bool isNewFile = !SD.exists(path);
 
   File file = SD.open(path, FILE_APPEND);
   if (!file) {
-    Serial.printf("[SD ERROR] Failed to open file for appending: %s\n", path.c_str());
-    return false;
+    consecutiveErrors++;
+    Serial.printf("[SD ERROR] Failed to open %s. Consecutive errors: %d\n", path.c_str(), consecutiveErrors);
+    
+    // Attempt auto-recovery
+    if (autoRecover()) {
+      file = SD.open(path, FILE_APPEND);
+    }
+    
+    // Fallback to emergency file if primary file is locked/corrupt
+    if (!file) {
+      file = SD.open("/data/emergency_log.csv", FILE_APPEND);
+      if (!file) return false;
+    }
   }
+
+  consecutiveErrors = 0;
 
   if (isNewFile) {
     file.println("timestamp,raw_distance_cm,water_level_cm,temperature_c,battery_voltage,battery_percent,sent");
@@ -77,7 +120,10 @@ bool SdCardLogger::markRecordSent(const String &filename, uint32_t timestamp) {
 }
 
 void SdCardLogger::logCrash(const String &reason, const String &details) {
-  if (!ready) return;
+  if (!ready) {
+    autoRecover();
+    if (!ready) return;
+  }
   File logFile = SD.open("/logs/crash.log", FILE_APPEND);
   if (logFile) {
     logFile.printf("[%lu] CRASH_EVENT: %s | %s\n", millis() / 1000, reason.c_str(), details.c_str());
@@ -105,7 +151,10 @@ float SdCardLogger::getFreeSpaceMB() {
 
 std::vector<LogRecord> SdCardLogger::getUnsentRecords(const String &filename, int limit) {
   std::vector<LogRecord> list;
-  if (!ready) return list;
+  if (!ready) {
+    autoRecover();
+    if (!ready) return list;
+  }
 
   String path = "/data/" + filename;
   File file = SD.open(path, FILE_READ);

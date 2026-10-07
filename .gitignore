@@ -42,3 +42,6 @@ coverage/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Compilation database
+compile_commands.json

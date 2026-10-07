@@ -5,6 +5,7 @@
 #include <FS.h>
 #include <SD.h>
 #include <SPI.h>
+#include <vector>
 
 struct LogRecord {
   uint32_t timestamp;

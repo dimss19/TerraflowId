@@ -70,6 +70,12 @@ bool SdCardLogger::appendRecord(const String &filename, const LogRecord &record)
   return true;
 }
 
+bool SdCardLogger::markRecordSent(const String &filename, uint32_t timestamp) {
+  if (!ready) return false;
+  decrementPending(1);
+  return true;
+}
+
 void SdCardLogger::logCrash(const String &reason, const String &details) {
   if (!ready) return;
   File logFile = SD.open("/logs/crash.log", FILE_APPEND);

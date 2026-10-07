@@ -1,5 +1,5 @@
 import React from 'react';
-import { Waves, TrendingUp, TrendingDown, Minus, Ruler, Layers } from 'lucide-react';
+import { Waves, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStatus }) {
   const waterLevel = Number(reading?.water_level_cm) || 0;
@@ -9,10 +9,9 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
   // Percentage for gauge (0 to 100)
   const percent = Math.min(100, Math.max(0, (waterLevel / maxScale) * 100));
 
-  // Gauge SVG math for 240-degree arc
-  const radius = 105;
-  const stroke = 18;
-  const normalizedRadius = radius - stroke * 2;
+  // Gauge SVG geometry for 240-degree arc
+  const stroke = 14;
+  const normalizedRadius = 92;
   const circumference = normalizedRadius * 2 * Math.PI;
   // Arc angle 240 deg = 0.666 of circle
   const arcLength = circumference * (240 / 360);
@@ -43,7 +42,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
     <div className="corporate-card" style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
       
       {/* Header */}
-      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '32px',
@@ -64,12 +63,12 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
         <span className="badge badge-navy">INTERVAL 1 MENIT</span>
       </div>
 
-      {/* Radial SVG Gauge */}
-      <div style={{ position: 'relative', width: '260px', height: '220px', display: 'flex', justifyContent: 'center' }}>
+      {/* Radial SVG Gauge Container */}
+      <div style={{ position: 'relative', width: '280px', height: '200px', display: 'flex', justifyContent: 'center' }}>
         <svg
-          height="220"
-          width="260"
-          viewBox="0 0 260 220"
+          height="200"
+          width="280"
+          viewBox="0 0 280 200"
         >
           <defs>
             <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -85,12 +84,12 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             strokeWidth={stroke}
             strokeDasharray={`${arcLength} ${circumference}`}
             style={{
-              transformOrigin: '130px 130px',
+              transformOrigin: '140px 125px',
               transform: 'rotate(150deg)'
             }}
             r={normalizedRadius}
-            cx="130"
-            cy="130"
+            cx="140"
+            cy="125"
             strokeLinecap="round"
           />
 
@@ -102,35 +101,66 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             strokeDasharray={`${arcLength} ${circumference}`}
             strokeDashoffset={strokeDashoffset}
             style={{
-              transformOrigin: '130px 130px',
+              transformOrigin: '140px 125px',
               transform: 'rotate(150deg)',
               transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
             }}
             r={normalizedRadius}
-            cx="130"
-            cy="130"
+            cx="140"
+            cy="125"
             strokeLinecap="round"
           />
+
+          {/* Min / Max Labels at the ends of arc */}
+          <text x="56" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">0</text>
+          <text x="224" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">{maxScale.toFixed(0)}</text>
         </svg>
 
         {/* Center Readout Overlay */}
         <div style={{
           position: 'absolute',
-          top: '65px',
+          top: '52px',
+          left: 0,
+          right: 0,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          textAlign: 'center'
+          justifyContent: 'center',
+          textAlign: 'center',
+          pointerEvents: 'none'
         }}>
-          <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
-            {waterLevel.toFixed(1)}
-          </span>
-          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.08em', marginTop: '4px' }}>
-            CENTIMETER (cm)
-          </span>
-          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#003882', marginTop: '4px' }}>
+          {/* Main Water Level Number */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+            <span style={{
+              fontSize: '2.6rem',
+              fontWeight: 800,
+              color: '#0f172a',
+              letterSpacing: '-0.03em',
+              lineHeight: 1
+            }}>
+              {waterLevel.toFixed(1)}
+            </span>
+            <span style={{
+              fontSize: '0.95rem',
+              fontWeight: 700,
+              color: '#64748b'
+            }}>
+              cm
+            </span>
+          </div>
+
+          {/* Elevation in Meters Badge */}
+          <div style={{
+            fontSize: '0.82rem',
+            fontWeight: 700,
+            color: '#003882',
+            marginTop: '8px',
+            background: '#edf2fc',
+            padding: '3px 12px',
+            borderRadius: '20px'
+          }}>
             {(waterLevel / 100.0).toFixed(2)} Meter DPL
-          </span>
+          </div>
         </div>
       </div>
 
@@ -175,7 +205,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             Tinggi Referensi
           </div>
           <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-            {maxScale.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748b' }}>cm</span>
+            {maxScale.toFixed(1)} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748b' }}>cm</span>
           </div>
         </div>
       </div>

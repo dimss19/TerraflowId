@@ -1,0 +1,11 @@
+CompileFlags:
+  Remove:
+    - "-mlongcalls"
+    - "-fstrict-volatile-bitfields"
+    - "-fno-tree-switch-conversion"
+    - "-freorder-blocks"
+    - "-fno-jump-tables"
+  Add:
+    - "-mlong-calls"
+    - "-D__XTENSA__=1"
+    - "-Wno-unknown-warning-option"

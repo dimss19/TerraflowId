@@ -94,7 +94,7 @@ bool SdCardLogger::appendRecord(const String &filename, const LogRecord &record)
 
   char line[128];
   snprintf(line, sizeof(line), "%lu,%.1f,%.1f,%.1f,%.2f,%d,%d",
-    record.timestamp,
+    (unsigned long)record.timestamp,
     record.rawDistanceCm,
     record.waterLevelCm,
     record.temperatureC,
@@ -126,7 +126,7 @@ void SdCardLogger::logCrash(const String &reason, const String &details) {
   }
   File logFile = SD.open("/logs/crash.log", FILE_APPEND);
   if (logFile) {
-    logFile.printf("[%lu] CRASH_EVENT: %s | %s\n", millis() / 1000, reason.c_str(), details.c_str());
+    logFile.printf("[%lu] CRASH_EVENT: %s | %s\n", (unsigned long)(millis() / 1000), reason.c_str(), details.c_str());
     logFile.close();
     Serial.println("[SD] Crash event recorded to /logs/crash.log");
   }

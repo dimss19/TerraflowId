@@ -2,9 +2,9 @@ import React from 'react';
 import { Waves, TrendingUp, TrendingDown, Minus, Ruler, Layers } from 'lucide-react';
 
 export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStatus }) {
-  const waterLevel = reading?.water_level_cm != null ? Number(reading.water_level_cm) : 0;
-  const rawDistance = reading?.raw_distance_cm != null ? Number(reading.raw_distance_cm) : 0;
-  const maxScale = sensorHeight || 600;
+  const waterLevel = Number(reading?.water_level_cm) || 0;
+  const rawDistance = Number(reading?.raw_distance_cm) || 0;
+  const maxScale = Number(sensorHeight) || 600;
 
   // Percentage for gauge (0 to 100)
   const percent = Math.min(100, Math.max(0, (waterLevel / maxScale) * 100));

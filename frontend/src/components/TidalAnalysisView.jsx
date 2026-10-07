@@ -135,7 +135,7 @@ export default function TidalAnalysisView({ tidalData, onTimeframeChange }) {
           <div className="subtle-panel">
             <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>HIGHEST HIGH TIDE (HHT)</div>
             <div className="mono-text" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#003882', marginTop: '4px' }}>
-              {stats.hht.toFixed(1)} cm
+              {Number(stats?.hht || 0).toFixed(1)} cm
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Puncak Tertinggi 24 Jam</div>
           </div>
@@ -143,7 +143,7 @@ export default function TidalAnalysisView({ tidalData, onTimeframeChange }) {
           <div className="subtle-panel">
             <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>LOWEST LOW TIDE (LLT)</div>
             <div className="mono-text" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#d97706', marginTop: '4px' }}>
-              {stats.llt.toFixed(1)} cm
+              {Number(stats?.llt || 0).toFixed(1)} cm
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Titik Surut Terendah</div>
           </div>
@@ -151,7 +151,7 @@ export default function TidalAnalysisView({ tidalData, onTimeframeChange }) {
           <div className="subtle-panel">
             <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>MEAN SEA LEVEL (MSL)</div>
             <div className="mono-text" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
-              {stats.msl.toFixed(1)} cm
+              {Number(stats?.msl || 0).toFixed(1)} cm
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Elevasi Rata-Rata Acuan</div>
           </div>
@@ -159,7 +159,7 @@ export default function TidalAnalysisView({ tidalData, onTimeframeChange }) {
           <div className="subtle-panel">
             <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>TIDAL RANGE</div>
             <div className="mono-text" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#003882', marginTop: '4px' }}>
-              {stats.tidalRange.toFixed(1)} cm
+              {Number(stats?.tidalRange || 0).toFixed(1)} cm
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Rentang Pasang - Surut</div>
           </div>
@@ -252,7 +252,7 @@ export default function TidalAnalysisView({ tidalData, onTimeframeChange }) {
               <g key={`ht-${idx}`}>
                 <circle cx={ht.x} cy={ht.y} r={7} fill="#10b981" stroke="#ffffff" strokeWidth="2.5" />
                 <text x={ht.x} y={ht.y - 12} fill="#059669" fontSize="11" fontWeight="800" textAnchor="middle">
-                  ▲ {ht.water_level_cm?.toFixed(1)} cm
+                  ▲ {Number(ht?.level || ht?.water_level_cm || 0).toFixed(1)} cm
                 </text>
               </g>
             ))}
@@ -262,7 +262,7 @@ export default function TidalAnalysisView({ tidalData, onTimeframeChange }) {
               <g key={`lt-${idx}`}>
                 <circle cx={lt.x} cy={lt.y} r={7} fill="#d97706" stroke="#ffffff" strokeWidth="2.5" />
                 <text x={lt.x} y={lt.y + 20} fill="#d97706" fontSize="11" fontWeight="800" textAnchor="middle">
-                  ▼ {lt.water_level_cm?.toFixed(1)} cm
+                  ▼ {Number(lt?.level || lt?.water_level_cm || 0).toFixed(1)} cm
                 </text>
               </g>
             ))}

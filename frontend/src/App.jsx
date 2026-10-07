@@ -235,14 +235,7 @@ export default function App() {
       />
 
       {/* Main Container */}
-      <main style={{
-        maxWidth: '1440px',
-        margin: '0 auto',
-        padding: '0 40px 60px',
-        width: '100%',
-        boxSizing: 'border-box',
-        flex: 1
-      }}>
+      <main className="app-main-container">
         
         {/* Action Toast Alert Banner */}
         {actionMessage && (
@@ -266,18 +259,7 @@ export default function App() {
         )}
 
         {/* 2. Sub-Navigation Tabs */}
-        <div style={{
-          display: 'flex',
-          gap: '8px',
-          background: '#ffffff',
-          padding: '6px',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 2px 10px rgba(0, 56, 130, 0.03)',
-          marginBottom: '28px',
-          overflowX: 'auto',
-          alignItems: 'center'
-        }}>
+        <div className="tab-nav-bar">
           <button 
             className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
@@ -375,7 +357,7 @@ export default function App() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
             
             {/* Top Telemetry Grid: Water Level Gauge & Real-time Chart */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(480px, 2.2fr)', gap: '24px' }}>
+            <div className="dashboard-telemetry-grid">
               <WaterLevelGauge 
                 reading={latestReading} 
                 sensorHeight={device?.sensor_height_cm}
@@ -387,7 +369,7 @@ export default function App() {
             </div>
 
             {/* Quick System Telemetry Metric Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+            <div className="metrics-summary-grid">
               <div className="corporate-card" style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>

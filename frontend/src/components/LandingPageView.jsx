@@ -70,7 +70,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
           </div>
 
           {/* Navigation Links */}
-          <nav style={{ display: 'flex', alignItems: 'center', gap: '32px', flexWrap: 'wrap' }}>
+          <nav className="landing-nav">
             <a href="#beranda" style={{ fontSize: '0.92rem', color: '#003882', fontWeight: 700, textDecoration: 'none' }}>
               Beranda
             </a>
@@ -110,19 +110,13 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
       </header>
 
       {/* 2. Hero Section */}
-      <section id="beranda" style={{
-        padding: '72px 40px 60px',
+      <section id="beranda" className="landing-section" style={{
         maxWidth: '1440px',
         margin: '0 auto',
         width: '100%',
         boxSizing: 'border-box'
       }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.35fr) minmax(360px, 1fr)',
-          gap: '48px',
-          alignItems: 'center'
-        }}>
+        <div className="landing-hero-grid">
           {/* Left Hero Content */}
           <div>
             <div style={{
@@ -145,7 +139,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
             </div>
 
             <h1 style={{
-              fontSize: '3.1rem',
+              fontSize: 'clamp(2.1rem, 4.5vw, 3.1rem)',
               fontWeight: 800,
               color: '#0f172a',
               letterSpacing: '-0.035em',
@@ -308,18 +302,17 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
       </section>
 
       {/* 3. AWLR Technical Highlights */}
-      <section id="solusi-awlr" style={{
+      <section id="solusi-awlr" className="landing-section" style={{
         background: '#ffffff',
         borderTop: '1px solid #e2e8f0',
-        borderBottom: '1px solid #e2e8f0',
-        padding: '80px 40px'
+        borderBottom: '1px solid #e2e8f0'
       }}>
         <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
           <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 56px' }}>
             <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#003882', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px' }}>
               INSTRUMENTASI TERPADU
             </div>
-            <h2 style={{ fontSize: '2.4rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: '0 0 16px' }}>
+            <h2 style={{ fontSize: 'clamp(1.75rem, 4vw, 2.4rem)', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: '0 0 16px' }}>
               Teknologi Monitoring Level Air Otomatis
             </h2>
             <p style={{ fontSize: '1rem', color: '#64748b', lineHeight: 1.6 }}>
@@ -327,7 +320,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '28px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '28px' }}>
             {/* Card 1 */}
             <div className="corporate-card" style={{ padding: '32px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', marginBottom: '20px' }}>
@@ -337,7 +330,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                 Sensor Modbus RS485 A16
               </h3>
               <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.6 }}>
-                Rentang pengukuran 25 cm hingga 600 cm dengan kompensasi temperatur akustik otomatis, filter stabilitas median, dan komunikasi industri RS485 bebas interferensi.
+                Rentang pengukuran 50 cm hingga 1500 cm (15 meter) dengan kompensasi temperatur akustik otomatis, filter stabilitas median, dan komunikasi industri RS485 bebas interferensi.
               </p>
             </div>
 
@@ -371,21 +364,10 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
       </section>
 
       {/* 4. Security & Architecture Spotlight Section */}
-      <section id="keamanan" style={{ padding: '80px 40px', background: '#f8fafc' }}>
+      <section id="keamanan" className="landing-section" style={{ background: '#f8fafc' }}>
         <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
-          <div style={{
-            background: 'linear-gradient(135deg, #002d69 0%, #003882 100%)',
-            borderRadius: '20px',
-            padding: '56px 48px',
-            color: '#ffffff',
-            boxShadow: '0 20px 48px rgba(0, 56, 130, 0.16)'
-          }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1.2fr) minmax(320px, 1fr)',
-              gap: '48px',
-              alignItems: 'center'
-            }}>
+          <div className="landing-security-box">
+            <div className="landing-security-grid">
               <div>
                 <div style={{
                   display: 'inline-flex',
@@ -404,7 +386,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                   <span>STANDAR INDUSTRI &amp; KEAMANAN SISTEM</span>
                 </div>
 
-                <h2 style={{ fontSize: '2.4rem', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 18px', lineHeight: 1.2 }}>
+                <h2 style={{ fontSize: 'clamp(1.75rem, 4vw, 2.4rem)', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 18px', lineHeight: 1.2 }}>
                   Arsitektur Keandalan &amp; Standar Keamanan TerraFlow
                 </h2>
 
@@ -478,13 +460,13 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
       </section>
 
       {/* 5. Services & Geospatial Solutions */}
-      <section id="layanan" style={{ padding: '80px 40px', background: '#ffffff', borderTop: '1px solid #e2e8f0' }}>
+      <section id="layanan" className="landing-section" style={{ background: '#ffffff', borderTop: '1px solid #e2e8f0' }}>
         <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
           <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 56px' }}>
             <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#003882', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px' }}>
               LAYANAN GEOSPATIAL PT TANAH AIRKU TEKNOLOGI
             </div>
-            <h2 style={{ fontSize: '2.4rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: '0 0 16px' }}>
+            <h2 style={{ fontSize: 'clamp(1.75rem, 4vw, 2.4rem)', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: '0 0 16px' }}>
               Solusi Survei, Pemetaan &amp; Telemetri
             </h2>
             <p style={{ fontSize: '1rem', color: '#64748b', lineHeight: 1.6 }}>

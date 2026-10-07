@@ -30,17 +30,7 @@ export default function Header({
   return (
     <header style={{ marginBottom: '28px' }}>
       {/* 1. Official Corporate Top Navigation Bar */}
-      <div style={{
-        background: '#ffffff',
-        borderBottom: '1px solid #eef2f7',
-        padding: '14px 40px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '20px',
-        boxShadow: '0 2px 8px rgba(0, 56, 130, 0.03)'
-      }}>
+      <div className="header-top-bar">
         {/* Brand Logo & Name */}
         <div 
           onClick={onGoToLanding}
@@ -158,16 +148,8 @@ export default function Header({
                 }}>
                   {device?.device_id || 'AWLR-001'}
                 </span>
-                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>&bull;</span>
-                <span style={{
-                  fontSize: '0.74rem',
-                  fontWeight: 600,
-                  color: '#334155',
-                  maxWidth: '170px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}>
+                <span className="profile-device-name" style={{ color: '#94a3b8' }}>&bull;</span>
+                <span className="profile-device-name">
                   {device?.name || 'AWLR Portable Alpha'}
                 </span>
               </div>
@@ -200,11 +182,7 @@ export default function Header({
       </div>
 
       {/* 2. Official Corporate Hero Header */}
-      <div style={{
-        padding: '36px 40px 20px',
-        maxWidth: '1440px',
-        margin: '0 auto'
-      }}>
+      <div className="header-hero">
         <div style={{
           fontSize: '0.78rem',
           fontWeight: 800,
@@ -216,23 +194,11 @@ export default function Header({
           SISTEM MONITORING TELEMETRI AWLR
         </div>
         
-        <h1 style={{
-          fontSize: '2.6rem',
-          fontWeight: 800,
-          color: '#0f172a',
-          letterSpacing: '-0.03em',
-          marginBottom: '10px',
-          lineHeight: 1.15
-        }}>
+        <h1 className="header-hero-title">
           Pemantauan AWLR.
         </h1>
 
-        <p style={{
-          fontSize: '1.02rem',
-          color: '#64748b',
-          maxWidth: '780px',
-          lineHeight: 1.6
-        }}>
+        <p className="header-hero-desc">
           Siap mendukung monitoring elevasi pasang surut air laut, muara, dan sungai secara terpadu dengan transmisi MQTT real-time, pencatatan MicroSD mandiri, dan kompensasi cerdas.
         </p>
 

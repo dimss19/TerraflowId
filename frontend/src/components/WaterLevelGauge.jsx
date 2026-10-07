@@ -66,12 +66,11 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
         <span className="badge badge-navy">SKALA SENSOR A16 (15 M)</span>
       </div>
 
-      {/* Radial SVG Gauge Container */}
-      <div style={{ position: 'relative', width: '280px', height: '200px', display: 'flex', justifyContent: 'center' }}>
+      {/* Radial SVG Gauge Container (Fully Responsive) */}
+      <div style={{ position: 'relative', width: '100%', maxWidth: '280px', display: 'flex', justifyContent: 'center' }}>
         <svg
-          height="200"
-          width="280"
           viewBox="0 0 280 200"
+          style={{ width: '100%', height: 'auto', display: 'block' }}
         >
           <defs>
             <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -114,58 +113,52 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             strokeLinecap="round"
           />
 
+          {/* Main Water Level Number in METERS */}
+          <text
+            x="140"
+            y="98"
+            textAnchor="middle"
+            dominantBaseline="central"
+            style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}
+          >
+            <tspan fontSize="36" fontWeight="800" fill="#0f172a" letterSpacing="-0.03em">
+              {waterLevelM.toFixed(2)}
+            </tspan>
+            <tspan fontSize="18" fontWeight="800" fill="#003882" dx="4">
+              m
+            </tspan>
+          </text>
+
+          {/* Sub-badge: cm equivalent */}
+          <g>
+            <rect
+              x="52"
+              y="120"
+              width="176"
+              height="24"
+              rx="12"
+              fill="#edf2fc"
+              stroke="#dbeafe"
+              strokeWidth="1"
+            />
+            <text
+              x="140"
+              y="132"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="10.5"
+              fontWeight="700"
+              fill="#475569"
+              style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}
+            >
+              {waterLevelCm.toFixed(1)} cm &bull; Elevasi Air
+            </text>
+          </g>
+
           {/* Min / Max Labels at the ends of arc (0 m and 15 m based on A16 datasheet) */}
           <text x="56" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">0 m</text>
           <text x="224" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">15 m</text>
         </svg>
-
-        {/* Center Readout Overlay */}
-        <div style={{
-          position: 'absolute',
-          top: '74px',
-          left: 0,
-          right: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center',
-          pointerEvents: 'none'
-        }}>
-          {/* Main Water Level Number in METERS */}
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-            <span style={{
-              fontSize: '2.5rem',
-              fontWeight: 800,
-              color: '#0f172a',
-              letterSpacing: '-0.03em',
-              lineHeight: 1
-            }}>
-              {waterLevelM.toFixed(2)}
-            </span>
-            <span style={{
-              fontSize: '1.05rem',
-              fontWeight: 800,
-              color: '#003882'
-            }}>
-              m
-            </span>
-          </div>
-
-          {/* Sub-badge: cm equivalent */}
-          <div style={{
-            fontSize: '0.78rem',
-            fontWeight: 700,
-            color: '#475569',
-            marginTop: '6px',
-            background: '#edf2fc',
-            padding: '3px 12px',
-            borderRadius: '20px',
-            border: '1px solid #dbeafe'
-          }}>
-            {waterLevelCm.toFixed(1)} cm &bull; Elevasi Air
-          </div>
-        </div>
       </div>
 
       {/* Tidal Dynamic Indicator Badge */}
@@ -182,7 +175,8 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
         fontWeight: 700,
         color: statusColor,
         width: '100%',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        flexWrap: 'wrap'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <StatusIcon size={16} />
@@ -194,7 +188,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
       </div>
 
       {/* Secondary Metric Tiles */}
-      <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '16px' }}>
+      <div style={{ width: '100%', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginTop: '16px' }}>
         <div className="subtle-panel">
           <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Jarak Sensor (Raw)

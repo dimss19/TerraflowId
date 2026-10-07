@@ -110,7 +110,7 @@ export default function CalibrationView({ device, latestReading, onCalibrationUp
       </div>
 
       {/* Main Grid: Left Form (styled like Kirim Pesan in Image 2) + Right Preview */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px' }}>
+      <div className="calibration-grid">
         
         {/* Form Container (Matching Image 2 Kirim Pesan) */}
         <div className="corporate-card" style={{ padding: '32px 28px' }}>
@@ -144,7 +144,7 @@ export default function CalibrationView({ device, latestReading, onCalibrationUp
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="two-col-inputs">
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
                   TINGGI SENSOR (CM)
@@ -174,7 +174,7 @@ export default function CalibrationView({ device, latestReading, onCalibrationUp
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="two-col-inputs">
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
                   SLOPE MULTIPLIER

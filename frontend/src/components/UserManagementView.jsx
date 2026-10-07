@@ -693,7 +693,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
           zIndex: 9999,
           padding: '20px'
         }}>
-          <div className="corporate-card" style={{ maxWidth: '520px', width: '100%', padding: '32px', position: 'relative' }}>
+          <div className="corporate-card modal-responsive-card">
             <button 
               onClick={() => setIsAddModalOpen(false)}
               style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
@@ -842,7 +842,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
           zIndex: 9999,
           padding: '20px'
         }}>
-          <div className="corporate-card" style={{ maxWidth: '520px', width: '100%', padding: '32px', position: 'relative' }}>
+          <div className="corporate-card modal-responsive-card">
             <button 
               onClick={() => setIsEditModalOpen(false)}
               style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
@@ -987,7 +987,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
           zIndex: 9999,
           padding: '20px'
         }}>
-          <div className="corporate-card" style={{ maxWidth: '440px', width: '100%', padding: '28px' }}>
+          <div className="corporate-card modal-responsive-card" style={{ maxWidth: '440px' }}>
             <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
               <Trash2 size={24} />
             </div>

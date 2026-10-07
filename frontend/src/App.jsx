@@ -373,96 +373,30 @@ export default function App() {
         </div>
       </section>
 
-      {/* 5. Official Corporate 4-Column Footer (Matching Image 2) */}
+      {/* 5. Minimal Clean Footer */}
       <footer style={{
-        background: '#edf3fb',
-        padding: '48px 40px 24px',
+        background: '#ffffff',
+        borderTop: '1px solid #e2e8f0',
+        padding: '24px 40px',
         marginTop: 'auto'
       }}>
         <div style={{
           maxWidth: '1440px',
           margin: '0 auto',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '36px',
-          paddingBottom: '36px',
-          borderBottom: '1px solid #d8e4f4'
-        }}>
-          {/* Column 1: Company Profile */}
-          <div>
-            <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#003882', marginBottom: '14px' }}>
-              Terraflow Indonesia
-            </h4>
-            <p style={{ fontSize: '0.84rem', color: '#475569', lineHeight: 1.6 }}>
-              <strong>PT Tanah Airku Teknologi</strong> menghadirkan layanan pemetaan pada bidang geospatial untuk mendukung kebutuhan survei, analisis, serta pengolahan data spasial secara efektif dan terukur.
-            </p>
-          </div>
-
-          {/* Column 2: Layanan */}
-          <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>
-              Layanan
-            </h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.84rem', color: '#475569' }}>
-              <li>Survei Topografi</li>
-              <li>Survei GNSS</li>
-              <li>Aerial Mapping</li>
-              <li>Survei Batimetri &amp; AWLR</li>
-            </ul>
-          </div>
-
-          {/* Column 3: Perusahaan */}
-          <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>
-              Perusahaan
-            </h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.84rem', color: '#475569' }}>
-              <li>Tentang Kami</li>
-              <li>Portofolio</li>
-              <li>Karir</li>
-              <li>Kontak</li>
-            </ul>
-          </div>
-
-          {/* Column 4: Hubungi Kami */}
-          <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>
-              Hubungi Kami
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.84rem', color: '#475569' }}>
-              <div>terraflow.pt@gmail.com</div>
-              <div>+62 813 5858 3775</div>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', border: '1px solid #cbd5e1' }}>
-                  <Globe size={14} />
-                </div>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', border: '1px solid #cbd5e1' }}>
-                  <Share2 size={14} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Copyright & Legal */}
-        <div style={{
-          maxWidth: '1440px',
-          margin: '0 auto',
-          paddingTop: '20px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '12px',
-          fontSize: '0.78rem',
+          fontSize: '0.82rem',
           color: '#64748b'
         }}>
           <div>
-            &copy; 2024 TerraflowID Geospatial &amp; Engineering. Precision in Every Pixel.
+            &copy; 2024 <strong>PT Tanah Airku Teknologi</strong> &bull; TerraFlow Industrial AWLR System
           </div>
-          <div style={{ display: 'flex', gap: '20px' }}>
-            <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
-            <span style={{ cursor: 'pointer' }}>Terms of Service</span>
+          <div style={{ display: 'flex', gap: '20px', fontWeight: 600 }}>
+            <span>Precision in Every Pixel</span>
+            <span>RS485 Modbus A16</span>
           </div>
         </div>
       </footer>

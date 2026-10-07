@@ -87,54 +87,6 @@ export default function Header({
           </div>
         </div>
 
-        {/* Corporate Navigation Links */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '28px', flexWrap: 'wrap' }}>
-          <a href="#beranda" style={{ fontSize: '0.9rem', color: '#003882', fontWeight: 700, textDecoration: 'none' }}>
-            Beranda
-          </a>
-          <a href="#tentang" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
-            Tentang Kami
-          </a>
-          <a href="#layanan" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
-            Layanan
-          </a>
-          <a href="#portofolio" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
-            Portofolio
-          </a>
-          <a href="#artikel" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
-            Artikel
-          </a>
-          <a href="#peralatan" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
-            Peralatan
-          </a>
-        </nav>
-
-        {/* Right Action / Status CTA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            background: isConnected ? '#ecfdf5' : '#fef2f2',
-            color: isConnected ? '#059669' : '#dc2626',
-            border: `1px solid ${isConnected ? '#a7f3d0' : '#fecaca'}`,
-            padding: '6px 12px',
-            borderRadius: '20px',
-            fontSize: '0.78rem',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <span className={isConnected ? 'pulse-dot' : ''} style={{ background: isConnected ? '#10b981' : '#dc2626' }}></span>
-            {isConnected ? 'LIVE WEBSOCKET' : 'OFFLINE'}
-          </div>
-
-          <a 
-            href="#kontak"
-            className="btn-corporate-primary"
-            style={{ textDecoration: 'none', padding: '9px 18px', fontSize: '0.8rem' }}
-          >
-            TERHUBUNG DENGAN KAMI
-          </a>
-        </div>
       </div>
 
       {/* 2. Official Corporate Hero Header (Matching Image 2 "Hubungi Kami.") */}

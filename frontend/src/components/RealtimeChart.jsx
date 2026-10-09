@@ -41,6 +41,25 @@ export default function RealtimeChart({ readings = [] }) {
     ? `${pathD} L ${points[points.length - 1].x} ${svgHeight - paddingY} L ${points[0].x} ${svgHeight - paddingY} Z`
     : '';
 
+  const formatPointTime = (ts) => {
+    if (!ts) return '--:--:--';
+    try {
+      const date = typeof ts === 'number' && ts < 1e11 ? new Date(ts * 1000) : new Date(ts);
+      if (isNaN(date.getTime())) return '--:--:--';
+      const h = String(date.getHours()).padStart(2, '0');
+      const m = String(date.getMinutes()).padStart(2, '0');
+      const s = String(date.getSeconds()).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    } catch {
+      return '--:--:--';
+    }
+  };
+
+  const tooltipXPercent = hoveredPoint ? (hoveredPoint.x / svgWidth) * 100 : 0;
+  const tooltipYPercent = hoveredPoint ? (hoveredPoint.y / svgHeight) * 100 : 0;
+  const translateX = tooltipXPercent > 82 ? '-90%' : tooltipXPercent < 18 ? '-10%' : '-50%';
+  const translateY = tooltipYPercent < 28 ? '15%' : '-115%';
+
   return (
     <div className="corporate-card" style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       
@@ -135,23 +154,37 @@ export default function RealtimeChart({ readings = [] }) {
         {hoveredPoint && (
           <div style={{
             position: 'absolute',
-            left: `${(hoveredPoint.x / svgWidth) * 100}%`,
-            top: `${(hoveredPoint.y / svgHeight) * 100 - 35}%`,
-            transform: 'translate(-50%, -100%)',
+            left: `${tooltipXPercent}%`,
+            top: `${tooltipYPercent}%`,
+            transform: `translate(${translateX}, ${translateY})`,
             background: '#ffffff',
             border: '1px solid #d0deee',
-            padding: '6px 12px',
+            padding: '8px 12px',
             borderRadius: '8px',
-            boxShadow: '0 4px 16px rgba(0, 56, 130, 0.12)',
+            boxShadow: '0 6px 20px rgba(0, 56, 130, 0.14)',
             pointerEvents: 'none',
-            zIndex: 10,
-            whiteSpace: 'nowrap'
+            zIndex: 20,
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '3px'
           }}>
-            <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#003882' }}>
-              {Number(hoveredPoint.data.water_level_cm).toFixed(1)} cm
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              color: '#003882'
+            }}>
+              <Clock size={11} strokeWidth={2.5} />
+              <span>{formatPointTime(hoveredPoint.data.timestamp)}</span>
+            </div>
+            <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
+              {Number(hoveredPoint.data.water_level_cm).toFixed(1)} <span style={{ fontSize: '0.74rem', color: '#003882', fontWeight: 700 }}>cm</span>
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-              Dist: {Number(hoveredPoint.data.raw_distance_cm).toFixed(1)} cm
+              Jarak: {Number(hoveredPoint.data.raw_distance_cm).toFixed(1)} cm
             </div>
           </div>
         )}

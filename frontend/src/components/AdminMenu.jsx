@@ -2,11 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Users, 
   Radio, 
-  User, 
   LogOut, 
-  ChevronDown, 
-  Shield, 
-  Settings 
+  ChevronDown 
 } from 'lucide-react';
 
 export default function AdminMenu({ 
@@ -247,31 +244,6 @@ export default function AdminMenu({
             )}
 
             {/* General Items */}
-            <button
-              onClick={() => handleMenuClick('/profile')}
-              className="dropdown-item"
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '10px 12px',
-                border: 'none',
-                background: 'transparent',
-                borderRadius: '8px',
-                fontSize: '0.84rem',
-                fontWeight: 600,
-                color: '#1e293b',
-                cursor: 'pointer',
-                textAlign: 'left'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <User size={16} color="#475569" />
-              <span>Profil Saya</span>
-            </button>
-
             <button
               onClick={() => {
                 setIsOpen(false);

@@ -839,15 +839,6 @@ footer[id],
   position: relative;
 }
 
-.profile-device-name {
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: #334155;
-  max-width: 170px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 /* Tablet & Smaller Screens (<= 1024px) */
 @media (max-width: 1024px) {
@@ -886,9 +877,6 @@ footer[id],
     display: none;
   }
 
-  .profile-device-name {
-    display: none;
-  }
 
   .metrics-summary-grid {
     grid-template-columns: 1fr 1fr;

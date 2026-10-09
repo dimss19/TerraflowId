@@ -20,7 +20,6 @@ import DeviceOverview from './components/DeviceOverview';
 import DeviceDetailView from './components/DeviceDetailView';
 import DeviceManagementView from './components/DeviceManagementView';
 import UserManagementView from './components/UserManagementView';
-import ProfileView from './components/ProfileView';
 
 export default function App() {
   return (
@@ -307,29 +306,6 @@ function AppInner() {
               )
             ) : (
               <Navigate to="/dashboard" replace />
-            )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        } 
-      />
-
-      {/* User Profile */}
-      <Route 
-        path="/profile" 
-        element={
-          authToken ? (
-            renderShell(
-              <ProfileView 
-                currentUser={currentUser}
-                authToken={authToken}
-                onBackToDashboard={() => navigate('/dashboard')}
-                onUpdateCurrentUser={(updated) => {
-                  setCurrentUser(updated);
-                  sessionStorage.setItem('terraflow_user', JSON.stringify(updated));
-                }}
-                onActionToast={showActionToast}
-              />
             )
           ) : (
             <Navigate to="/login" replace />

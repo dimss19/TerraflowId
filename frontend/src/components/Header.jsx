@@ -116,7 +116,7 @@ export default function Header({
           </div>
         </div>
 
-        {/* Right Section: Connection Status Pill & Admin/Profile Dropdown Menu */}
+        {/* Right Section: Connection Status Pill & Admin/Account Dropdown Menu */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
           
           {/* 1. LIVE / OFFLINE Status Pill */}
@@ -145,7 +145,7 @@ export default function Header({
             <span>{statusBadge.text}</span>
           </div>
 
-          {/* 2. Admin & User Profile Dropdown Menu */}
+          {/* 2. Admin & Account Dropdown Menu */}
           <AdminMenu 
             currentUser={currentUser} 
             onNavigate={onNavigate} 

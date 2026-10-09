@@ -54,10 +54,10 @@ function AppInner() {
   const [isConnected, setIsConnected] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
 
-  const showActionToast = (msg) => {
+  const showActionToast = useCallback((msg) => {
     setActionMessage(msg);
     setTimeout(() => setActionMessage(null), 4000);
-  };
+  }, []);
 
   // Auth Handlers
   const handleLoginSuccess = (token, user) => {
@@ -69,13 +69,13 @@ function AppInner() {
     showActionToast(`Selamat datang, ${user.fullName || user.username}! Anda telah berhasil masuk.`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setAuthToken(null);
     setCurrentUser(null);
     sessionStorage.removeItem('terraflow_token');
     sessionStorage.removeItem('terraflow_user');
     navigate('/');
-  };
+  }, [navigate]);
 
   // Fetch all devices with user token for role-based filtering
   const fetchAllDevices = useCallback(async () => {
@@ -184,8 +184,182 @@ function AppInner() {
     };
   }, [fetchAllDevices]);
 
-  // Common Layout Shell
-  const LayoutShell = ({ children, currentDevice = null, showHero = false }) => (
+  // Stable helper to render LayoutShell inside AppInner
+  const renderShell = (children, currentDevice = null, showHero = false) => (
+    <LayoutShell
+      currentDevice={currentDevice}
+      devices={devices}
+      isConnected={isConnected}
+      activeAlertsCount={currentDevice ? Number(currentDevice.active_alerts_count) || 0 : 0}
+      onRefresh={fetchAllDevices}
+      currentUser={currentUser}
+      onLogout={handleLogout}
+      onGoToLanding={() => navigate(authToken ? '/dashboard' : '/')}
+      onNavigate={(path) => navigate(path)}
+      showHero={showHero}
+      actionMessage={actionMessage}
+    >
+      {children}
+    </LayoutShell>
+  );
+
+  return (
+    <Routes>
+      {/* Public Pages */}
+      <Route 
+        path="/" 
+        element={
+          authToken 
+            ? <Navigate to="/dashboard" replace /> 
+            : <LandingPageView onGoToLogin={() => navigate('/login')} />
+        } 
+      />
+      <Route 
+        path="/login" 
+        element={
+          authToken 
+            ? <Navigate to="/dashboard" replace /> 
+            : <LoginView onLoginSuccess={handleLoginSuccess} onBackToLanding={() => navigate('/')} />
+        } 
+      />
+
+      {/* Authenticated Dashboard: Device Overview */}
+      <Route 
+        path="/dashboard" 
+        element={
+          authToken ? (
+            renderShell(
+              <DeviceOverview 
+                devices={devices}
+                loading={loadingDevices}
+                onSelectDevice={(id) => navigate(`/dashboard/${id}`)}
+                onRefresh={fetchAllDevices}
+                currentUser={currentUser}
+                onGoToManageDevices={() => navigate('/admin/devices')}
+              />,
+              null,
+              false
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* Authenticated Dashboard: Specific Device Detail View */}
+      <Route 
+        path="/dashboard/:deviceId" 
+        element={
+          authToken ? (
+            <DeviceDetailRouteWrapper 
+              devices={devices}
+              isConnected={isConnected}
+              actionMessage={actionMessage}
+              authToken={authToken}
+              currentUser={currentUser}
+              onLogout={handleLogout}
+              onGoToLanding={() => navigate(authToken ? '/dashboard' : '/')}
+              onNavigate={(path) => navigate(path)}
+              showActionToast={showActionToast}
+            />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* Admin: User Management */}
+      <Route 
+        path="/admin/users" 
+        element={
+          authToken ? (
+            currentUser?.role === 'admin' ? (
+              renderShell(
+                <UserManagementView 
+                  authToken={authToken}
+                  currentUser={currentUser}
+                  onActionToast={showActionToast}
+                  onBackToDashboard={() => navigate('/dashboard')}
+                />
+              )
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* Admin: Device Management */}
+      <Route 
+        path="/admin/devices" 
+        element={
+          authToken ? (
+            currentUser?.role === 'admin' ? (
+              renderShell(
+                <DeviceManagementView 
+                  authToken={authToken}
+                  onBackToDashboard={() => navigate('/dashboard')}
+                  onActionToast={showActionToast}
+                />
+              )
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* User Profile */}
+      <Route 
+        path="/profile" 
+        element={
+          authToken ? (
+            renderShell(
+              <ProfileView 
+                currentUser={currentUser}
+                authToken={authToken}
+                onBackToDashboard={() => navigate('/dashboard')}
+                onUpdateCurrentUser={(updated) => {
+                  setCurrentUser(updated);
+                  sessionStorage.setItem('terraflow_user', JSON.stringify(updated));
+                }}
+                onActionToast={showActionToast}
+              />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* Catch-all */}
+      <Route path="*" element={<Navigate to={authToken ? "/dashboard" : "/"} replace />} />
+    </Routes>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Top-level, statically defined Layout Shell to preserve React component identity
+// --------------------------------------------------------------------------
+function LayoutShell({ 
+  children, 
+  currentDevice = null, 
+  showHero = false,
+  devices = [],
+  isConnected = false,
+  activeAlertsCount = 0,
+  actionMessage = null,
+  currentUser = null,
+  onRefresh,
+  onLogout,
+  onGoToLanding,
+  onNavigate
+}) {
+  return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
       
       {/* 1. Corporate Header */}
@@ -193,12 +367,12 @@ function AppInner() {
         device={currentDevice}
         devices={devices}
         isConnected={isConnected}
-        activeAlertsCount={currentDevice ? Number(currentDevice.active_alerts_count) || 0 : 0}
-        onRefresh={fetchAllDevices}
+        activeAlertsCount={activeAlertsCount}
+        onRefresh={onRefresh}
         currentUser={currentUser}
-        onLogout={handleLogout}
-        onGoToLanding={() => navigate(authToken ? '/dashboard' : '/')}
-        onNavigate={(path) => navigate(path)}
+        onLogout={onLogout}
+        onGoToLanding={onGoToLanding}
+        onNavigate={onNavigate}
         showHero={showHero}
       />
 
@@ -230,8 +404,6 @@ function AppInner() {
 
       </main>
 
-
-
       {/* 3. Minimal Clean Footer */}
       <footer style={{
         background: '#ffffff',
@@ -262,151 +434,24 @@ function AppInner() {
 
     </div>
   );
-
-  return (
-    <Routes>
-      {/* Public Pages */}
-      <Route 
-        path="/" 
-        element={
-          authToken 
-            ? <Navigate to="/dashboard" replace /> 
-            : <LandingPageView onGoToLogin={() => navigate('/login')} />
-        } 
-      />
-      <Route 
-        path="/login" 
-        element={
-          authToken 
-            ? <Navigate to="/dashboard" replace /> 
-            : <LoginView onLoginSuccess={handleLoginSuccess} onBackToLanding={() => navigate('/')} />
-        } 
-      />
-
-      {/* Authenticated Dashboard: Device Overview */}
-      <Route 
-        path="/dashboard" 
-        element={
-          authToken ? (
-            <LayoutShell showHero={false}>
-              <DeviceOverview 
-                devices={devices}
-                loading={loadingDevices}
-                onSelectDevice={(id) => navigate(`/dashboard/${id}`)}
-                onRefresh={fetchAllDevices}
-                currentUser={currentUser}
-                onGoToManageDevices={() => navigate('/admin/devices')}
-              />
-            </LayoutShell>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        } 
-      />
-
-      {/* Authenticated Dashboard: Specific Device Detail View */}
-      <Route 
-        path="/dashboard/:deviceId" 
-        element={
-          authToken ? (
-            <DeviceDetailRouteWrapper 
-              LayoutShell={LayoutShell}
-              devices={devices}
-              authToken={authToken}
-              currentUser={currentUser}
-              onBackToOverview={() => navigate('/dashboard')}
-              showActionToast={showActionToast}
-            />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        } 
-      />
-
-      {/* Admin: User Management */}
-      <Route 
-        path="/admin/users" 
-        element={
-          authToken ? (
-            currentUser?.role === 'admin' ? (
-              <LayoutShell showHero={false}>
-                <UserManagementView 
-                  authToken={authToken}
-                  currentUser={currentUser}
-                  onActionToast={showActionToast}
-                  onBackToDashboard={() => navigate('/dashboard')}
-                />
-              </LayoutShell>
-            ) : (
-              <Navigate to="/dashboard" replace />
-            )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        } 
-      />
-
-      {/* Admin: Device Management */}
-      <Route 
-        path="/admin/devices" 
-        element={
-          authToken ? (
-            currentUser?.role === 'admin' ? (
-              <LayoutShell showHero={false}>
-                <DeviceManagementView 
-                  authToken={authToken}
-                  onBackToDashboard={() => navigate('/dashboard')}
-                  onActionToast={showActionToast}
-                />
-              </LayoutShell>
-            ) : (
-              <Navigate to="/dashboard" replace />
-            )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        } 
-      />
-
-      {/* User Profile */}
-      <Route 
-        path="/profile" 
-        element={
-          authToken ? (
-            <LayoutShell showHero={false}>
-              <ProfileView 
-                currentUser={currentUser}
-                authToken={authToken}
-                onBackToDashboard={() => navigate('/dashboard')}
-                onUpdateCurrentUser={(updated) => {
-                  setCurrentUser(updated);
-                  sessionStorage.setItem('terraflow_user', JSON.stringify(updated));
-                }}
-                onActionToast={showActionToast}
-              />
-            </LayoutShell>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        } 
-      />
-
-      {/* Catch-all */}
-      <Route path="*" element={<Navigate to={authToken ? "/dashboard" : "/"} replace />} />
-    </Routes>
-  );
 }
 
-// Wrapper for Single Device Detail with its own telemetry lifecycle
+// --------------------------------------------------------------------------
+// Wrapper for Single Device Detail with stable telemetry & lifecycle
+// --------------------------------------------------------------------------
 function DeviceDetailRouteWrapper({ 
-  LayoutShell, 
-  devices, 
+  devices,
+  isConnected,
+  actionMessage,
   authToken, 
   currentUser,
-  onBackToOverview, 
+  onLogout,
+  onGoToLanding,
+  onNavigate,
   showActionToast 
 }) {
   const { deviceId } = useParams();
+  const navigate = useNavigate();
   const [device, setDevice] = useState(null);
   const [latestReading, setLatestReading] = useState(null);
   const [realtimeReadings, setRealtimeReadings] = useState([]);
@@ -432,42 +477,40 @@ function DeviceDetailRouteWrapper({
           if (showActionToast) {
             showActionToast(devJson.error || 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda');
           }
-          onBackToOverview();
+          navigate('/dashboard');
           return;
         }
       }
 
-      // 2. Fetch latest reading
-      const latestRes = await fetch(`/api/readings/${deviceId}/latest`);
-      const latestJson = await latestRes.json();
-      if (latestJson.success) {
-        setLatestReading(latestJson.data);
-      } else {
-        setLatestReading(null);
-      }
+      // 2. Fetch latest reading, past 60 readings, and tidal data in parallel
+      const [latestRes, histRes, tidalRes] = await Promise.all([
+        fetch(`/api/readings/${deviceId}/latest`),
+        fetch(`/api/readings/${deviceId}?limit=60`),
+        fetch(`/api/readings/${deviceId}/tidal?hours=24`)
+      ]);
+      const [latestJson, histJson, tidalJson] = await Promise.all([
+        latestRes.json(),
+        histRes.json(),
+        tidalRes.json()
+      ]);
 
-      // 3. Fetch past 60 readings for chart
-      const histRes = await fetch(`/api/readings/${deviceId}?limit=60`);
-      const histJson = await histRes.json();
-      if (histJson.success) {
-        setRealtimeReadings(histJson.data);
-      }
-
-      // 4. Fetch tidal analysis
-      const tidalRes = await fetch(`/api/readings/${deviceId}/tidal?hours=24`);
-      const tidalJson = await tidalRes.json();
-      if (tidalJson.success) {
-        setTidalData(tidalJson);
-      }
+      if (latestJson.success) setLatestReading(latestJson.data);
+      if (histJson.success) setRealtimeReadings(histJson.data);
+      if (tidalJson.success) setTidalData(tidalJson);
     } catch (err) {
       console.error('[Fetch Device Detail Error]', err.message);
     }
-  }, [deviceId, authToken, onBackToOverview, showActionToast]);
+  }, [deviceId, authToken, navigate, showActionToast]);
 
+  // Initial load only when deviceId changes
   useEffect(() => {
     fetchDeviceData();
+  }, [fetchDeviceData]);
 
-    // Setup Socket.IO listener for this specific device
+  // Setup Socket.IO listener for this specific device
+  useEffect(() => {
+    if (!deviceId) return;
+
     const socket = io('/', {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
@@ -514,13 +557,25 @@ function DeviceDetailRouteWrapper({
     return () => {
       socket.disconnect();
     };
-  }, [deviceId, fetchDeviceData]);
+  }, [deviceId]);
 
   // Fallback device from list if detailed device is loading
   const currentDev = device || devices.find(d => d.device_id === deviceId) || { device_id: deviceId, name: deviceId };
 
   return (
-    <LayoutShell currentDevice={currentDev}>
+    <LayoutShell 
+      currentDevice={currentDev}
+      showHero={false}
+      devices={devices}
+      isConnected={isConnected}
+      activeAlertsCount={activeAlertsCount}
+      actionMessage={actionMessage}
+      currentUser={currentUser}
+      onRefresh={fetchDeviceData}
+      onLogout={onLogout}
+      onGoToLanding={onGoToLanding}
+      onNavigate={onNavigate}
+    >
       <DeviceDetailView 
         device={currentDev}
         currentUser={currentUser}
@@ -529,7 +584,7 @@ function DeviceDetailRouteWrapper({
         tidalData={tidalData}
         activeAlertsCount={activeAlertsCount}
         onRefresh={fetchDeviceData}
-        onBackToOverview={onBackToOverview}
+        onBackToOverview={() => navigate('/dashboard')}
         authToken={authToken}
       />
     </LayoutShell>

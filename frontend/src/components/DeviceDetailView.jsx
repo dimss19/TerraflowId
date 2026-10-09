@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
   Waves, 
   Activity, 
@@ -26,7 +27,12 @@ export default function DeviceDetailView({
   onBackToOverview,
   authToken 
 }) {
-  const [currentTab, setCurrentTab] = useState('monitoring');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentTab = searchParams.get('tab') || 'monitoring';
+
+  const handleTabChange = (newTab) => {
+    setSearchParams({ tab: newTab }, { replace: true });
+  };
   const [isSpinning, setIsSpinning] = useState(false);
   const [, setTick] = useState(0);
 
@@ -170,7 +176,7 @@ export default function DeviceDetailView({
       <div className="tab-nav-bar">
         <button 
           className={`tab-btn ${currentTab === 'monitoring' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('monitoring')}
+          onClick={() => handleTabChange('monitoring')}
           title="Monitoring Real-Time"
         >
           <span className="tab-icon"><Waves size={16} /></span>
@@ -179,7 +185,7 @@ export default function DeviceDetailView({
 
         <button 
           className={`tab-btn ${currentTab === 'analysis' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('analysis')}
+          onClick={() => handleTabChange('analysis')}
           title="Analisis & Riwayat Data"
         >
           <span className="tab-icon"><Activity size={16} /></span>
@@ -188,7 +194,7 @@ export default function DeviceDetailView({
 
         <button 
           className={`tab-btn ${currentTab === 'device' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('device')}
+          onClick={() => handleTabChange('device')}
           title="Pengaturan & Perangkat"
         >
           <span className="tab-icon"><Sliders size={16} /></span>

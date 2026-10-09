@@ -77,9 +77,9 @@ function AppInner() {
   }, [navigate]);
 
   // Fetch all devices with user token for role-based filtering
-  const fetchAllDevices = useCallback(async () => {
+  const fetchAllDevices = useCallback(async (isSilent = false) => {
     if (!authToken) return;
-    setLoadingDevices(true);
+    if (!isSilent) setLoadingDevices(true);
     try {
       const res = await fetch('/api/devices', {
         headers: {
@@ -93,13 +93,18 @@ function AppInner() {
     } catch (err) {
       console.error('[Fetch Devices Error]', err.message);
     } finally {
-      setLoadingDevices(false);
+      if (!isSilent) setLoadingDevices(false);
     }
   }, [authToken]);
 
   useEffect(() => {
     if (authToken) {
       fetchAllDevices();
+      // Global background refresh every 15 seconds to keep station status pills and header updated
+      const bgInterval = setInterval(() => {
+        fetchAllDevices(true);
+      }, 15000);
+      return () => clearInterval(bgInterval);
     }
   }, [authToken, fetchAllDevices]);
 
@@ -435,7 +440,7 @@ function DeviceDetailRouteWrapper({
   const [tidalData, setTidalData] = useState(null);
   const [activeAlertsCount, setActiveAlertsCount] = useState(0);
 
-  const fetchDeviceData = useCallback(async () => {
+  const fetchDeviceData = useCallback(async (isSilent = false) => {
     if (!deviceId) return;
 
     try {

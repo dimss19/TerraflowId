@@ -36,16 +36,39 @@ export default function DeviceDetailView({
   const [isSpinning, setIsSpinning] = useState(false);
   const [, setTick] = useState(0);
 
-  // Recalculate status freshness every 10 seconds
+  // Auto refresh interval state (persisted in localStorage, default 10 seconds)
+  const [refreshInterval, setRefreshInterval] = useState(() => {
+    const saved = localStorage.getItem('terraflow_auto_refresh');
+    return saved !== null ? Number(saved) : 10;
+  });
+
+  const handleIntervalChange = (val) => {
+    const num = Number(val);
+    setRefreshInterval(num);
+    localStorage.setItem('terraflow_auto_refresh', String(num));
+  };
+
+  // Recalculate status freshness every 5 seconds
   React.useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), 10000);
+    const timer = setInterval(() => setTick((t) => t + 1), 5000);
     return () => clearInterval(timer);
   }, []);
+
+  // Periodic Auto Refresh data from backend
+  React.useEffect(() => {
+    if (!refreshInterval || refreshInterval <= 0) return;
+
+    const autoTimer = setInterval(() => {
+      if (onRefresh) onRefresh(true);
+    }, refreshInterval * 1000);
+
+    return () => clearInterval(autoTimer);
+  }, [refreshInterval, onRefresh]);
 
   const handleRefreshClick = async () => {
     setIsSpinning(true);
     try {
-      if (onRefresh) await onRefresh();
+      if (onRefresh) await onRefresh(false);
     } finally {
       setTimeout(() => {
         setIsSpinning(false);
@@ -131,8 +154,8 @@ export default function DeviceDetailView({
             </div>
           </div>
 
-          {/* Right: Online Status & Refresh */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Right: Online Status, Auto Refresh & Manual Refresh */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -157,14 +180,61 @@ export default function DeviceDetailView({
               <span>{online ? 'ONLINE' : 'OFFLINE'}</span>
             </div>
 
+            {/* Auto Refresh Control */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 10px',
+              borderRadius: '8px',
+              background: refreshInterval > 0 ? '#f0fdf4' : '#f8fafc',
+              border: `1px solid ${refreshInterval > 0 ? '#bbf7d0' : '#e2e8f0'}`,
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              color: refreshInterval > 0 ? '#166534' : '#64748b',
+              transition: 'all 0.2s ease'
+            }}>
+              <span 
+                className={refreshInterval > 0 ? 'pulse-dot' : ''} 
+                style={{ 
+                  width: '6px', 
+                  height: '6px', 
+                  borderRadius: '50%', 
+                  background: refreshInterval > 0 ? '#22c55e' : '#94a3b8' 
+                }} 
+              />
+              <span style={{ fontSize: '0.74rem', fontWeight: 700 }}>Auto:</span>
+              <select
+                value={refreshInterval}
+                onChange={(e) => handleIntervalChange(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  color: refreshInterval > 0 ? '#166534' : '#64748b',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  padding: 0
+                }}
+                title="Pilih interval pembaruan data otomatis"
+              >
+                <option value={5}>5 detik</option>
+                <option value={10}>10 detik</option>
+                <option value={30}>30 detik</option>
+                <option value={60}>1 menit</option>
+                <option value={0}>Nonaktif</option>
+              </select>
+            </div>
+
             <button
               onClick={handleRefreshClick}
               disabled={isSpinning}
               className="btn btn-secondary"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px' }}
-              title="Segarkan Data"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px' }}
+              title="Segarkan Data Sekarang"
             >
-              <RefreshCw size={15} className={isSpinning ? 'spin' : ''} />
+              <RefreshCw size={14} className={isSpinning ? 'spin' : ''} />
               <span>Segarkan</span>
             </button>
           </div>

@@ -52,10 +52,10 @@
 // ==========================================
 // 4. NETWORK & MQTT SETTINGS
 // ==========================================
-#define WIFI_SSID             "TERRAFLOW_FIELD_AP"
-#define WIFI_PASSWORD         "Terraflow123!"
+#define WIFI_SSID             "passwordnyarahasia"
+#define WIFI_PASSWORD         "qwertyuiop"
 
-#define MQTT_BROKER           "127.0.0.1"
+#define MQTT_BROKER           "192.168.110.29"
 #define MQTT_PORT             1883
 #define MQTT_USER             "awlr_device"
 #define MQTT_PASS             "terraflow_secure_token"

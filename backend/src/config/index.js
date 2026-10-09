@@ -38,7 +38,7 @@ module.exports = {
   
   mqtt: {
     port: parseInt(process.env.MQTT_PORT, 10) || 1883,
-    host: process.env.MQTT_HOST || '127.0.0.1',
+    host: process.env.MQTT_HOST || '0.0.0.0',
     embedded: process.env.EMBEDDED_MQTT !== 'false',
     url: process.env.MQTT_URL || 'mqtt://127.0.0.1:1883',
   },

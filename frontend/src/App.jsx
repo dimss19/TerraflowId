@@ -21,11 +21,108 @@ import DeviceDetailView from './components/DeviceDetailView';
 import DeviceManagementView from './components/DeviceManagementView';
 import UserManagementView from './components/UserManagementView';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('[React Error Boundary]', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          background: '#f8fafc',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}>
+          <div style={{
+            maxWidth: '540px',
+            width: '100%',
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)',
+            padding: '32px',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: '#fef2f2',
+              color: '#dc2626',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px'
+            }}>
+              <AlertTriangle size={28} />
+            </div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+              Terjadi Kesalahan Tampilan Antarmuka
+            </h2>
+            <p style={{ fontSize: '0.88rem', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
+              Aplikasi mendeteksi galat saat memuat komponen antarmuka. Anda dapat mencoba memuat ulang halaman.
+            </p>
+            {this.state.error && (
+              <div style={{
+                background: '#f1f5f9',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                textAlign: 'left',
+                fontSize: '0.78rem',
+                fontFamily: 'monospace',
+                color: '#be123c',
+                marginBottom: '20px',
+                overflowX: 'auto',
+                whiteSpace: 'pre-wrap'
+              }}>
+                {this.state.error.toString()}
+              </div>
+            )}
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                background: '#003882',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '10px 24px',
+                fontWeight: 600,
+                fontSize: '0.88rem',
+                cursor: 'pointer'
+              }}
+            >
+              Muat Ulang Halaman
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppInner />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppInner />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

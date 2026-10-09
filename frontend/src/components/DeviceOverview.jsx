@@ -22,6 +22,7 @@ export default function DeviceOverview({
   currentUser, 
   onGoToManageDevices 
 }) {
+  const [isSpinning, setIsSpinning] = React.useState(false);
   const [refreshInterval, setRefreshInterval] = React.useState(() => {
     const saved = localStorage.getItem('terraflow_auto_refresh');
     return saved !== null ? Number(saved) : 10;

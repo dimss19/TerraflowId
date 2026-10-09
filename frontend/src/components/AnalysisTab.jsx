@@ -137,7 +137,7 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                 justifyContent: 'center',
                 color: '#003882'
               }}>
-                <Waves size={22} />
+                <TrendingUp size={22} />
               </div>
               <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
                 Analisis Pasang Surut &amp; Dinamika Air

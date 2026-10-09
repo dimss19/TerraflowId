@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
-  Waves, 
+  Droplet, 
   Activity, 
   Sliders, 
   ArrowLeft, 
@@ -179,7 +179,7 @@ export default function DeviceDetailView({
           onClick={() => handleTabChange('monitoring')}
           title="Monitoring Real-Time"
         >
-          <span className="tab-icon"><Waves size={16} /></span>
+          <span className="tab-icon"><Droplet size={16} /></span>
           <span className="tab-label">Monitoring</span>
         </button>
 

@@ -125,7 +125,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
           {/* Main Water Level Number in METERS */}
           <text
             x="140"
-            y="98"
+            y="112"
             textAnchor="middle"
             dominantBaseline="central"
             style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}
@@ -142,7 +142,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
           <g>
             <rect
               x="96"
-              y="118"
+              y="134"
               width="88"
               height="20"
               rx="10"
@@ -152,7 +152,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             />
             <text
               x="140"
-              y="128"
+              y="144"
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="10"

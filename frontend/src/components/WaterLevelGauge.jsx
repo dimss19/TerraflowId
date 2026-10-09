@@ -46,28 +46,33 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
     <div className="corporate-card" style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
       
       {/* Header */}
-      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div style={{ width: '100%', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
           <div style={{
-            width: '32px',
-            height: '32px',
+            width: '34px',
+            height: '34px',
             borderRadius: '8px',
             background: '#edf2fc',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#003882',
-            flexShrink: 0
+            flexShrink: 0,
+            marginTop: '2px'
           }}>
             <Droplet size={18} />
           </div>
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0, lineHeight: 1.25 }}>
-            Elevasi Permukaan Air
-          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0, lineHeight: 1.25 }}>
+              Elevasi Permukaan Air
+            </h3>
+            <div>
+              <span className="badge badge-navy" style={{ fontSize: '0.68rem', padding: '2px 8px', fontWeight: 700 }}>
+                TINGGI ACUAN ({maxScaleM.toFixed(1)} M)
+              </span>
+            </div>
+          </div>
         </div>
-        <span className="badge badge-navy" style={{ whiteSpace: 'nowrap' }}>
-          TINGGI ACUAN ({maxScaleM.toFixed(1)} M)
-        </span>
       </div>
 
       {/* Radial SVG Gauge Container (Fully Responsive) */}

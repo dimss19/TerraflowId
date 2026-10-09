@@ -70,11 +70,13 @@ export default function DeviceTab({
         offset_cm: Number(device.calibrated_offset) || 0.0,
         slope: Number(device.calibrated_slope) || 1.0
       }));
-      fetchCalibrationHistory();
+      if (isAdmin) {
+        fetchCalibrationHistory();
+      }
       fetchAlerts();
       fetchDiagnostics();
     }
-  }, [device]);
+  }, [device, isAdmin]);
 
   const fetchCalibrationHistory = async () => {
     try {
@@ -204,9 +206,10 @@ export default function DeviceTab({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
       
       {/* ========================================================= */}
-      {/* SECTION 1: KALIBRASI SENSOR AWLR */}
+      {/* SECTION 1: KALIBRASI SENSOR AWLR (KHUSUS ADMINISTRATOR)   */}
       {/* ========================================================= */}
-      <div className="corporate-card" style={{ padding: '28px' }}>
+      {isAdmin && (
+        <div className="corporate-card" style={{ padding: '28px' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
@@ -292,7 +295,6 @@ export default function DeviceTab({
                 className="corporate-input"
                 value={formData.sensor_height_cm}
                 onChange={(e) => setFormData({ ...formData, sensor_height_cm: e.target.value })}
-                disabled={!isAdmin}
                 required
               />
               <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Jarak pemasangan sensor ke dasar acuan elevasi (nol ukur)</span>
@@ -311,7 +313,6 @@ export default function DeviceTab({
                   className="corporate-input"
                   value={formData.offset_cm}
                   onChange={(e) => setFormData({ ...formData, offset_cm: e.target.value })}
-                  disabled={!isAdmin}
                   required
                 />
               </div>
@@ -328,7 +329,6 @@ export default function DeviceTab({
                   className="corporate-input"
                   value={formData.slope}
                   onChange={(e) => setFormData({ ...formData, slope: e.target.value })}
-                  disabled={!isAdmin}
                   required
                 />
               </div>
@@ -343,7 +343,6 @@ export default function DeviceTab({
                 className="corporate-input"
                 value={formData.applied_by}
                 onChange={(e) => setFormData({ ...formData, applied_by: e.target.value })}
-                disabled={!isAdmin}
               />
             </div>
 
@@ -356,38 +355,18 @@ export default function DeviceTab({
                 className="corporate-input"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                disabled={!isAdmin}
               />
             </div>
 
-            {isAdmin ? (
-              <button 
-                type="submit" 
-                disabled={loadingCalib} 
-                className="btn btn-primary"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '8px' }}
-              >
-                <Send size={16} />
-                <span>{loadingCalib ? 'Menyimpan & Mengirim...' : 'Terapkan Kalibrasi ke Perangkat'}</span>
-              </button>
-            ) : (
-              <div style={{
-                marginTop: '8px',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                color: '#64748b',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px'
-              }}>
-                <ShieldAlert size={16} color="#003882" style={{ flexShrink: 0 }} />
-                <span>Mode Pemantauan: Konfigurasi kalibrasi acuan sensor hanya dapat diubah oleh Administrator Sistem.</span>
-              </div>
-            )}
+            <button 
+              type="submit" 
+              disabled={loadingCalib} 
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '8px' }}
+            >
+              <Send size={16} />
+              <span>{loadingCalib ? 'Menyimpan & Mengirim...' : 'Terapkan Kalibrasi ke Perangkat'}</span>
+            </button>
           </form>
 
           {/* Right: Live Calculation Simulation Panel */}
@@ -513,6 +492,7 @@ export default function DeviceTab({
         </div>
 
       </div>
+      )}
 
       {/* ========================================================= */}
       {/* SECTION 2: KESEHATAN SISTEM & DIAGNOSTIK */}
@@ -616,7 +596,7 @@ export default function DeviceTab({
               Sensor Muka Air
             </div>
             <div style={{ fontSize: '0.72rem', color: '#003882', fontWeight: 600, marginTop: '2px' }}>
-              Transmisi Serial Digital Terproteksi
+              Acuan Elevasi: {Number(device?.sensor_height_cm) || 600} cm &bull; Transmisi Digital Siap
             </div>
           </div>
 

@@ -133,29 +133,29 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             </tspan>
           </text>
 
-          {/* Sub-badge: cm equivalent */}
+          {/* Sub-badge: cm equivalent (Compact Pill) */}
           <g>
             <rect
-              x="52"
-              y="120"
-              width="176"
-              height="24"
-              rx="12"
+              x="96"
+              y="118"
+              width="88"
+              height="20"
+              rx="10"
               fill="#edf2fc"
               stroke="#dbeafe"
               strokeWidth="1"
             />
             <text
               x="140"
-              y="132"
+              y="128"
               textAnchor="middle"
               dominantBaseline="central"
-              fontSize="10.5"
+              fontSize="10"
               fontWeight="700"
-              fill="#475569"
+              fill="#003882"
               style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}
             >
-              {waterLevelCm.toFixed(1)} cm &bull; Elevasi Air
+              {waterLevelCm.toFixed(1)} cm
             </text>
           </g>
 

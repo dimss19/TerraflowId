@@ -101,16 +101,18 @@ async function bootstrap() {
   // Initialize MQTT Subscriber
   initSubscriber();
 
-  // Auto-start AWLR Simulator in development for continuous live telemetry demonstration
-  if (process.env.NODE_ENV !== 'production' && process.env.DISABLE_SIMULATOR !== 'true') {
+  // Only start AWLR Simulator if explicitly enabled in environment (for headless demo mode)
+  if (process.env.ENABLE_SIMULATOR === 'true') {
     setTimeout(() => {
       try {
         require('./simulator/awlr_simulator');
-        console.log('[AWLR Simulator] Auto-started background telemetry simulator.');
+        console.log('[AWLR Simulator] Explicitly started background telemetry simulator.');
       } catch (simErr) {
         console.error('[AWLR Simulator Auto-start Failed]', simErr.message);
       }
     }, 1500);
+  } else {
+    console.log('[AWLR Simulator] Disabled. System is waiting for real hardware telemetry via MQTT.');
   }
 
   // Start HTTP & WebSocket Server

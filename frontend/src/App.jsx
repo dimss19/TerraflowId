@@ -166,11 +166,11 @@ function AppInner() {
   };
 
   const handleLogout = useCallback(() => {
-    setAuthToken(null);
-    setCurrentUser(null);
     sessionStorage.removeItem('terraflow_token');
     sessionStorage.removeItem('terraflow_user');
-    navigate('/');
+    setAuthToken(null);
+    setCurrentUser(null);
+    navigate('/', { replace: true });
   }, [navigate]);
 
   // Fetch all devices with user token for role-based filtering
@@ -343,7 +343,7 @@ function AppInner() {
               false
             )
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         } 
       />
@@ -365,7 +365,7 @@ function AppInner() {
               showActionToast={showActionToast}
             />
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         } 
       />
@@ -388,7 +388,7 @@ function AppInner() {
               <Navigate to="/dashboard" replace />
             )
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         } 
       />
@@ -410,7 +410,7 @@ function AppInner() {
               <Navigate to="/dashboard" replace />
             )
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         } 
       />

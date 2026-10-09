@@ -139,21 +139,21 @@ function determineCurrentTidalStatus(smoothedData) {
     return {
       status: 'RISING',
       ratePerHour,
-      label: '🔺 Pasang (Air Naik)',
+      label: 'Pasang (Air Naik)',
       description: `Ketinggian air naik sebesar +${ratePerHour} cm/jam`
     };
   } else if (deltaCm < -0.4) {
     return {
       status: 'FALLING',
       ratePerHour,
-      label: '🔻 Surut (Air Turun)',
+      label: 'Surut (Air Turun)',
       description: `Ketinggian air surut sebesar ${ratePerHour} cm/jam`
     };
   } else {
     return {
       status: 'SLACK',
       ratePerHour,
-      label: '➡️ Air Tenang (Slack)',
+      label: 'Air Tenang (Slack)',
       description: 'Perubahan permukaan air stabil (<0.4 cm dalam 5 menit)'
     };
   }

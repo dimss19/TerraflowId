@@ -13,6 +13,7 @@ const { initSubscriber, setSocketIO } = require('./mqtt/subscriber');
 const apiRoutes = require('./routes/api');
 const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const deviceRoutes = require('./routes/devices');
 
 const app = express();
 const server = http.createServer(app);
@@ -25,7 +26,7 @@ app.use(helmet({
 
 app.use(cors({
   origin: [config.clientUrl, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
@@ -49,6 +50,7 @@ app.get('/health', async (req, res) => {
 // 3. Mount API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/devices', deviceRoutes);
 app.use('/api', apiRoutes);
 
 // 3b. Serve Built Frontend SPA (dist) if available
@@ -82,8 +84,8 @@ setSocketIO(io);
 // 5. Bootstrap Services
 async function bootstrap() {
   console.log('==================================================');
-  console.log(`🌊 ${config.company.systemName}`);
-  console.log(`🏢 ${config.company.name}`);
+  console.log(`${config.company.systemName}`);
+  console.log(`${config.company.name}`);
   console.log('==================================================');
 
   // Verify PostgreSQL
@@ -98,6 +100,18 @@ async function bootstrap() {
 
   // Initialize MQTT Subscriber
   initSubscriber();
+
+  // Auto-start AWLR Simulator in development for continuous live telemetry demonstration
+  if (process.env.NODE_ENV !== 'production' && process.env.DISABLE_SIMULATOR !== 'true') {
+    setTimeout(() => {
+      try {
+        require('./simulator/awlr_simulator');
+        console.log('[AWLR Simulator] Auto-started background telemetry simulator.');
+      } catch (simErr) {
+        console.error('[AWLR Simulator Auto-start Failed]', simErr.message);
+      }
+    }, 1500);
+  }
 
   // Start HTTP & WebSocket Server
   server.listen(config.port, config.host, () => {

@@ -1,40 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { 
-  Waves, 
-  Activity, 
-  Sliders, 
-  FileText, 
-  ShieldAlert, 
-  Battery, 
-  Thermometer, 
-  Radio, 
-  HardDrive, 
-  RotateCcw, 
-  RefreshCw, 
-  AlertTriangle,
-  Users
+  AlertTriangle 
 } from 'lucide-react';
+import { 
+  BrowserRouter, 
+  Routes, 
+  Route, 
+  Navigate, 
+  useNavigate, 
+  useParams,
+  useLocation 
+} from 'react-router-dom';
 
 import Header from './components/Header';
-import WaterLevelGauge from './components/WaterLevelGauge';
-import RealtimeChart from './components/RealtimeChart';
-import TidalAnalysisView from './components/TidalAnalysisView';
-import CalibrationView from './components/CalibrationView';
-import HistoricalView from './components/HistoricalView';
-import DiagnosticsView from './components/DiagnosticsView';
 import LandingPageView from './components/LandingPageView';
 import LoginView from './components/LoginView';
+import DeviceOverview from './components/DeviceOverview';
+import DeviceDetailView from './components/DeviceDetailView';
+import DeviceManagementView from './components/DeviceManagementView';
 import UserManagementView from './components/UserManagementView';
+import ProfileView from './components/ProfileView';
 
 export default function App() {
-  // Navigation & Authentication States
-  // 'landing' | 'login' | 'dashboard'
-  const [viewMode, setViewMode] = useState(() => {
-    const savedToken = sessionStorage.getItem('terraflow_token');
-    return savedToken ? 'dashboard' : 'landing';
-  });
+  return (
+    <BrowserRouter>
+      <AppInner />
+    </BrowserRouter>
+  );
+}
 
+function AppInner() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Authentication State
   const [authToken, setAuthToken] = useState(() => {
     return sessionStorage.getItem('terraflow_token') || null;
   });
@@ -48,14 +48,10 @@ export default function App() {
     }
   });
 
-  // Telemetry & Device States
-  const [device, setDevice] = useState(null);
-  const [latestReading, setLatestReading] = useState(null);
-  const [realtimeReadings, setRealtimeReadings] = useState([]);
-  const [tidalData, setTidalData] = useState(null);
+  // Global Device List & Status
+  const [devices, setDevices] = useState([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [activeAlertsCount, setActiveAlertsCount] = useState(0);
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [actionMessage, setActionMessage] = useState(null);
 
   const showActionToast = (msg) => {
@@ -69,7 +65,7 @@ export default function App() {
     setCurrentUser(user);
     sessionStorage.setItem('terraflow_token', token);
     sessionStorage.setItem('terraflow_user', JSON.stringify(user));
-    setViewMode('dashboard');
+    navigate('/dashboard');
     showActionToast(`Selamat datang, ${user.fullName || user.username}! Anda telah berhasil masuk.`);
   };
 
@@ -78,160 +74,132 @@ export default function App() {
     setCurrentUser(null);
     sessionStorage.removeItem('terraflow_token');
     sessionStorage.removeItem('terraflow_user');
-    setViewMode('landing');
+    navigate('/');
   };
 
-  // Initialize data fetching
-  const refreshAllData = async () => {
+  // Fetch all devices with user token for role-based filtering
+  const fetchAllDevices = useCallback(async () => {
+    if (!authToken) return;
+    setLoadingDevices(true);
     try {
-      // 1. Fetch devices
-      const devRes = await fetch('/api/devices');
-      const devJson = await devRes.json();
-      if (devJson.success && devJson.data.length > 0) {
-        const currentDev = devJson.data[0];
-        setDevice(currentDev);
-        setActiveAlertsCount(Number(currentDev.active_alerts_count) || 0);
-
-        // 2. Fetch latest reading
-        const latestRes = await fetch(`/api/readings/${currentDev.device_id}/latest`);
-        const latestJson = await latestRes.json();
-        if (latestJson.success) {
-          setLatestReading(latestJson.data);
+      const res = await fetch('/api/devices', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
         }
-
-        // 3. Fetch past 60 readings for chart
-        const histRes = await fetch(`/api/readings/${currentDev.device_id}?limit=60`);
-        const histJson = await histRes.json();
-        if (histJson.success) {
-          setRealtimeReadings(histJson.data);
-        }
-
-        // 4. Fetch 24-hour tidal analysis
-        const tidalRes = await fetch(`/api/readings/${currentDev.device_id}/tidal?hours=24`);
-        const tidalJson = await tidalRes.json();
-        if (tidalJson.success) {
-          setTidalData(tidalJson);
-        }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setDevices(json.data);
       }
     } catch (err) {
-      console.error('[Fetch Error]', err.message);
+      console.error('[Fetch Devices Error]', err.message);
+    } finally {
+      setLoadingDevices(false);
     }
-  };
+  }, [authToken]);
 
   useEffect(() => {
-    refreshAllData();
+    if (authToken) {
+      fetchAllDevices();
+    }
+  }, [authToken, fetchAllDevices]);
 
-    // Setup Socket.IO client
+  // Setup Socket.IO for real-time telemetry streaming
+  useEffect(() => {
     const socket = io('/', {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
     });
 
     socket.on('connect', () => {
-      console.log('[Socket.IO] Connected to backend server');
       setIsConnected(true);
     });
 
     socket.on('disconnect', () => {
-      console.warn('[Socket.IO] Disconnected from backend server');
       setIsConnected(false);
     });
 
-    // Real-time telemetry event (supports both payload.data and raw record)
-    const handleNewData = (data) => {
-      if (data) {
-        setLatestReading(data);
-        setRealtimeReadings((prev) => {
-          const updated = [...prev, data];
-          return updated.slice(-60);
-        });
-      }
+    // Update device freshness dynamically in global state
+    const updateDeviceLastSeen = (devId, ts) => {
+      if (!devId) return;
+      const seenIso = ts 
+        ? (typeof ts === 'number' && ts < 1e11 ? new Date(ts * 1000).toISOString() : new Date(ts).toISOString()) 
+        : new Date().toISOString();
+      setDevices((prev) => prev.map((d) => {
+        if (d.device_id === devId) {
+          return { ...d, last_seen: seenIso, is_active: true };
+        }
+        return d;
+      }));
     };
 
-    socket.on('telemetry', (payload) => handleNewData(payload?.data || payload));
-    socket.on('sensor:data', (data) => handleNewData(data));
+    socket.on('sensor:data', (data) => {
+      if (data?.device_id) {
+        updateDeviceLastSeen(data.device_id, data.timestamp);
+      }
+    });
 
-    // Device alert notification event
+    socket.on('telemetry', (payload) => {
+      const dId = payload?.device_id || payload?.data?.device_id;
+      const ts = payload?.data?.timestamp || payload?.timestamp;
+      if (dId) {
+        updateDeviceLastSeen(dId, ts);
+      }
+    });
+
+    socket.on('device:status', (payload) => {
+      if (payload?.device_id) {
+        setDevices((prev) => prev.map((d) => {
+          if (d.device_id === payload.device_id) {
+            return {
+              ...d,
+              is_active: payload.is_active !== undefined ? payload.is_active : payload.status === 'online',
+              last_seen: payload.status === 'online' ? new Date().toISOString() : d.last_seen
+            };
+          }
+          return d;
+        }));
+      }
+    });
+
+    // Alert notification event
     socket.on('device:alert', (payload) => {
       const alert = payload?.data || payload;
       if (alert) {
-        showActionToast(`⚠️ Peringatan Sensor [${alert.alert_code}]: ${alert.message}`);
-        setActiveAlertsCount((prev) => prev + 1);
+        showActionToast(`Peringatan [${alert.alert_code}]: ${alert.message}`);
+        // Refresh device list to update alert badges
+        fetchAllDevices();
       }
     });
 
     socket.on('alert:new', (alert) => {
       if (alert) {
-        showActionToast(`⚠️ Peringatan Sensor [${alert.alert_code}]: ${alert.message}`);
-        setActiveAlertsCount((prev) => prev + 1);
+        showActionToast(`Peringatan [${alert.alert_code}]: ${alert.message}`);
+        fetchAllDevices();
       }
     });
 
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [fetchAllDevices]);
 
-  // Simulator test triggers
-  const triggerSimulatorAction = async (endpoint, label) => {
-    try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ device_id: device?.device_id || 'AWLR-001' })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showActionToast(`✅ ${label} berhasil dieksekusi!`);
-        refreshAllData();
-      } else {
-        showActionToast(`❌ Gagal: ${data.error}`);
-      }
-    } catch (e) {
-      showActionToast(`❌ Error: ${e.message}`);
-    }
-  };
-
-  // Render Landing Page View
-  if (viewMode === 'landing') {
-    return (
-      <LandingPageView 
-        onGoToLogin={() => setViewMode('login')} 
-        latestReading={latestReading}
-        device={device}
-      />
-    );
-  }
-
-  // Render Dedicated Login View
-  if (viewMode === 'login') {
-    return (
-      <LoginView 
-        onLoginSuccess={handleLoginSuccess}
-        onBackToLanding={() => setViewMode('landing')}
-      />
-    );
-  }
-
-  // Render AWLR Monitoring Dashboard (Authenticated View)
-  return (
+  // Common Layout Shell
+  const LayoutShell = ({ children, currentDevice = null, showHero = false }) => (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
       
-      {/* 1. Header with corporate branding, user profile & logout */}
+      {/* 1. Corporate Header */}
       <Header 
-        device={device}
+        device={currentDevice}
+        devices={devices}
         isConnected={isConnected}
-        activeAlertsCount={activeAlertsCount}
-        onRefresh={refreshAllData}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        activeAlertsCount={currentDevice ? Number(currentDevice.active_alerts_count) || 0 : 0}
+        onRefresh={fetchAllDevices}
         currentUser={currentUser}
         onLogout={handleLogout}
-        onGoToLanding={() => setViewMode('landing')}
+        onGoToLanding={() => navigate(authToken ? '/dashboard' : '/')}
+        onNavigate={(path) => navigate(path)}
+        showHero={showHero}
       />
 
       {/* Main Container */}
@@ -258,250 +226,13 @@ export default function App() {
           </div>
         )}
 
-        {/* 2. Sub-Navigation Tabs */}
-        <div className="tab-nav-bar">
-          <button 
-            className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            <Waves size={16} />
-            <span>Ringkasan Real-Time</span>
-          </button>
-
-          <button 
-            className={`tab-btn ${activeTab === 'tidal' ? 'active' : ''}`}
-            onClick={() => setActiveTab('tidal')}
-          >
-            <Activity size={16} />
-            <span>Analisis Pasang Surut</span>
-          </button>
-
-          <button 
-            className={`tab-btn ${activeTab === 'calibration' ? 'active' : ''}`}
-            onClick={() => setActiveTab('calibration')}
-          >
-            <Sliders size={16} />
-            <span>Kalibrasi Sensor</span>
-          </button>
-
-          <button 
-            className={`tab-btn ${activeTab === 'historical' ? 'active' : ''}`}
-            onClick={() => setActiveTab('historical')}
-          >
-            <FileText size={16} />
-            <span>Riwayat &amp; Ekspor CSV</span>
-          </button>
-
-          <button 
-            className={`tab-btn ${activeTab === 'diagnostics' ? 'active' : ''}`}
-            onClick={() => setActiveTab('diagnostics')}
-          >
-            <ShieldAlert size={16} />
-            <span>Diagnostik &amp; Alert</span>
-            {activeAlertsCount > 0 && (
-              <span className="badge badge-rose" style={{ marginLeft: '4px', padding: '2px 6px', fontSize: '0.68rem' }}>
-                {activeAlertsCount}
-              </span>
-            )}
-          </button>
-
-          {/* Admin User Management Tab (RBAC Protected) */}
-          {currentUser?.role === 'admin' && (
-            <button 
-              className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-              onClick={() => setActiveTab('users')}
-            >
-              <Users size={16} />
-              <span>Kelola Pengguna</span>
-              <span style={{
-                marginLeft: '4px',
-                padding: '1px 6px',
-                borderRadius: '4px',
-                fontSize: '0.62rem',
-                fontWeight: 800,
-                background: '#003882',
-                color: '#ffffff'
-              }}>
-                ADMIN
-              </span>
-            </button>
-          )}
-
-          {/* Quick Refresh Button on Far Right of Tab Bar */}
-          <div style={{ marginLeft: 'auto', paddingRight: '4px' }}>
-            <button
-              onClick={refreshAllData}
-              title="Perbarui Data Telemetri"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
-                borderRadius: '8px',
-                background: '#edf2fc',
-                color: '#003882',
-                border: 'none',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              <RefreshCw size={14} />
-              <span>Refresh</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 3. Tab Contents */}
-        {activeTab === 'dashboard' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-            
-            {/* Top Telemetry Grid: Water Level Gauge & Real-time Chart */}
-            <div className="dashboard-telemetry-grid">
-              <WaterLevelGauge 
-                reading={latestReading} 
-                sensorHeight={device?.sensor_height_cm}
-                tidalStatus={tidalData?.currentStatus}
-              />
-              <RealtimeChart 
-                readings={realtimeReadings} 
-              />
-            </div>
-
-            {/* Quick System Telemetry Metric Cards */}
-            <div className="metrics-summary-grid">
-              <div className="corporate-card" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
-                    <Radio size={16} />
-                  </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>JARAK SENSOR (RAW)</span>
-                </div>
-                <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', marginTop: '10px' }}>
-                  {latestReading?.raw_distance_cm ? (Number(latestReading.raw_distance_cm) / 100).toFixed(2) : '3.74'} <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#003882' }}>m</span>
-                  <span style={{ fontSize: '0.76rem', color: '#94a3b8', fontWeight: 500, marginLeft: '6px' }}>({latestReading?.raw_distance_cm ? Number(latestReading.raw_distance_cm).toFixed(1) : '373.8'} cm)</span>
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>A16 Modbus (Jangkauan Maks 15 m)</div>
-              </div>
-
-              <div className="corporate-card" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
-                    <Thermometer size={16} />
-                  </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>TEMPERATUR UDARA</span>
-                </div>
-                <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', marginTop: '10px' }}>
-                  {latestReading?.temperature_c ? Number(latestReading.temperature_c).toFixed(1) : '28.5'} <span style={{ fontSize: '0.8rem', color: '#64748b' }}>&deg;C</span>
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#003882', fontWeight: 600, marginTop: '2px' }}>Kompensasi Kecepatan Suara</div>
-              </div>
-
-              <div className="corporate-card" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
-                    <Battery size={16} />
-                  </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>TEGANGAN AKI</span>
-                </div>
-                <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#059669', marginTop: '10px' }}>
-                  {latestReading?.battery_voltage ? Number(latestReading.battery_voltage).toFixed(2) : '12.45'} <span style={{ fontSize: '0.8rem', color: '#64748b' }}>V</span>
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>Daya Solar Panel Normal</div>
-              </div>
-
-              <div className="corporate-card" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
-                    <HardDrive size={16} />
-                  </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>STATUS MICROSD</span>
-                </div>
-                <div className="mono-text" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#003882', marginTop: '10px' }}>
-                  READY
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>Pencatatan Offline Aktif</div>
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {activeTab === 'tidal' && (
-          <TidalAnalysisView 
-            tidalData={tidalData} 
-            onTimeframeChange={refreshAllData} 
-          />
-        )}
-
-        {activeTab === 'calibration' && (
-          <CalibrationView 
-            device={device} 
-            latestReading={latestReading} 
-            onCalibrationUpdated={refreshAllData} 
-          />
-        )}
-
-        {activeTab === 'historical' && (
-          <HistoricalView 
-            device={device} 
-            onDataExported={() => showActionToast('File CSV data telemetri berhasil diunduh.')}
-          />
-        )}
-
-        {activeTab === 'diagnostics' && (
-          <DiagnosticsView 
-            device={device} 
-            activeAlertsCount={activeAlertsCount}
-            onActionTriggered={triggerSimulatorAction}
-          />
-        )}
-
-        {activeTab === 'users' && (
-          <UserManagementView 
-            authToken={authToken}
-            currentUser={currentUser}
-            onActionToast={showActionToast}
-          />
-        )}
+        {children}
 
       </main>
 
-      {/* 4. Partner Accreditation Bar */}
-      <section style={{
-        padding: '36px 40px',
-        borderTop: '1px solid #eef2f7',
-        borderBottom: '1px solid #eef2f7',
-        background: '#ffffff',
-        textAlign: 'center'
-      }}>
-        <div style={{
-          fontSize: '0.75rem',
-          fontWeight: 800,
-          color: '#64748b',
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
-          marginBottom: '20px'
-        }}>
-          MITRA &amp; AKREDITASI INDUSTRI
-        </div>
 
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '48px',
-          flexWrap: 'wrap'
-        }}>
-          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>ASRI</span>
-          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>ISO 9001</span>
-          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>ISI</span>
-          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>BIG</span>
-          <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>KADIN</span>
-        </div>
-      </section>
 
-      {/* 5. Minimal Clean Footer */}
+      {/* 3. Minimal Clean Footer */}
       <footer style={{
         background: '#ffffff',
         borderTop: '1px solid #e2e8f0',
@@ -520,15 +251,287 @@ export default function App() {
           color: '#64748b'
         }}>
           <div>
-            &copy; 2024 <strong>PT Tanah Airku Teknologi</strong> &bull; TerraFlow Industrial AWLR System
+            &copy; {new Date().getFullYear()} <strong>PT Tanah Airku Teknologi</strong> &bull; TerraFlow Industrial AWLR System
           </div>
           <div style={{ display: 'flex', gap: '20px', fontWeight: 600 }}>
             <span>Precision in Every Pixel</span>
-            <span>RS485 Modbus A16</span>
+            <span>Standar Industri Hidrometri</span>
           </div>
         </div>
       </footer>
 
     </div>
+  );
+
+  return (
+    <Routes>
+      {/* Public Pages */}
+      <Route 
+        path="/" 
+        element={
+          authToken 
+            ? <Navigate to="/dashboard" replace /> 
+            : <LandingPageView onGoToLogin={() => navigate('/login')} />
+        } 
+      />
+      <Route 
+        path="/login" 
+        element={
+          authToken 
+            ? <Navigate to="/dashboard" replace /> 
+            : <LoginView onLoginSuccess={handleLoginSuccess} onBackToLanding={() => navigate('/')} />
+        } 
+      />
+
+      {/* Authenticated Dashboard: Device Overview */}
+      <Route 
+        path="/dashboard" 
+        element={
+          authToken ? (
+            <LayoutShell showHero={true}>
+              <DeviceOverview 
+                devices={devices}
+                loading={loadingDevices}
+                onSelectDevice={(id) => navigate(`/dashboard/${id}`)}
+                onRefresh={fetchAllDevices}
+                currentUser={currentUser}
+                onGoToManageDevices={() => navigate('/admin/devices')}
+              />
+            </LayoutShell>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* Authenticated Dashboard: Specific Device Detail View */}
+      <Route 
+        path="/dashboard/:deviceId" 
+        element={
+          authToken ? (
+            <DeviceDetailRouteWrapper 
+              LayoutShell={LayoutShell}
+              devices={devices}
+              authToken={authToken}
+              currentUser={currentUser}
+              onBackToOverview={() => navigate('/dashboard')}
+              showActionToast={showActionToast}
+            />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* Admin: User Management */}
+      <Route 
+        path="/admin/users" 
+        element={
+          authToken ? (
+            currentUser?.role === 'admin' ? (
+              <LayoutShell showHero={false}>
+                <UserManagementView 
+                  authToken={authToken}
+                  currentUser={currentUser}
+                  onActionToast={showActionToast}
+                  onBackToDashboard={() => navigate('/dashboard')}
+                />
+              </LayoutShell>
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* Admin: Device Management */}
+      <Route 
+        path="/admin/devices" 
+        element={
+          authToken ? (
+            currentUser?.role === 'admin' ? (
+              <LayoutShell showHero={false}>
+                <DeviceManagementView 
+                  authToken={authToken}
+                  onBackToDashboard={() => navigate('/dashboard')}
+                  onActionToast={showActionToast}
+                />
+              </LayoutShell>
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* User Profile */}
+      <Route 
+        path="/profile" 
+        element={
+          authToken ? (
+            <LayoutShell showHero={false}>
+              <ProfileView 
+                currentUser={currentUser}
+                authToken={authToken}
+                onBackToDashboard={() => navigate('/dashboard')}
+                onUpdateCurrentUser={(updated) => {
+                  setCurrentUser(updated);
+                  sessionStorage.setItem('terraflow_user', JSON.stringify(updated));
+                }}
+                onActionToast={showActionToast}
+              />
+            </LayoutShell>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+
+      {/* Catch-all */}
+      <Route path="*" element={<Navigate to={authToken ? "/dashboard" : "/"} replace />} />
+    </Routes>
+  );
+}
+
+// Wrapper for Single Device Detail with its own telemetry lifecycle
+function DeviceDetailRouteWrapper({ 
+  LayoutShell, 
+  devices, 
+  authToken, 
+  currentUser,
+  onBackToOverview, 
+  showActionToast 
+}) {
+  const { deviceId } = useParams();
+  const [device, setDevice] = useState(null);
+  const [latestReading, setLatestReading] = useState(null);
+  const [realtimeReadings, setRealtimeReadings] = useState([]);
+  const [tidalData, setTidalData] = useState(null);
+  const [activeAlertsCount, setActiveAlertsCount] = useState(0);
+
+  const fetchDeviceData = useCallback(async () => {
+    if (!deviceId) return;
+
+    try {
+      // 1. Fetch device details with auth token for RBAC check
+      const devRes = await fetch(`/api/devices/${deviceId}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      const devJson = await devRes.json();
+      if (devJson.success) {
+        setDevice(devJson.data);
+        setActiveAlertsCount(Number(devJson.data.active_alerts_count) || 0);
+      } else {
+        if (devRes.status === 403) {
+          if (showActionToast) {
+            showActionToast(devJson.error || 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda');
+          }
+          onBackToOverview();
+          return;
+        }
+      }
+
+      // 2. Fetch latest reading
+      const latestRes = await fetch(`/api/readings/${deviceId}/latest`);
+      const latestJson = await latestRes.json();
+      if (latestJson.success) {
+        setLatestReading(latestJson.data);
+      } else {
+        setLatestReading(null);
+      }
+
+      // 3. Fetch past 60 readings for chart
+      const histRes = await fetch(`/api/readings/${deviceId}?limit=60`);
+      const histJson = await histRes.json();
+      if (histJson.success) {
+        setRealtimeReadings(histJson.data);
+      }
+
+      // 4. Fetch tidal analysis
+      const tidalRes = await fetch(`/api/readings/${deviceId}/tidal?hours=24`);
+      const tidalJson = await tidalRes.json();
+      if (tidalJson.success) {
+        setTidalData(tidalJson);
+      }
+    } catch (err) {
+      console.error('[Fetch Device Detail Error]', err.message);
+    }
+  }, [deviceId, authToken, onBackToOverview, showActionToast]);
+
+  useEffect(() => {
+    fetchDeviceData();
+
+    // Setup Socket.IO listener for this specific device
+    const socket = io('/', {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+    });
+
+    const handleNewData = (data) => {
+      if (data && (data.device_id === deviceId || !data.device_id)) {
+        setLatestReading(data);
+        setRealtimeReadings((prev) => {
+          const updated = [...prev, data];
+          return updated.slice(-60);
+        });
+
+        // Keep device last_seen updated in real-time so it stays ONLINE while streaming
+        const seenIso = data.timestamp 
+          ? (typeof data.timestamp === 'number' && data.timestamp < 1e11 ? new Date(data.timestamp * 1000).toISOString() : new Date(data.timestamp).toISOString()) 
+          : new Date().toISOString();
+        setDevice((prev) => prev ? { ...prev, last_seen: seenIso, is_active: true } : prev);
+      }
+    };
+
+    socket.on('telemetry', (payload) => {
+      if (payload?.device_id === deviceId) {
+        handleNewData(payload.data || payload);
+      }
+    });
+
+    socket.on('sensor:data', (data) => {
+      if (data?.device_id === deviceId) {
+        handleNewData(data);
+      }
+    });
+
+    socket.on('device:status', (payload) => {
+      if (payload?.device_id === deviceId) {
+        setDevice((prev) => prev ? {
+          ...prev,
+          is_active: payload.is_active !== undefined ? payload.is_active : payload.status === 'online',
+          last_seen: payload.status === 'online' ? new Date().toISOString() : prev.last_seen
+        } : prev);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [deviceId, fetchDeviceData]);
+
+  // Fallback device from list if detailed device is loading
+  const currentDev = device || devices.find(d => d.device_id === deviceId) || { device_id: deviceId, name: deviceId };
+
+  return (
+    <LayoutShell currentDevice={currentDev}>
+      <DeviceDetailView 
+        device={currentDev}
+        currentUser={currentUser}
+        latestReading={latestReading}
+        realtimeReadings={realtimeReadings}
+        tidalData={tidalData}
+        activeAlertsCount={activeAlertsCount}
+        onRefresh={fetchDeviceData}
+        onBackToOverview={onBackToOverview}
+        authToken={authToken}
+      />
+    </LayoutShell>
   );
 }

@@ -16,8 +16,8 @@ async function seedData() {
       RETURNING *
     `, [
       'AWLR-001',
-      'AWLR Portable Alpha - Mahakam River Estuary',
-      'Muara Sanga-Sanga, Kalimantan Timur (PT Tanah Airku Teknologi)',
+      'Stasiun AWLR',
+      'Stasiun Monitoring Telemetri',
       -0.5892000,
       117.2415000,
       600.00

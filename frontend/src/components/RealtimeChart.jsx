@@ -95,10 +95,24 @@ export default function RealtimeChart({ readings = [] }) {
           <line x1={paddingX} y1={svgHeight - paddingY} x2={svgWidth - paddingX} y2={svgHeight - paddingY} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1.5" />
 
           {/* Area Fill */}
-          <path d={areaD} fill="url(#realtimeAreaGrad)" />
+          <path d={areaD} fill="url(#realtimeAreaGrad)" className="chart-animated-area" />
 
           {/* Line Stroke */}
-          <path d={pathD} fill="none" stroke="#003882" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={pathD} fill="none" stroke="#003882" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" className="chart-animated-line" />
+
+          {/* Live Telemetry Beacon Ping on Latest Reading */}
+          {points.length > 0 && (
+            <circle
+              cx={points[points.length - 1].x}
+              cy={points[points.length - 1].y}
+              r="8"
+              fill="none"
+              stroke="#0284c7"
+              strokeWidth="2.5"
+              className="chart-beacon-pulse"
+              pointerEvents="none"
+            />
+          )}
 
           {/* Data Points on Hover / End */}
           {points.map((p, idx) => (
@@ -106,11 +120,11 @@ export default function RealtimeChart({ readings = [] }) {
               key={idx}
               cx={p.x}
               cy={p.y}
-              r={hoveredPoint?.data === p.data ? 6 : (idx === points.length - 1 ? 5 : 2.5)}
+              r={hoveredPoint?.data === p.data ? 6.5 : (idx === points.length - 1 ? 5.5 : 2.5)}
               fill={idx === points.length - 1 ? "#003882" : "#38bdf8"}
               stroke="#ffffff"
               strokeWidth={idx === points.length - 1 ? 2.5 : 1}
-              style={{ cursor: 'pointer', transition: 'r 0.15s ease' }}
+              style={{ cursor: 'pointer', transition: 'all 0.15s ease' }}
               onMouseEnter={() => setHoveredPoint(p)}
               onMouseLeave={() => setHoveredPoint(null)}
             />

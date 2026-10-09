@@ -15,6 +15,16 @@ export default defineConfig({
       '/socket.io': {
         target: 'http://127.0.0.1:5000',
         ws: true,
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            // Meredam log berisik saat backend belum siap atau klien memutus koneksi
+            if (['ECONNREFUSED', 'ECONNABORTED', 'ECONNRESET'].includes(err.code)) {
+              return;
+            }
+            console.error('[vite ws proxy error]:', err.message);
+          });
+        },
       },
     },
   },

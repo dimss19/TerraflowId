@@ -47,3 +47,8 @@ Thumbs.db
 
 # Compilation database
 compile_commands.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

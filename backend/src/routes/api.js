@@ -3,57 +3,10 @@ const router = express.Router();
 const { query } = require('../db/connection');
 const { publishCalibration, publishCommand } = require('../mqtt/publisher');
 const { analyzeTidalReadings } = require('../services/tidalAnalysis');
+const { authenticateToken, requireAdmin } = require('./auth');
 
 // ==========================================
-// 1. DEVICES
-// ==========================================
-
-// GET /api/devices - List all registered AWLR devices
-router.get('/devices', async (req, res) => {
-  try {
-    const result = await query(`
-      SELECT d.*, 
-             c.sensor_height_cm AS calibrated_height,
-             c.offset_cm AS calibrated_offset,
-             c.slope AS calibrated_slope,
-             (SELECT COUNT(*) FROM device_alerts a WHERE a.device_id = d.device_id AND a.resolved = false) AS active_alerts_count
-      FROM devices d
-      LEFT JOIN calibrations c ON c.device_id = d.device_id AND c.is_active = true
-      ORDER BY d.created_at ASC
-    `);
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    console.error('[API Error /devices]', err.message);
-    res.status(500).json({ success: false, error: 'Gagal mengambil data perangkat' });
-  }
-});
-
-// GET /api/devices/:id - Get specific device details
-router.get('/devices/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const result = await query(`
-      SELECT d.*, 
-             c.sensor_height_cm AS calibrated_height,
-             c.offset_cm AS calibrated_offset,
-             c.slope AS calibrated_slope
-      FROM devices d
-      LEFT JOIN calibrations c ON c.device_id = d.device_id AND c.is_active = true
-      WHERE d.device_id = $1
-    `, [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
-    }
-    res.json({ success: true, data: result.rows[0] });
-  } catch (err) {
-    console.error('[API Error /devices/:id]', err.message);
-    res.status(500).json({ success: false, error: 'Gagal mengambil detail perangkat' });
-  }
-});
-
-// ==========================================
-// 2. READINGS & TELEMETRY
+// 1. READINGS & TELEMETRY
 // ==========================================
 
 // GET /api/readings/:device_id/latest - Get most recent reading
@@ -156,8 +109,8 @@ router.get('/readings/:device_id/tidal', async (req, res) => {
 // 4. REMOTE CALIBRATION
 // ==========================================
 
-// POST /api/calibration/:device_id - Apply new calibration
-router.post('/calibration/:device_id', async (req, res) => {
+// POST /api/calibration/:device_id - Apply new calibration (Admin Only)
+router.post('/calibration/:device_id', authenticateToken, requireAdmin, async (req, res) => {
   const { device_id } = req.params;
   const { sensor_height_cm, offset_cm, slope, applied_by, notes } = req.body;
 
@@ -413,31 +366,7 @@ router.get('/export/:device_id', async (req, res) => {
 });
 
 // ==========================================
-// 7. REMOTE COMMANDS
-// ==========================================
-
-router.post('/devices/:device_id/restart', async (req, res) => {
-  const { device_id } = req.params;
-  try {
-    await publishCommand(device_id, 'restart');
-    res.json({ success: true, message: `Perintah restart telah dikirim ke perangkat ${device_id}` });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-router.post('/devices/:device_id/sync', async (req, res) => {
-  const { device_id } = req.params;
-  try {
-    await publishCommand(device_id, 'sync_request');
-    res.json({ success: true, message: `Perintah sinkronisasi manual telah dikirim ke perangkat ${device_id}` });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ==========================================
-// 8. SIMULATOR TRIGGERS (FOR DEMO & TESTING)
+// 7. SIMULATOR TRIGGERS (FOR DEMO & TESTING)
 // ==========================================
 
 router.post('/simulator/trigger-wdt', async (req, res) => {
@@ -474,7 +403,7 @@ router.post('/simulator/trigger-sensor-fail', async (req, res) => {
         timestamp: Math.floor(Date.now() / 1000),
         alert_code: 'SENSOR_FAIL',
         severity: 'CRITICAL',
-        message: 'A16 Ultrasonic Sensor not responding after 5 consecutive RS485 queries.',
+        message: 'Sensor ultrasonik tidak merespons setelah 5 kali percobaan pembacaan.',
         details: { consecutive_fails: 5, trigger: 'Manual test injection' }
       }));
       res.json({ success: true, message: 'Sensor Failure alert injected via MQTT' });

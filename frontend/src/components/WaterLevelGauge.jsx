@@ -2,15 +2,16 @@ import React from 'react';
 import { Waves, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStatus }) {
-  // A16 Ultrasonic Sensor Datasheet: Measuring Range = 50 cm to 1500 cm (Max 15.00 Meter)
-  const MAX_SENSOR_RANGE_M = 15.0; // 1500 cm dari Datasheet DYP-A16
+  // Dynamic scale based on station sensor installation height
+  const maxScaleCm = Number(sensorHeight) > 0 ? Number(sensorHeight) : 600.0;
+  const maxScaleM = maxScaleCm / 100.0;
   const waterLevelCm = Number(reading?.water_level_cm) || 0;
   const waterLevelM = waterLevelCm / 100.0;
   const rawDistanceCm = Number(reading?.raw_distance_cm) || 0;
   const rawDistanceM = rawDistanceCm / 100.0;
 
-  // Percentage for gauge based on max sensor reading distance (15.0 Meter)
-  const percent = Math.min(100, Math.max(0, (waterLevelM / MAX_SENSOR_RANGE_M) * 100));
+  // Percentage for gauge based on configured reference height
+  const percent = Math.min(100, Math.max(0, (waterLevelCm / maxScaleCm) * 100));
 
   // Gauge SVG geometry for 240-degree arc
   const stroke = 14;
@@ -63,7 +64,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             Elevasi Permukaan Air
           </h3>
         </div>
-        <span className="badge badge-navy">SKALA SENSOR A16 (15 M)</span>
+        <span className="badge badge-navy">TINGGI ACUAN ({maxScaleM.toFixed(1)} M)</span>
       </div>
 
       {/* Radial SVG Gauge Container (Fully Responsive) */}
@@ -105,7 +106,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             style={{
               transformOrigin: '140px 125px',
               transform: 'rotate(150deg)',
-              transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+              transition: 'stroke-dashoffset 1.4s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
             r={normalizedRadius}
             cx="140"
@@ -155,9 +156,9 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             </text>
           </g>
 
-          {/* Min / Max Labels at the ends of arc (0 m and 15 m based on A16 datasheet) */}
+          {/* Min / Max Labels at the ends of arc */}
           <text x="56" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">0 m</text>
-          <text x="224" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">15 m</text>
+          <text x="224" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">{maxScaleM.toFixed(1)} m</text>
         </svg>
       </div>
 
@@ -183,7 +184,7 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
           <span>{statusText}</span>
         </div>
         <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
-          {percent.toFixed(1)}% Jangkauan Sensor (15 m)
+          {percent.toFixed(1)}% Terhadap Acuan ({maxScaleM.toFixed(1)} m)
         </span>
       </div>
 
@@ -201,11 +202,11 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
 
         <div className="subtle-panel">
           <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Jangkauan Maksimal A16
+            Tinggi Acuan Pemasangan
           </div>
           <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-            15.00 <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#003882' }}>m</span>
-            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b', marginLeft: '4px' }}>(1500 cm)</span>
+            {maxScaleM.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#003882' }}>m</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b', marginLeft: '4px' }}>({maxScaleCm.toFixed(0)} cm)</span>
           </div>
         </div>
       </div>

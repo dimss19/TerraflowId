@@ -187,19 +187,20 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {/* Username Field */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-              Nama Pengguna / Akun
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ marginBottom: 2 }}>
+              <span>NAMA PENGGUNA (USERNAME)</span>
             </label>
             <div style={{ position: 'relative' }}>
               <div style={{
                 position: 'absolute',
-                left: '12px',
+                left: '14px',
                 top: '50%',
                 transform: 'translateY(-50%)',
                 color: '#64748b',
                 display: 'flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                pointerEvents: 'none'
               }}>
                 <User size={18} />
               </div>
@@ -207,36 +208,29 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Masukkan username (contoh: admin)"
+                placeholder="contoh: admin"
                 required
-                style={{
-                  width: '100%',
-                  padding: '11px 12px 11px 40px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  background: '#f8fafc',
-                  fontSize: '0.9rem',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
+                className="form-input"
+                style={{ paddingLeft: '42px' }}
               />
             </div>
           </div>
 
           {/* Password Field */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-              Kata Sandi
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ marginBottom: 2 }}>
+              <span>KATA SANDI</span>
             </label>
             <div style={{ position: 'relative' }}>
               <div style={{
                 position: 'absolute',
-                left: '12px',
+                left: '14px',
                 top: '50%',
                 transform: 'translateY(-50%)',
                 color: '#64748b',
                 display: 'flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                pointerEvents: 'none'
               }}>
                 <Lock size={18} />
               </div>
@@ -246,16 +240,8 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Masukkan kata sandi"
                 required
-                style={{
-                  width: '100%',
-                  padding: '11px 40px 11px 40px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  background: '#f8fafc',
-                  fontSize: '0.9rem',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
+                className="form-input"
+                style={{ paddingLeft: '42px', paddingRight: '42px' }}
               />
               <button
                 type="button"
@@ -269,7 +255,7 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
                   border: 'none',
                   color: '#64748b',
                   cursor: 'pointer',
-                  padding: 0,
+                  padding: 4,
                   display: 'flex',
                   alignItems: 'center'
                 }}
@@ -283,11 +269,11 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
           <button
             type="submit"
             disabled={isLoading}
-            className="btn-corporate-primary"
+            className="btn btn-primary"
             style={{
               width: '100%',
               padding: '12px',
-              fontSize: '0.92rem',
+              fontSize: '0.94rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -344,7 +330,7 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
                 textAlign: 'left'
               }}
             >
-              <div style={{ fontWeight: 800, color: '#003882' }}>👑 Administrator</div>
+              <div style={{ fontWeight: 800, color: '#003882' }}>Administrator</div>
               <div style={{ color: '#64748b', fontSize: '0.7rem' }}>admin / Terraflow2024!</div>
             </button>
 
@@ -363,7 +349,7 @@ export default function LoginView({ onLoginSuccess, onBackToLanding }) {
                 textAlign: 'left'
               }}
             >
-              <div style={{ fontWeight: 800, color: '#059669' }}>👷 Teknisi AWLR</div>
+              <div style={{ fontWeight: 800, color: '#059669' }}>Teknisi AWLR</div>
               <div style={{ color: '#64748b', fontSize: '0.7rem' }}>operator / Operator2024!</div>
             </button>
           </div>

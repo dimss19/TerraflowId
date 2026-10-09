@@ -17,12 +17,14 @@ import {
   AlertTriangle, 
   KeyRound,
   X,
-  Clock
+  Clock,
+  ArrowLeft
 } from 'lucide-react';
 
-export default function UserManagementView({ authToken, currentUser, onActionToast }) {
+export default function UserManagementView({ authToken, currentUser, onActionToast, onBackToDashboard }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isSpinning, setIsSpinning] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
 
@@ -67,12 +69,23 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
       if (data.success) {
         setUsers(data.data);
       } else {
-        if (onActionToast) onActionToast(`❌ Gagal: ${data.error}`);
+        if (onActionToast) onActionToast(`Gagal: ${data.error}`);
       }
     } catch (err) {
-      if (onActionToast) onActionToast(`❌ Error koneksi: ${err.message}`);
+      if (onActionToast) onActionToast(`Error koneksi: ${err.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefreshClick = async () => {
+    setIsSpinning(true);
+    try {
+      await fetchUsers();
+    } finally {
+      setTimeout(() => {
+        setIsSpinning(false);
+      }, 750);
     }
   };
 
@@ -102,7 +115,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
       });
       const data = await res.json();
       if (data.success) {
-        if (onActionToast) onActionToast(`✅ Pengguna '${formData.username}' berhasil ditambahkan!`);
+        if (onActionToast) onActionToast(`Pengguna '${formData.username}' berhasil ditambahkan!`);
         setIsAddModalOpen(false);
         setFormData({
           username: '',
@@ -169,7 +182,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
       });
       const data = await res.json();
       if (data.success) {
-        if (onActionToast) onActionToast('✅ Perubahan data pengguna berhasil disimpan!');
+        if (onActionToast) onActionToast('Perubahan data pengguna berhasil disimpan!');
         setIsEditModalOpen(false);
         fetchUsers();
       } else {
@@ -185,7 +198,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
   // Quick toggle active / inactive status
   const handleToggleActive = async (u) => {
     if (u.id === currentUser?.id) {
-      if (onActionToast) onActionToast('⚠️ Anda tidak dapat menonaktifkan akun sendiri');
+      if (onActionToast) onActionToast('Anda tidak dapat menonaktifkan akun sendiri');
       return;
     }
     try {
@@ -199,13 +212,13 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
       });
       const data = await res.json();
       if (data.success) {
-        if (onActionToast) onActionToast(`✅ Status ${u.username} diubah menjadi ${!u.is_active ? 'Aktif' : 'Nonaktif'}`);
+        if (onActionToast) onActionToast(`Status ${u.username} diubah menjadi ${!u.is_active ? 'Aktif' : 'Nonaktif'}`);
         fetchUsers();
       } else {
-        if (onActionToast) onActionToast(`❌ Gagal: ${data.error}`);
+        if (onActionToast) onActionToast(`Gagal: ${data.error}`);
       }
     } catch (err) {
-      if (onActionToast) onActionToast(`❌ Error: ${err.message}`);
+      if (onActionToast) onActionToast(`Error: ${err.message}`);
     }
   };
 
@@ -213,7 +226,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
   const handleDeleteUser = async () => {
     if (!deleteConfirmUser) return;
     if (deleteConfirmUser.id === currentUser?.id) {
-      if (onActionToast) onActionToast('⚠️ Anda tidak dapat menghapus akun sendiri');
+      if (onActionToast) onActionToast('Anda tidak dapat menghapus akun sendiri');
       setDeleteConfirmUser(null);
       return;
     }
@@ -229,14 +242,14 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
       });
       const data = await res.json();
       if (data.success) {
-        if (onActionToast) onActionToast(`✅ Pengguna '${deleteConfirmUser.username}' berhasil dihapus`);
+        if (onActionToast) onActionToast(`Pengguna '${deleteConfirmUser.username}' berhasil dihapus`);
         setDeleteConfirmUser(null);
         fetchUsers();
       } else {
-        if (onActionToast) onActionToast(`❌ Gagal: ${data.error}`);
+        if (onActionToast) onActionToast(`Gagal: ${data.error}`);
       }
     } catch (err) {
-      if (onActionToast) onActionToast(`❌ Error: ${err.message}`);
+      if (onActionToast) onActionToast(`Error: ${err.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -263,6 +276,16 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
       
       {/* 1. Top Header Card */}
       <div className="corporate-card" style={{ padding: '28px' }}>
+        {onBackToDashboard && (
+          <button
+            onClick={onBackToDashboard}
+            className="btn btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '14px', padding: '6px 12px' }}
+          >
+            <ArrowLeft size={15} />
+            <span>Kembali ke Dashboard</span>
+          </button>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -291,37 +314,20 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
 
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button 
-              onClick={fetchUsers} 
-              disabled={loading}
+              onClick={handleRefreshClick} 
+              disabled={loading || isSpinning}
               title="Segarkan data pengguna"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '9px 14px',
-                borderRadius: '8px',
-                background: '#f1f5f9',
-                color: '#334155',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
+              className="btn btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
+              <RefreshCw size={15} className={loading || isSpinning ? 'spin' : ''} />
+              <span>Segarkan</span>
             </button>
 
             <button 
               onClick={() => { setFormError(null); setIsAddModalOpen(true); }}
-              className="btn-corporate-primary"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 18px',
-                fontSize: '0.88rem'
-              }}
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
             >
               <UserPlus size={17} />
               <span>Tambah Pengguna</span>
@@ -396,333 +402,265 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
       {/* 3. Search & Filter Bar */}
       <div className="corporate-card" style={{ padding: '16px 20px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '1 1 280px' }}>
-          <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+          <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
           <input 
             type="text"
-            placeholder="Cari nama, username, atau email..."
+            placeholder="Cari nama lengkap, username, atau email..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '9px 12px 9px 38px',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              fontSize: '0.88rem',
-              outline: 'none',
-              boxSizing: 'border-box'
-            }}
+            className="corporate-input"
+            style={{ paddingLeft: '40px' }}
           />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>Filter Role:</label>
+          <label style={{ fontSize: '0.76rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Filter Role:</label>
           <select 
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            style={{
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              background: '#ffffff',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              color: '#1e293b',
-              outline: 'none'
-            }}
+            className="corporate-input"
+            style={{ width: 'auto', minWidth: '160px', padding: '9px 14px' }}
           >
             <option value="all">Semua Role</option>
             <option value="admin">Administrator</option>
             <option value="operator">Operator Lapangan</option>
-            <option value="viewer">Viewer (Pemantau)</option>
           </select>
         </div>
       </div>
 
       {/* 4. Users Table */}
-      <div className="corporate-card" style={{ overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <th style={{ padding: '14px 20px', fontWeight: 800 }}>PENGGUNA</th>
-                <th style={{ padding: '14px 20px', fontWeight: 800 }}>EMAIL</th>
-                <th style={{ padding: '14px 20px', fontWeight: 800 }}>HAK AKSES (ROLE)</th>
-                <th style={{ padding: '14px 20px', fontWeight: 800 }}>STATUS KREDENSIAL</th>
-                <th style={{ padding: '14px 20px', fontWeight: 800 }}>STATUS</th>
-                <th style={{ padding: '14px 20px', fontWeight: 800 }}>LOGIN TERAKHIR</th>
-                <th style={{ padding: '14px 20px', fontWeight: 800, textAlign: 'right' }}>AKSI</th>
+      <div className="table-responsive">
+        <table className="corporate-table">
+          <thead>
+            <tr>
+              <th>PENGGUNA</th>
+              <th>EMAIL</th>
+              <th>HAK AKSES (ROLE)</th>
+              <th>STATUS KREDENSIAL</th>
+              <th>STATUS</th>
+              <th>LOGIN TERAKHIR</th>
+              <th style={{ textAlign: 'right' }}>AKSI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ padding: '48px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  {loading ? 'Memuat data pengguna...' : 'Tidak ada pengguna yang cocok dengan kriteria pencarian.'}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8' }}>
-                    {loading ? 'Memuat data pengguna...' : 'Tidak ada pengguna yang cocok dengan kriteria pencarian.'}
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((u) => {
-                  const isCurrent = u.id === currentUser?.id;
-                  return (
-                    <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s' }}>
-                      {/* Name & Username */}
-                      <td style={{ padding: '16px 20px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '50%',
-                            background: u.role === 'admin' ? '#003882' : (u.role === 'operator' ? '#059669' : '#64748b'),
-                            color: '#ffffff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.85rem',
-                            fontWeight: 800
-                          }}>
-                            {(u.full_name || u.username || 'U')[0].toUpperCase()}
+            ) : (
+              filteredUsers.map((u) => {
+                const isCurrent = u.id === currentUser?.id;
+                return (
+                  <tr key={u.id}>
+                    {/* Name & Username */}
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '50%',
+                          background: u.role === 'admin' ? 'linear-gradient(135deg, #003882 0%, #002860 100%)' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.88rem',
+                          fontWeight: 800,
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                        }}>
+                          {(u.full_name || u.username || 'U')[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>{u.full_name}</span>
+                            {isCurrent && (
+                              <span style={{
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                fontSize: '0.62rem',
+                                fontWeight: 800,
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                letterSpacing: '0.04em'
+                              }}>
+                                ANDA
+                              </span>
+                            )}
                           </div>
-                          <div>
-                            <div style={{ fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>{u.full_name}</span>
-                              {isCurrent && (
-                                <span style={{
-                                  background: '#e0f2fe',
-                                  color: '#0369a1',
-                                  fontSize: '0.62rem',
-                                  fontWeight: 800,
-                                  padding: '1px 5px',
-                                  borderRadius: '4px'
-                                }}>
-                                  ANDA
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                              @{u.username}
-                            </div>
+                          <div className="mono-text" style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                            @{u.username}
                           </div>
                         </div>
-                      </td>
+                      </div>
+                    </td>
 
-                      {/* Email */}
-                      <td style={{ padding: '16px 20px', color: '#334155' }}>
-                        {u.email}
-                      </td>
+                    {/* Email */}
+                    <td style={{ color: '#334155' }}>
+                      {u.email}
+                    </td>
 
-                      {/* Role Badge */}
-                      <td style={{ padding: '16px 20px' }}>
-                        {u.role === 'admin' && (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            background: '#eff6ff',
-                            color: '#003882',
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            letterSpacing: '0.04em'
-                          }}>
-                            <ShieldCheck size={13} />
-                            ADMINISTRATOR
-                          </span>
-                        )}
-                        {u.role === 'operator' && (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            background: '#ecfdf5',
-                            color: '#059669',
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            letterSpacing: '0.04em'
-                          }}>
-                            <UserCheck size={13} />
-                            OPERATOR
-                          </span>
-                        )}
-                        {u.role === 'viewer' && (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            background: '#f1f5f9',
-                            color: '#475569',
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            letterSpacing: '0.04em'
-                          }}>
-                            <User size={13} />
-                            VIEWER
-                          </span>
-                        )}
-                      </td>
+                    {/* Role Badge */}
+                    <td>
+                      {u.role === 'admin' ? (
+                        <span className="badge badge-navy">
+                          <ShieldCheck size={13} />
+                          ADMINISTRATOR
+                        </span>
+                      ) : (
+                        <span className="badge badge-emerald">
+                          <UserCheck size={13} />
+                          OPERATOR
+                        </span>
+                      )}
+                    </td>
 
-                      {/* Password Security Badge */}
-                      <td style={{ padding: '16px 20px' }}>
-                        <span style={{
+                    {/* Password Security Badge */}
+                    <td>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: '#0284c7',
+                        background: '#f0f9ff',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        border: '1px solid #bae6fd'
+                      }}>
+                        <Lock size={12} />
+                        Terenkripsi BCrypt
+                      </span>
+                    </td>
+
+                    {/* Status Toggle */}
+                    <td>
+                      <button
+                        onClick={() => handleToggleActive(u)}
+                        disabled={isCurrent}
+                        title={isCurrent ? 'Tidak dapat menonaktifkan akun sendiri' : 'Klik untuk mengubah status'}
+                        style={{
+                          background: u.is_active ? '#f0fdf4' : '#fef2f2',
+                          border: `1px solid ${u.is_active ? '#bbf7d0' : '#fecaca'}`,
+                          cursor: isCurrent ? 'not-allowed' : 'pointer',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '5px',
-                          fontSize: '0.74rem',
+                          gap: '6px',
+                          padding: '4px 10px',
+                          borderRadius: '20px',
+                          color: u.is_active ? '#16a34a' : '#dc2626',
                           fontWeight: 700,
-                          color: '#0284c7',
-                          background: '#f0f9ff',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #bae6fd'
-                        }}>
-                          <Lock size={12} />
-                          Terenkripsi Aman
-                        </span>
-                      </td>
+                          fontSize: '0.74rem'
+                        }}
+                      >
+                        <span style={{
+                          width: '7px',
+                          height: '7px',
+                          borderRadius: '50%',
+                          background: u.is_active ? '#16a34a' : '#dc2626'
+                        }} />
+                        {u.is_active ? 'Aktif' : 'Nonaktif'}
+                      </button>
+                    </td>
 
-                      {/* Status Toggle */}
-                      <td style={{ padding: '16px 20px' }}>
+                    {/* Last Login */}
+                    <td style={{ color: '#64748b', fontSize: '0.78rem' }}>
+                      {u.last_login ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <Clock size={13} color="#94a3b8" />
+                          <span className="mono-text">{new Date(u.last_login).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Belum pernah</span>
+                      )}
+                    </td>
+
+                    {/* Actions */}
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: '6px' }}>
                         <button
-                          onClick={() => handleToggleActive(u)}
+                          onClick={() => openEditModal(u)}
+                          title="Edit data pengguna"
+                          className="btn btn-secondary"
+                          style={{ padding: '6px 10px', borderRadius: '8px' }}
+                        >
+                          <Edit3 size={14} />
+                        </button>
+
+                        <button
+                          onClick={() => setDeleteConfirmUser(u)}
                           disabled={isCurrent}
-                          title={isCurrent ? 'Tidak dapat menonaktifkan akun sendiri' : 'Klik untuk mengubah status'}
+                          title={isCurrent ? 'Tidak dapat menghapus akun sendiri' : 'Hapus pengguna'}
+                          className="btn btn-secondary"
                           style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: isCurrent ? 'not-allowed' : 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            backgroundColor: u.is_active ? '#f0fdf4' : '#fef2f2',
-                            color: u.is_active ? '#16a34a' : '#dc2626',
-                            fontWeight: 700,
-                            fontSize: '0.74rem'
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            borderColor: isCurrent ? '#e2e8f0' : '#fecaca',
+                            color: isCurrent ? '#cbd5e1' : '#dc2626',
+                            background: isCurrent ? '#f8fafc' : '#fff1f2'
                           }}
                         >
-                          <span style={{
-                            width: '7px',
-                            height: '7px',
-                            borderRadius: '50%',
-                            background: u.is_active ? '#16a34a' : '#dc2626'
-                          }} />
-                          {u.is_active ? 'Aktif' : 'Nonaktif'}
+                          <Trash2 size={14} />
                         </button>
-                      </td>
-
-                      {/* Last Login */}
-                      <td style={{ padding: '16px 20px', color: '#64748b', fontSize: '0.78rem' }}>
-                        {u.last_login ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <Clock size={13} color="#94a3b8" />
-                            <span>{new Date(u.last_login).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                          </div>
-                        ) : (
-                          <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Belum pernah</span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button
-                            onClick={() => openEditModal(u)}
-                            title="Edit data pengguna"
-                            style={{
-                              padding: '6px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              background: '#ffffff',
-                              color: '#334155',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              transition: 'all 0.15s'
-                            }}
-                          >
-                            <Edit3 size={14} />
-                          </button>
-
-                          <button
-                            onClick={() => setDeleteConfirmUser(u)}
-                            disabled={isCurrent}
-                            title={isCurrent ? 'Tidak dapat menghapus akun sendiri' : 'Hapus pengguna'}
-                            style={{
-                              padding: '6px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid #fecaca',
-                              background: isCurrent ? '#f1f5f9' : '#fff1f2',
-                              color: isCurrent ? '#94a3b8' : '#e11d48',
-                              cursor: isCurrent ? 'not-allowed' : 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              transition: 'all 0.15s'
-                            }}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* 5. Modal: Tambah Pengguna Baru */}
       {isAddModalOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '20px'
-        }}>
-          <div className="corporate-card modal-responsive-card">
-            <button 
-              onClick={() => setIsAddModalOpen(false)}
-              style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-            >
-              <X size={20} />
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
-                <UserPlus size={20} />
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setIsAddModalOpen(false); }}>
+          <div className="modal-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #edf2fc 0%, #e2ecfc 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#003882'
+                }}>
+                  <UserPlus size={22} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+                    Tambah Pengguna Baru
+                  </h2>
+                  <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px', marginBottom: 0 }}>
+                    Kredensial akun dienkripsi secara aman sesuai standar industri
+                  </p>
+                </div>
               </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                Tambah Pengguna Baru
-              </h3>
+
+              <button 
+                onClick={() => setIsAddModalOpen(false)} 
+                className="modal-close-btn"
+                title="Tutup dialog"
+              >
+                <X size={16} />
+              </button>
             </div>
-            <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '20px' }}>
-              Kredensial akun akan dienkripsi secara aman sesuai standar perlindungan data pengguna.
-            </p>
 
             {formError && (
               <div style={{
                 background: '#fef2f2',
                 border: '1px solid #fecaca',
                 color: '#dc2626',
-                padding: '10px 14px',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                fontSize: '0.84rem',
                 fontWeight: 600,
-                marginBottom: '16px',
+                marginBottom: '18px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px'
@@ -732,10 +670,10 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
               </div>
             )}
 
-            <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  NAMA PENGGUNA (USERNAME) *
+            <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="form-group">
+                <label className="form-label">
+                  <span>NAMA PENGGUNA (USERNAME) *</span>
                 </label>
                 <input 
                   type="text"
@@ -743,13 +681,14 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
                   placeholder="contoh: joko_operator"
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input mono-text"
                 />
+                <span className="form-helper">Digunakan sebagai identitas masuk sistem (huruf kecil dan tanpa spasi)</span>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  NAMA LENGKAP *
+              <div className="form-group">
+                <label className="form-label">
+                  <span>NAMA LENGKAP *</span>
                 </label>
                 <input 
                   type="text"
@@ -757,13 +696,13 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
                   placeholder="contoh: Joko Prasetyo, S.T."
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input"
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  ALAMAT EMAIL *
+              <div className="form-group">
+                <label className="form-label">
+                  <span>ALAMAT EMAIL *</span>
                 </label>
                 <input 
                   type="email"
@@ -771,13 +710,13 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
                   placeholder="contoh: joko@tanahairku.co.id"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input"
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  KATA SANDI (MINIMAL 8 KARAKTER) *
+              <div className="form-group">
+                <label className="form-label">
+                  <span>KATA SANDI (MINIMAL 8 KARAKTER) *</span>
                 </label>
                 <input 
                   type="password"
@@ -785,38 +724,36 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
                   placeholder="••••••••••••"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input"
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  HAK AKSES (ROLE) *
+              <div className="form-group">
+                <label className="form-label">
+                  <span>HAK AKSES (ROLE) *</span>
                 </label>
                 <select 
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input"
                 >
-                  <option value="operator">Operator Lapangan (Pemantauan &amp; Ekspor)</option>
-                  <option value="admin">Administrator (Akses Penuh &amp; Pengguna)</option>
-                  <option value="viewer">Viewer (Hanya Baca)</option>
+                  <option value="operator">Operator Lapangan (Pemantauan &amp; Ekspor Data)</option>
+                  <option value="admin">Administrator (Akses Penuh Konfigurasi &amp; Pengguna)</option>
                 </select>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  style={{ padding: '9px 16px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 700, cursor: 'pointer' }}
+                  className="btn btn-secondary"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="btn-corporate-primary"
-                  style={{ padding: '9px 20px', fontSize: '0.88rem' }}
+                  className="btn btn-primary"
                 >
                   {submitting ? 'Menyimpan...' : 'Simpan Pengguna'}
                 </button>
@@ -828,50 +765,51 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
 
       {/* 6. Modal: Edit Pengguna */}
       {isEditModalOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '20px'
-        }}>
-          <div className="corporate-card modal-responsive-card">
-            <button 
-              onClick={() => setIsEditModalOpen(false)}
-              style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-            >
-              <X size={20} />
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
-                <Edit3 size={20} />
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setIsEditModalOpen(false); }}>
+          <div className="modal-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #edf2fc 0%, #e2ecfc 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#003882'
+                }}>
+                  <Edit3 size={22} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+                    Edit Data Pengguna
+                  </h2>
+                  <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px', marginBottom: 0 }}>
+                    Perbarui rincian identitas personel, peran otorisasi, atau atur ulang kata sandi
+                  </p>
+                </div>
               </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                Edit Data Pengguna
-              </h3>
+
+              <button 
+                onClick={() => setIsEditModalOpen(false)} 
+                className="modal-close-btn"
+                title="Tutup dialog"
+              >
+                <X size={16} />
+              </button>
             </div>
-            <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '20px' }}>
-              Perbarui rincian identitas personel, peran otorisasi, atau atur ulang kata sandi.
-            </p>
 
             {formError && (
               <div style={{
                 background: '#fef2f2',
                 border: '1px solid #fecaca',
                 color: '#dc2626',
-                padding: '10px 14px',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                fontSize: '0.84rem',
                 fontWeight: 600,
-                marginBottom: '16px',
+                marginBottom: '18px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px'
@@ -881,87 +819,138 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
               </div>
             )}
 
-            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  NAMA LENGKAP *
+            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="form-group">
+                <label className="form-label">
+                  <span>NAMA LENGKAP *</span>
                 </label>
                 <input 
                   type="text"
                   required
                   value={editFormData.full_name}
                   onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input"
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  ALAMAT EMAIL *
+              <div className="form-group">
+                <label className="form-label">
+                  <span>ALAMAT EMAIL *</span>
                 </label>
                 <input 
                   type="email"
                   required
                   value={editFormData.email}
                   onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input"
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  HAK AKSES (ROLE) *
+              <div className="form-group">
+                <label className="form-label">
+                  <span>HAK AKSES (ROLE) *</span>
                 </label>
                 <select 
                   value={editFormData.role}
                   onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input"
                 >
-                  <option value="operator">Operator Lapangan (Pemantauan &amp; Ekspor)</option>
-                  <option value="admin">Administrator (Akses Penuh &amp; Pengguna)</option>
-                  <option value="viewer">Viewer (Hanya Baca)</option>
+                  <option value="operator">Operator Lapangan (Pemantauan &amp; Ekspor Data)</option>
+                  <option value="admin">Administrator (Akses Penuh Konfigurasi &amp; Pengguna)</option>
                 </select>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  GANTI KATA SANDI (KOSONGKAN JIKA TIDAK DIUBAH)
+              <div className="form-group">
+                <label className="form-label">
+                  <span>GANTI KATA SANDI (KOSONGKAN JIKA TIDAK DIUBAH)</span>
                 </label>
                 <input 
                   type="password"
                   placeholder="Minimal 8 karakter baru..."
                   value={editFormData.password}
                   onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', boxSizing: 'border-box' }}
+                  className="form-input"
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                <input 
-                  type="checkbox"
-                  id="editIsActive"
-                  checked={editFormData.is_active}
-                  onChange={(e) => setEditFormData({ ...editFormData, is_active: e.target.checked })}
-                  disabled={editingUserId === currentUser?.id}
-                />
-                <label htmlFor="editIsActive" style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 600, cursor: 'pointer' }}>
-                  Akun berstatus Aktif (Dapat masuk ke dashboard)
-                </label>
+              {/* Active Toggle Card */}
+              <div 
+                onClick={() => {
+                  if (editingUserId !== currentUser?.id) {
+                    setEditFormData({ ...editFormData, is_active: !editFormData.is_active });
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '14px 18px',
+                  background: editFormData.is_active ? '#f0fdf4' : '#f8fafc',
+                  border: `1.5px solid ${editFormData.is_active ? '#86efac' : '#e2e8f0'}`,
+                  borderRadius: '12px',
+                  cursor: editingUserId === currentUser?.id ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  userSelect: 'none'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    background: editFormData.is_active ? '#dcfce7' : '#f1f5f9',
+                    color: editFormData.is_active ? '#16a34a' : '#94a3b8',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <CheckCircle2 size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: editFormData.is_active ? '#166534' : '#475569' }}>
+                      {editFormData.is_active ? 'Akun Berstatus Aktif' : 'Akun Dinonaktifkan'}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                      {editFormData.is_active ? 'Pengguna dapat masuk ke dalam dashboard' : 'Akses masuk dashboard ditangguhkan'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pill Switch */}
+                <div style={{
+                  width: '44px',
+                  height: '24px',
+                  borderRadius: '12px',
+                  background: editFormData.is_active ? '#16a34a' : '#cbd5e1',
+                  position: 'relative',
+                  transition: 'background 0.2s'
+                }}>
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    background: '#ffffff',
+                    position: 'absolute',
+                    top: '3px',
+                    left: editFormData.is_active ? '23px' : '3px',
+                    transition: 'left 0.2s',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                  }} />
+                </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  style={{ padding: '9px 16px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 700, cursor: 'pointer' }}
+                  className="btn btn-secondary"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="btn-corporate-primary"
-                  style={{ padding: '9px 20px', fontSize: '0.88rem' }}
+                  className="btn btn-primary"
                 >
                   {submitting ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
@@ -973,28 +962,25 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
 
       {/* 7. Modal: Konfirmasi Hapus */}
       {deleteConfirmUser && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '20px'
-        }}>
-          <div className="corporate-card modal-responsive-card" style={{ maxWidth: '440px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setDeleteConfirmUser(null); }}>
+          <div className="modal-card" style={{ maxWidth: '440px' }}>
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              background: '#fee2e2',
+              color: '#dc2626',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '16px'
+            }}>
               <Trash2 size={24} />
             </div>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>
               Hapus Pengguna?
             </h3>
-            <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.5, marginBottom: '20px' }}>
+            <p style={{ fontSize: '0.86rem', color: '#64748b', lineHeight: 1.5, marginBottom: '22px' }}>
               Apakah Anda yakin ingin menghapus akun <strong>{deleteConfirmUser.full_name}</strong> (@{deleteConfirmUser.username})? Tindakan ini permanen dan tidak dapat dibatalkan.
             </p>
 
@@ -1002,7 +988,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
               <button
                 type="button"
                 onClick={() => setDeleteConfirmUser(null)}
-                style={{ padding: '8px 16px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 700, cursor: 'pointer' }}
+                className="btn btn-secondary"
               >
                 Batal
               </button>
@@ -1010,16 +996,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
                 type="button"
                 onClick={handleDeleteUser}
                 disabled={submitting}
-                style={{
-                  padding: '8px 18px',
-                  borderRadius: '8px',
-                  background: '#dc2626',
-                  color: '#ffffff',
-                  border: 'none',
-                  fontWeight: 700,
-                  fontSize: '0.88rem',
-                  cursor: 'pointer'
-                }}
+                className="btn btn-danger"
               >
                 {submitting ? 'Menghapus...' : 'Ya, Hapus Akun'}
               </button>

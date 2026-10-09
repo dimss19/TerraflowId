@@ -23,7 +23,7 @@ router.use(requireAdmin);
 router.get('/', async (req, res) => {
   try {
     const result = await query(`
-      SELECT id, username, email, full_name, role, is_active, last_login, created_at, updated_at
+      SELECT id, username, email, full_name, phone, avatar_url, role, is_active, last_login, created_at, updated_at
       FROM users
       ORDER BY id ASC
     `);
@@ -36,7 +36,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/users - Create new user with Argon2 hashing
 router.post('/', async (req, res) => {
-  const { username, email, password, full_name, role } = req.body;
+  const { username, email, password, full_name, role, phone, avatar_url } = req.body;
 
   if (!username || !email || !password || !full_name) {
     return res.status(400).json({ 
@@ -54,7 +54,9 @@ router.post('/', async (req, res) => {
 
   const cleanUsername = username.trim().toLowerCase();
   const cleanEmail = email.trim().toLowerCase();
-  const cleanRole = ['admin', 'operator', 'viewer'].includes(role) ? role : 'operator';
+  const cleanRole = ['admin', 'operator'].includes(role) ? role : 'operator';
+  const cleanPhone = phone ? String(phone).trim().slice(0, 20) : null;
+  const cleanAvatar = avatar_url ? String(avatar_url).trim().slice(0, 255) : null;
 
   try {
     // Check if username or email already exists
@@ -80,10 +82,10 @@ router.post('/', async (req, res) => {
     });
 
     const insertResult = await query(`
-      INSERT INTO users (username, email, password_hash, full_name, role, is_active)
-      VALUES ($1, $2, $3, $4, $5, true)
-      RETURNING id, username, email, full_name, role, is_active, created_at
-    `, [cleanUsername, cleanEmail, passwordHash, full_name.trim(), cleanRole]);
+      INSERT INTO users (username, email, password_hash, full_name, role, phone, avatar_url, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+      RETURNING id, username, email, full_name, phone, avatar_url, role, is_active, created_at
+    `, [cleanUsername, cleanEmail, passwordHash, full_name.trim(), cleanRole, cleanPhone, cleanAvatar]);
 
     res.status(201).json({
       success: true,
@@ -99,7 +101,7 @@ router.post('/', async (req, res) => {
 // PATCH /api/users/:id - Update user details, role, status, or reset password
 router.patch('/:id', async (req, res) => {
   const { id } = req.params;
-  const { full_name, email, role, is_active, password } = req.body;
+  const { full_name, email, role, is_active, password, phone, avatar_url } = req.body;
 
   const userId = parseInt(id, 10);
   if (isNaN(userId)) {
@@ -136,7 +138,17 @@ router.patch('/:id', async (req, res) => {
       params.push(email.trim().toLowerCase());
     }
 
-    if (role !== undefined && ['admin', 'operator', 'viewer'].includes(role)) {
+    if (phone !== undefined) {
+      updateClauses.push(`phone = $${paramIdx++}`);
+      params.push(phone ? String(phone).trim().slice(0, 20) : null);
+    }
+
+    if (avatar_url !== undefined) {
+      updateClauses.push(`avatar_url = $${paramIdx++}`);
+      params.push(avatar_url ? String(avatar_url).trim().slice(0, 255) : null);
+    }
+
+    if (role !== undefined && ['admin', 'operator'].includes(role)) {
       updateClauses.push(`role = $${paramIdx++}`);
       params.push(role);
     }
@@ -170,7 +182,7 @@ router.patch('/:id', async (req, res) => {
       UPDATE users 
       SET ${updateClauses.join(', ')} 
       WHERE id = $1 
-      RETURNING id, username, email, full_name, role, is_active, last_login, updated_at
+      RETURNING id, username, email, full_name, phone, avatar_url, role, is_active, last_login, updated_at
     `;
 
     const updated = await query(updateSql, params);

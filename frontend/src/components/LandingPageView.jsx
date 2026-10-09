@@ -1,10 +1,8 @@
 import React from 'react';
 import { 
   Compass, 
-  Waves, 
   Activity, 
   ShieldCheck, 
-  Lock, 
   Cpu, 
   HardDrive, 
   Radio, 
@@ -14,15 +12,29 @@ import {
   ArrowRight, 
   CheckCircle2, 
   ExternalLink,
-  ChevronRight,
   Database,
   KeyRound,
   FileText,
   Globe,
-  Share2
+  Share2,
+  Waves,
+  TrendingUp,
+  Battery,
+  Thermometer
 } from 'lucide-react';
 
-export default function LandingPageView({ onGoToLogin, latestReading, device }) {
+export default function LandingPageView({ onGoToLogin }) {
+  const handleScrollToSection = (id) => (e) => {
+    e.preventDefault();
+    const elem = document.getElementById(id);
+    if (elem) {
+      elem.scrollIntoView({ behavior: 'smooth' });
+      elem.classList.remove('section-scroll-highlight');
+      void elem.offsetWidth; // trigger reflow
+      elem.classList.add('section-scroll-highlight');
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f8fafc', color: '#0f172a' }}>
       
@@ -46,7 +58,10 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
           gap: '16px'
         }}>
           {/* Brand Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+          <div 
+            onClick={handleScrollToSection('beranda')}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+          >
             <div style={{
               width: '38px',
               height: '38px',
@@ -71,19 +86,39 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
 
           {/* Navigation Links */}
           <nav className="landing-nav">
-            <a href="#beranda" style={{ fontSize: '0.92rem', color: '#003882', fontWeight: 700, textDecoration: 'none' }}>
+            <a 
+              href="#beranda" 
+              onClick={handleScrollToSection('beranda')}
+              style={{ fontSize: '0.92rem', color: '#003882', fontWeight: 700, textDecoration: 'none', cursor: 'pointer' }}
+            >
               Beranda
             </a>
-            <a href="#solusi-awlr" style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            <a 
+              href="#solusi-awlr" 
+              onClick={handleScrollToSection('solusi-awlr')}
+              style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}
+            >
               Solusi AWLR
             </a>
-            <a href="#layanan" style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            <a 
+              href="#layanan" 
+              onClick={handleScrollToSection('layanan')}
+              style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}
+            >
               Layanan
             </a>
-            <a href="#keamanan" style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            <a 
+              href="#keamanan" 
+              onClick={handleScrollToSection('keamanan')}
+              style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}
+            >
               Keamanan &amp; Akses
             </a>
-            <a href="#kontak" style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none' }}>
+            <a 
+              href="#kontak" 
+              onClick={handleScrollToSection('kontak')}
+              style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}
+            >
               Kontak
             </a>
           </nav>
@@ -156,7 +191,7 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               maxWidth: '640px',
               marginBottom: '32px'
             }}>
-              Solusi instrumentasi Automatic Water Level Recorder (AWLR) portabel industri. Terintegrasi sensor ultrasonik RS485 Modbus A16, transmisi MQTT real-time, pencatatan MicroSD mandiri, dan <strong>sistem keamanan akses terenkripsi</strong>.
+              Solusi instrumentasi Automatic Water Level Recorder (AWLR) portabel industri. Terintegrasi sensor level air presisi, transmisi data real-time, pencatatan offline mandiri, dan <strong>sistem keamanan akses terenkripsi</strong>.
             </p>
 
             {/* Action Buttons */}
@@ -177,24 +212,21 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                 <ArrowRight size={18} />
               </button>
 
-              <a
-                href="#solusi-awlr"
+              <button
+                type="button"
+                onClick={handleScrollToSection('solusi-awlr')}
+                className="btn-corporate-outline"
                 style={{
                   padding: '14px 24px',
-                  borderRadius: '8px',
-                  background: '#ffffff',
-                  color: '#003882',
-                  border: '1.5px solid #bfdbfe',
                   fontSize: '0.95rem',
-                  fontWeight: 700,
-                  textDecoration: 'none',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '8px'
+                  gap: '8px',
+                  cursor: 'pointer'
                 }}
               >
-                Pelajari Fitur Teknis
-              </a>
+                <span>Pelajari Fitur Teknis</span>
+              </button>
             </div>
 
             {/* Trust Points */}
@@ -205,97 +237,232 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: '#334155', fontWeight: 600 }}>
                 <CheckCircle2 size={18} color="#059669" />
-                <span>Telemetri Modbus RS485</span>
+                <span>Telemetri Industri Real-Time</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: '#334155', fontWeight: 600 }}>
                 <CheckCircle2 size={18} color="#059669" />
-                <span>Pencatatan Offline MicroSD</span>
+                <span>Pencatatan Offline Mandiri</span>
               </div>
             </div>
           </div>
 
-          {/* Right Hero Card: Live Instrument Preview */}
-          <div className="corporate-card" style={{
-            padding: '32px',
-            background: '#ffffff',
-            boxShadow: '0 16px 40px rgba(0, 56, 130, 0.08)',
-            border: '1px solid #d8e4f4',
-            position: 'relative'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882' }}>
-                  <Waves size={20} />
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>STATUS STASIUN TELEMETRI</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>{device?.name || 'AWLR-001 (Alpha Station)'}</div>
-                </div>
-              </div>
-              <span className="badge badge-navy" style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>
-                &bull; SISTEM AKTIF
-              </span>
-            </div>
+          {/* Right Hero Content: Clean Animated AWLR Station & Waves Frame */}
+          <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+            <div className="awlr-hero-frame">
+              
 
-            {/* Readout Highlight Box */}
-            <div style={{
-              background: 'linear-gradient(135deg, #003882 0%, #0284c7 100%)',
-              borderRadius: '12px',
-              padding: '24px',
-              color: '#ffffff',
-              textAlign: 'center',
-              marginBottom: '20px'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                ELEVASI PASANG SURUT TERKINI
-              </div>
-              <div style={{ fontSize: '2.8rem', fontWeight: 800, margin: '8px 0 4px', letterSpacing: '-0.03em' }}>
-                {latestReading?.water_level_cm ? (Number(latestReading.water_level_cm) / 100).toFixed(2) : '2.26'} <span style={{ fontSize: '1.2rem', fontWeight: 600 }}>m</span>
-              </div>
-              <div style={{ fontSize: '0.88rem', color: '#e0f2fe', fontWeight: 600 }}>
-                {latestReading?.water_level_cm ? Number(latestReading.water_level_cm).toFixed(1) : '226.2'} cm &bull; Jangkauan Maks 15.0 m
-              </div>
-            </div>
 
-            {/* Grid Metrics Snippet */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div className="subtle-panel" style={{ padding: '12px' }}>
-                <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>JARAK SENSOR (RAW)</div>
-                <div className="mono-text" style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                  {latestReading?.raw_distance_cm ? (Number(latestReading.raw_distance_cm) / 100).toFixed(2) : '3.74'} m
-                </div>
-              </div>
-              <div className="subtle-panel" style={{ padding: '12px' }}>
-                <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>STATUS INTEGRITAS</div>
-                <div className="mono-text" style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
-                  TERVERIFIKASI
-                </div>
-              </div>
-            </div>
+              {/* Vector SVG: Side Mast, Cantilever, Downward Sensor Lamp & Animated Waves */}
+              <div style={{ width: '100%', height: '340px', position: 'relative', overflow: 'hidden' }}>
+                <svg
+                  viewBox="0 0 520 340"
+                  preserveAspectRatio="xMidYMid meet"
+                  style={{ width: '100%', height: '100%', display: 'block' }}
+                >
+                  <defs>
+                    <linearGradient id="skyAtmosphere" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#f0f7ff" />
+                      <stop offset="60%" stopColor="#e2effe" />
+                      <stop offset="100%" stopColor="#cce4fb" />
+                    </linearGradient>
 
-            {/* Prompt to Login */}
-            <div style={{ marginTop: '20px', textAlign: 'center' }}>
-              <button
-                onClick={onGoToLogin}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  background: '#edf2fc',
-                  color: '#003882',
-                  border: '1px solid #bfdbfe',
-                  fontSize: '0.88rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px'
-                }}
-              >
-                <span>Masuk untuk Kontrol Penuh &amp; Analisis Tidal</span>
-                <ChevronRight size={16} />
-              </button>
+                    <linearGradient id="mastSteelGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#0a1d37" />
+                      <stop offset="40%" stopColor="#003882" />
+                      <stop offset="75%" stopColor="#2563eb" />
+                      <stop offset="100%" stopColor="#0f2647" />
+                    </linearGradient>
+
+                    <linearGradient id="boomSteelGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#1e40af" />
+                      <stop offset="50%" stopColor="#003882" />
+                      <stop offset="100%" stopColor="#0a1d37" />
+                    </linearGradient>
+
+                    <linearGradient id="solarPanelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#0f172a" />
+                      <stop offset="100%" stopColor="#1e3a8a" />
+                    </linearGradient>
+
+                    <linearGradient id="sensorConeBeam" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#0284c7" stopOpacity="0.55" />
+                      <stop offset="45%" stopColor="#38bdf8" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.03" />
+                    </linearGradient>
+
+                    <linearGradient id="waterDeepGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#0369a1" />
+                      <stop offset="100%" stopColor="#001e4a" />
+                    </linearGradient>
+
+                    <linearGradient id="waterMidGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#0284c7" />
+                      <stop offset="100%" stopColor="#002b66" />
+                    </linearGradient>
+
+                    <linearGradient id="waterFrontGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#38bdf8" />
+                      <stop offset="25%" stopColor="#0284c7" />
+                      <stop offset="100%" stopColor="#00173b" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* 1. Sky Backdrop */}
+                  <rect width="520" height="340" fill="url(#skyAtmosphere)" />
+
+                  {/* Ambient sun glow in top right */}
+                  <circle cx="460" cy="50" r="70" fill="radial-gradient(circle, rgba(255,255,255,0.7) 0%, transparent 70%)" opacity="0.6" />
+
+                  {/* Subtle distance horizontal guidelines */}
+                  <line x1="0" y1="125" x2="520" y2="125" stroke="#bfdbfe" strokeWidth="1" strokeDasharray="4 6" opacity="0.4" />
+                  <line x1="0" y1="200" x2="520" y2="200" stroke="#bfdbfe" strokeWidth="1" strokeDasharray="4 6" opacity="0.4" />
+
+                  {/* 2. Downward Spotlight / Acoustic Measuring Beam Cone */}
+                  <polygon
+                    points="274,124 286,124 332,268 228,268"
+                    fill="url(#sensorConeBeam)"
+                    className="sensor-cone-anim"
+                  />
+
+                  {/* Traveling Sonar / Acoustic Pulse Rings */}
+                  <g pointerEvents="none">
+                    <ellipse cx="280" cy="126" rx="14" ry="4" fill="none" stroke="#0284c7" strokeWidth="2.5" className="sonar-ping-1" />
+                    <ellipse cx="280" cy="126" rx="14" ry="4" fill="none" stroke="#0284c7" strokeWidth="2.5" className="sonar-ping-2" />
+                    <ellipse cx="280" cy="126" rx="14" ry="4" fill="none" stroke="#0284c7" strokeWidth="2.5" className="sonar-ping-3" />
+                  </g>
+
+                  {/* Water Surface Impact Ripples */}
+                  <g pointerEvents="none">
+                    <ellipse cx="280" cy="268" rx="14" ry="4" fill="none" stroke="#38bdf8" strokeWidth="2.2" className="impact-ripple-1" />
+                    <ellipse cx="280" cy="268" rx="14" ry="4" fill="none" stroke="#0284c7" strokeWidth="1.5" className="impact-ripple-2" />
+                  </g>
+
+
+
+                  {/* 3. Layered Animated Water Waves */}
+                  {/* Layer 1: Deep Wave */}
+                  <g>
+                    <path
+                      d="M 0 248 Q 65 238 130 248 T 260 248 T 390 248 T 520 248 T 650 248 T 780 248 T 910 248 T 1040 248 L 1040 340 L 0 340 Z"
+                      fill="url(#waterDeepGrad)"
+                      opacity="0.55"
+                      className="wave-anim-2"
+                    />
+                  </g>
+
+                  {/* Layer 2: Mid Oceanic Wave */}
+                  <g>
+                    <path
+                      d="M 0 258 Q 65 268 130 258 T 260 258 T 390 258 T 520 258 T 650 258 T 780 258 T 910 258 T 1040 258 L 1040 340 L 0 340 Z"
+                      fill="url(#waterMidGrad)"
+                      opacity="0.75"
+                      className="wave-anim-1"
+                    />
+                  </g>
+
+                  {/* Layer 3: Front Wave with Highlight Crest */}
+                  <g>
+                    <path
+                      d="M 0 268 Q 65 258 130 268 T 260 268 T 390 268 T 520 268 T 650 268 T 780 268 T 910 268 T 1040 268 L 1040 340 L 0 340 Z"
+                      fill="url(#waterFrontGrad)"
+                      className="wave-anim-3"
+                    />
+                    <path
+                      d="M 0 268 Q 65 258 130 268 T 260 268 T 390 268 T 520 268 T 650 268 T 780 268 T 910 268 T 1040 268"
+                      fill="none"
+                      stroke="#bae6fd"
+                      strokeWidth="2.5"
+                      opacity="0.9"
+                      className="wave-anim-3"
+                    />
+                  </g>
+
+                  {/* 4. Left Concrete Bank & Pier Foundation */}
+                  <path
+                    d="M 0 190 L 50 220 L 68 240 L 68 340 L 0 340 Z"
+                    fill="#334155"
+                  />
+                  <path
+                    d="M 0 190 L 50 220 L 50 340 L 0 340 Z"
+                    fill="#1e293b"
+                    opacity="0.75"
+                  />
+
+                  {/* Steel Base Flange */}
+                  <rect x="36" y="216" width="30" height="8" rx="2" fill="#0f172a" />
+                  <circle cx="42" cy="220" r="2" fill="#94a3b8" />
+                  <circle cx="60" cy="220" r="2" fill="#94a3b8" />
+
+                  {/* 5. Vertical Steel Mast Column ("tiang dari samping") */}
+                  <rect x="46" y="44" width="10" height="174" rx="2" fill="url(#mastSteelGrad)" />
+
+                  {/* Solar Panel on Top */}
+                  <polygon
+                    points="18,40 64,30 67,42 21,52"
+                    fill="url(#solarPanelGrad)"
+                    stroke="#94a3b8"
+                    strokeWidth="1.5"
+                  />
+                  <line x1="33" y1="37" x2="36" y2="49" stroke="#60a5fa" strokeWidth="1" opacity="0.8" />
+                  <line x1="48" y1="34" x2="51" y2="46" stroke="#60a5fa" strokeWidth="1" opacity="0.8" />
+
+                  {/* Telemetry Enclosure Box & Blinking LED */}
+                  <rect x="56" y="125" width="28" height="38" rx="4" fill="#ffffff" stroke="#003882" strokeWidth="2" />
+                  <rect x="60" y="129" width="20" height="28" rx="2" fill="#edf2fc" />
+                  <line x1="70" y1="125" x2="70" y2="105" stroke="#003882" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="70" cy="105" r="2.5" fill="#0284c7" />
+                  <circle cx="76" cy="138" r="2.8" fill="#10b981" className="mast-led-anim" />
+
+                  {/* Cantilever Horizontal Boom extending over water */}
+                  <rect x="46" y="66" width="238" height="9" rx="2" fill="url(#boomSteelGrad)" />
+                  {/* Diagonal Engineering Truss Support */}
+                  <line x1="51" y1="110" x2="135" y2="75" stroke="#003882" strokeWidth="3.5" strokeLinecap="round" />
+
+                  {/* Cable conduit running along boom */}
+                  <path d="M 56 125 Q 52 75 80 75 L 274 75" fill="none" stroke="#0f172a" strokeWidth="1.8" />
+
+                  {/* Tip End Mounting Bracket */}
+                  <circle cx="280" cy="70.5" r="6" fill="#003882" stroke="#ffffff" strokeWidth="1.5" />
+
+                  {/* 6. Downward Sensor ("sensor menghadap kebawah seperti lampu") */}
+                  {/* Hanging stem / pendant drop */}
+                  <rect x="278" y="75" width="4" height="20" fill="#0f172a" />
+
+                  {/* Sensor Bell / Horn Housing (Industrial Downlight Lamp Shape) */}
+                  <path
+                    d="M 273 95 L 287 95 L 298 119 L 262 119 Z"
+                    fill="#0f172a"
+                    stroke="#0284c7"
+                    strokeWidth="1.8"
+                  />
+                  {/* Sensor Base Rim */}
+                  <rect x="260" y="119" width="40" height="5" rx="2" fill="#0284c7" />
+                  {/* Emitter Lens Face */}
+                  <ellipse cx="280" cy="122" rx="15" ry="2.5" fill="#38bdf8" />
+                </svg>
+              </div>
+
+              {/* Bottom Minimal Frame Footer */}
+              <div style={{
+                padding: '12px 20px',
+                background: 'rgba(255, 255, 255, 0.92)',
+                backdropFilter: 'blur(8px)',
+                borderTop: '1px solid #dbeafe',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: '0.76rem',
+                color: '#003882'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Radio size={14} />
+                  <span>Stasiun AWLR Cantilever &bull; Sensor Akustik Terarah</span>
+                </div>
+                <span className="mono-text" style={{ fontWeight: 700, color: '#64748b' }}>
+                  PT Tanah Airku Teknologi
+                </span>
+              </div>
+
             </div>
           </div>
         </div>
@@ -327,10 +494,10 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                 <Cpu size={22} />
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginBottom: '10px' }}>
-                Sensor Modbus RS485 A16
+                Sensor Pemantau Presisi Industri
               </h3>
               <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.6 }}>
-                Rentang pengukuran 50 cm hingga 1500 cm (15 meter) dengan kompensasi temperatur akustik otomatis, filter stabilitas median, dan komunikasi industri RS485 bebas interferensi.
+                Sensor elevasi digital berakurasi tinggi dengan kompensasi temperatur otomatis, filter stabilitas median multi-sampel, dan transmisi terproteksi bebas interferensi.
               </p>
             </div>
 
@@ -343,12 +510,12 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
                 Dual-Storage &amp; Auto Sync
               </h3>
               <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.6 }}>
-                Penyimpanan mandiri pada MicroSD card FAT32 saat jaringan seluler atau WiFi terputus, dilengkapi mekanisme sinkronisasi otomatis (*catch-up*) saat kembali online.
+                Penyimpanan mandiri saat jaringan seluler atau WiFi terputus, dilengkapi mekanisme sinkronisasi otomatis (*catch-up*) saat kembali online.
               </p>
             </div>
 
             {/* Card 3 */}
-            <div className="corporate-card" style={{ padding: '32px' }}>
+            <div id="keamanan" className="corporate-card" style={{ padding: '32px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', marginBottom: '20px' }}>
                 <ShieldCheck size={22} />
               </div>
@@ -358,102 +525,6 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.6 }}>
                 Seluruh kredensial operator dan administrator dilindungi enkripsi terstandar untuk menangkal akses tidak sah serta menjamin integritas monitoring hidrologi.
               </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Security & Architecture Spotlight Section */}
-      <section id="keamanan" className="landing-section" style={{ background: '#f8fafc' }}>
-        <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
-          <div className="landing-security-box">
-            <div className="landing-security-grid">
-              <div>
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: 'rgba(255, 255, 255, 0.14)',
-                  padding: '5px 14px',
-                  borderRadius: '16px',
-                  fontSize: '0.74rem',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  marginBottom: '16px',
-                  color: '#93c5fd'
-                }}>
-                  <Lock size={14} />
-                  <span>STANDAR INDUSTRI &amp; KEAMANAN SISTEM</span>
-                </div>
-
-                <h2 style={{ fontSize: 'clamp(1.75rem, 4vw, 2.4rem)', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 18px', lineHeight: 1.2 }}>
-                  Arsitektur Keandalan &amp; Standar Keamanan TerraFlow
-                </h2>
-
-                <p style={{ fontSize: '0.96rem', color: '#dbeafe', lineHeight: 1.7, marginBottom: '24px' }}>
-                  TerraFlow menggabungkan keandalan hardware industri dengan sistem keamanan modern. Setiap transmisi data telemetri, perintah kalibrasi jarak jauh, dan autentikasi personel diproteksi dengan enkripsi serta pengawasan multi-tier untuk menjamin integritas monitoring hidrologi.
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <CheckCircle2 size={18} color="#67e8f9" />
-                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Enkripsi Kredensial: Hashing kriptografis memori tinggi &amp; proteksi brute-force</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <CheckCircle2 size={18} color="#67e8f9" />
-                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Integritas Telemetri: Protokol MQTT terautentikasi &amp; failover MicroSD lokal</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <CheckCircle2 size={18} color="#67e8f9" />
-                    <span style={{ fontSize: '0.9rem', color: '#ffffff' }}>Sesi Akses: Token JSON Web Token (JWT) dengan pembatasan masa berlaku aman</span>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: '32px' }}>
-                  <button
-                    onClick={onGoToLogin}
-                    style={{
-                      padding: '12px 24px',
-                      borderRadius: '8px',
-                      background: '#ffffff',
-                      color: '#003882',
-                      border: 'none',
-                      fontSize: '0.92rem',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    <span>Buka Portal Monitoring Sekarang</span>
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Security Blueprint Panel */}
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.16)',
-                borderRadius: '16px',
-                padding: '28px',
-                fontFamily: 'monospace',
-                fontSize: '0.82rem'
-              }}>
-                <div style={{ color: '#93c5fd', fontWeight: 800, marginBottom: '12px', fontSize: '0.78rem' }}>
-                  // ARSITEKTUR ALIRAN AUTENTIKASI:
-                </div>
-                <div style={{ color: '#e2e8f0', lineHeight: 1.8 }}>
-                  1. Akses Portal &amp; Autentikasi Personel<br />
-                  &nbsp;&nbsp;&darr; (Koneksi Terenkripsi)<br />
-                  2. Validasi Kredensial &amp; Role-Based Access (RBAC)<br />
-                  &nbsp;&nbsp;&darr; (Pengecekan Hash Aman)<br />
-                  3. Penerbitan Token Sesi Terproteksi<br />
-                  &nbsp;&nbsp;&darr;<br />
-                  4. Akses Real-Time Telemetri &amp; Analisis Diberikan
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -516,37 +587,26 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
         <div style={{
           maxWidth: '1440px',
           margin: '0 auto',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
           gap: '36px',
           paddingBottom: '36px',
           borderBottom: '1px solid #d8e4f4'
         }}>
-          {/* Col 1 */}
-          <div>
+          {/* Col 1 (Kiri) */}
+          <div style={{ maxWidth: '520px' }}>
             <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '12px' }}>
               Terraflow Indonesia
             </h4>
             <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.6 }}>
-              <strong>PT Tanah Airku Teknologi</strong> menghadirkan layanan instrumentasi telemetri otomatis dan pemetaan geospatial berstandar industri.
+              <strong>PT Tanah Airku Teknologi</strong> menghadirkan layanan instrumentasi telemetri otomatis dan pemetaan geospatial berstandar industri hidrometri.
             </p>
           </div>
 
-          {/* Col 2 */}
-          <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '12px' }}>
-              Layanan Utama
-            </h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', color: '#475569' }}>
-              <li>Automatic Water Level Recorder</li>
-              <li>Survei Batimetri &amp; Alur Laut</li>
-              <li>Topografi Terestris</li>
-              <li>Pemotretan Udara UAV</li>
-            </ul>
-          </div>
-
-          {/* Col 3 */}
-          <div>
+          {/* Col 2 (Paling Kanan) */}
+          <div style={{ textAlign: 'left', minWidth: '260px' }}>
             <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '12px' }}>
               Kantor Pusat &amp; Stasiun
             </h4>
@@ -556,23 +616,6 @@ export default function LandingPageView({ onGoToLogin, latestReading, device }) 
               WhatsApp: +62 813 5858 3775<br />
               Email: terraflow.pt@gmail.com
             </div>
-          </div>
-
-          {/* Col 4 */}
-          <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '12px' }}>
-              Portal Akses
-            </h4>
-            <p style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '16px' }}>
-              Akses sistem monitoring telemetri dengan kredensial resmi.
-            </p>
-            <button
-              onClick={onGoToLogin}
-              className="btn-corporate-primary"
-              style={{ padding: '8px 18px', fontSize: '0.82rem', cursor: 'pointer' }}
-            >
-              Login ke Portal
-            </button>
           </div>
         </div>
 

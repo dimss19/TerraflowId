@@ -12,7 +12,8 @@ import {
   RefreshCw,
   PlusCircle,
   Activity,
-  User
+  User,
+  ExternalLink
 } from 'lucide-react';
 
 export default function DeviceOverview({ 
@@ -269,11 +270,41 @@ export default function DeviceOverview({
                   color: '#64748b',
                   marginBottom: '16px' 
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <MapPin size={14} color="#94a3b8" />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {dev.location || 'Lokasi belum dikonfigurasi'}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                      <MapPin size={14} color="#94a3b8" />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {dev.location || 'Lokasi belum dikonfigurasi'}
+                      </span>
+                    </div>
+
+                    {dev.latitude && dev.longitude && (
+                      <a
+                        href={`https://www.google.com/maps?q=${dev.latitude},${dev.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Buka titik koordinat stasiun di Google Maps"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          color: '#003882',
+                          background: '#edf2fc',
+                          border: '1px solid #bfdbfe',
+                          padding: '2px 7px',
+                          borderRadius: '10px',
+                          textDecoration: 'none',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          flexShrink: 0,
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span className="mono-text">{Number(dev.latitude).toFixed(4)}, {Number(dev.longitude).toFixed(4)}</span>
+                        <ExternalLink size={10} strokeWidth={2.5} />
+                      </a>
+                    )}
                   </div>
 
                   {currentUser?.role === 'admin' ? (

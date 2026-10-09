@@ -288,7 +288,7 @@ function AppInner() {
         path="/dashboard" 
         element={
           authToken ? (
-            <LayoutShell showHero={true}>
+            <LayoutShell showHero={false}>
               <DeviceOverview 
                 devices={devices}
                 loading={loadingDevices}

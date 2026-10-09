@@ -17,7 +17,8 @@ import {
   Check, 
   Compass, 
   Activity,
-  User
+  User,
+  ExternalLink
 } from 'lucide-react';
 
 export default function DeviceManagementView({ 
@@ -423,9 +424,31 @@ export default function DeviceManagementView({
                         <span>{dev.location || 'Lokasi belum diatur'}</span>
                       </div>
                       {dev.latitude && dev.longitude && (
-                        <div className="mono-text" style={{ fontSize: '0.74rem', color: '#94a3b8', marginTop: '2px', marginLeft: '19px' }}>
-                          {dev.latitude}, {dev.longitude}
-                        </div>
+                        <a
+                          href={`https://www.google.com/maps?q=${dev.latitude},${dev.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Buka titik koordinat di Google Maps"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: '#003882',
+                            background: '#edf2fc',
+                            border: '1px solid #bfdbfe',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            textDecoration: 'none',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            marginTop: '4px',
+                            marginLeft: '19px',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <span className="mono-text">{dev.latitude}, {dev.longitude}</span>
+                          <ExternalLink size={10} strokeWidth={2.5} />
+                        </a>
                       )}
                     </td>
                     <td>
@@ -695,6 +718,35 @@ export default function DeviceManagementView({
                   />
                 </div>
               </div>
+
+              {/* Helper: Live Test Google Maps Pin */}
+              {formData.latitude && formData.longitude && (
+                <div style={{ marginTop: '6px', marginBottom: '14px' }}>
+                  <a
+                    href={`https://www.google.com/maps?q=${formData.latitude},${formData.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      color: '#003882',
+                      background: '#edf2fc',
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #bfdbfe',
+                      textDecoration: 'none'
+                    }}
+                    title="Uji apakah titik koordinat berada di lokasi perairan/dermaga yang benar"
+                  >
+                    <MapPin size={12} color="#003882" />
+                    <span>Uji Titik Lokasi di Google Maps</span>
+                    <ExternalLink size={11} strokeWidth={2.5} />
+                  </a>
+                </div>
+              )}
 
               {/* Field 6: Sensor Height */}
               <div className="form-group">

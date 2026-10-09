@@ -7,7 +7,8 @@ import {
   Radio, 
   MapPin, 
   RefreshCw,
-  Clock
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 
 import MonitoringTab from './MonitoringTab';
@@ -90,13 +91,35 @@ export default function DeviceDetailView({
                 </h2>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#64748b', marginTop: '3px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#64748b', marginTop: '3px', flexWrap: 'wrap' }}>
                 <MapPin size={13} color="#94a3b8" />
                 <span>{device?.location || 'Lokasi stasiun'}</span>
                 {device?.latitude && device?.longitude && (
-                  <span className="mono-text" style={{ color: '#94a3b8', marginLeft: '6px' }}>
-                    ({device.latitude}, {device.longitude})
-                  </span>
+                  <a
+                    href={`https://www.google.com/maps?q=${device.latitude},${device.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Buka titik koordinat stasiun di Google Maps"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: '#003882',
+                      background: '#edf2fc',
+                      border: '1px solid #bfdbfe',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      textDecoration: 'none',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      marginLeft: '6px',
+                      transition: 'all 0.2s ease',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span className="mono-text">{device.latitude}, {device.longitude}</span>
+                    <ExternalLink size={11} strokeWidth={2.5} />
+                  </a>
                 )}
               </div>
             </div>

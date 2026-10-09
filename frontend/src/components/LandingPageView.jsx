@@ -310,9 +310,6 @@ export default function LandingPageView({ onGoToLogin }) {
                   {/* 1. Sky Backdrop */}
                   <rect width="520" height="340" fill="url(#skyAtmosphere)" />
 
-                  {/* Ambient sun glow in top right */}
-                  <circle cx="460" cy="50" r="70" fill="radial-gradient(circle, rgba(255,255,255,0.7) 0%, transparent 70%)" opacity="0.6" />
-
                   {/* Subtle distance horizontal guidelines */}
                   <line x1="0" y1="125" x2="520" y2="125" stroke="#bfdbfe" strokeWidth="1" strokeDasharray="4 6" opacity="0.4" />
                   <line x1="0" y1="200" x2="520" y2="200" stroke="#bfdbfe" strokeWidth="1" strokeDasharray="4 6" opacity="0.4" />

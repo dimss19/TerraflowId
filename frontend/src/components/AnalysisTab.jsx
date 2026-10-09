@@ -25,11 +25,21 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
   const [page, setPage] = useState(1);
   const pageSize = 15;
 
-  // Filter dates (default to past 24 hours)
-  const now = new Date();
-  const yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
-  const [startDate, setStartDate] = useState(yesterday.toISOString().slice(0, 16));
-  const [endDate, setEndDate] = useState(now.toISOString().slice(0, 16));
+  // Helper to format Date into local YYYY-MM-DDTHH:mm string for datetime-local input
+  const formatDateTimeLocal = (d) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  // Filter dates (default to past 24 hours in local browser time)
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date(Date.now() - 24 * 3600 * 1000);
+    return formatDateTimeLocal(d);
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    return formatDateTimeLocal(d);
+  });
 
   // --- Tidal Analysis State ---
   const [hoveredPoint, setHoveredPoint] = useState(null);
@@ -43,11 +53,15 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
   const fetchHistorical = async () => {
     setLoadingHistory(true);
     try {
-      const q = new URLSearchParams({
-        start: new Date(startDate).toISOString(),
-        end: new Date(endDate).toISOString(),
-        limit: 1000
-      });
+      const q = new URLSearchParams({ limit: 1000 });
+      if (startDate) {
+        const s = new Date(startDate);
+        if (!isNaN(s.getTime())) q.set('start', s.toISOString());
+      }
+      if (endDate) {
+        const e = new Date(endDate);
+        if (!isNaN(e.getTime())) q.set('end', e.toISOString());
+      }
       const res = await fetch(`/api/readings/${device?.device_id || 'AWLR-001'}?${q}`);
       const json = await res.json();
       if (json.success) {
@@ -68,10 +82,15 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
   }, [device]);
 
   const handleExportCSV = () => {
-    const q = new URLSearchParams({
-      start: new Date(startDate).toISOString(),
-      end: new Date(endDate).toISOString()
-    });
+    const q = new URLSearchParams();
+    if (startDate) {
+      const s = new Date(startDate);
+      if (!isNaN(s.getTime())) q.set('start', s.toISOString());
+    }
+    if (endDate) {
+      const e = new Date(endDate);
+      if (!isNaN(e.getTime())) q.set('end', e.toISOString());
+    }
     window.location.href = `/api/export/${device?.device_id || 'AWLR-001'}?${q}`;
   };
 

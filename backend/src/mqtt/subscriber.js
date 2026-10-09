@@ -80,11 +80,13 @@ function initSubscriber() {
 }
 
 async function handleMessage(deviceId, subtopic, data) {
-  // Update device last_seen and status
-  await query(
-    'UPDATE devices SET last_seen = NOW(), is_active = true WHERE device_id = $1',
-    [deviceId]
-  ).catch(() => {});
+  // Only update device last_seen to NOW() if actual telemetry data or active report is sent
+  if (subtopic === 'data' || subtopic === 'data/bulk' || subtopic === 'diagnostics' || (subtopic === 'status' && data?.status === 'online')) {
+    await query(
+      'UPDATE devices SET last_seen = NOW(), is_active = true WHERE device_id = $1',
+      [deviceId]
+    ).catch(() => {});
+  }
 
   if (subtopic === 'data') {
     await handleSingleReading(deviceId, data);
@@ -96,12 +98,25 @@ async function handleMessage(deviceId, subtopic, data) {
     await handleDiagnostics(deviceId, data);
   } else if (subtopic === 'status') {
     const isOnline = data.status === 'online';
-    await query(
-      'UPDATE devices SET is_active = $1, last_seen = NOW() WHERE device_id = $2',
-      [isOnline, deviceId]
-    ).catch(() => {});
+    if (isOnline) {
+      await query(
+        'UPDATE devices SET is_active = true, last_seen = NOW() WHERE device_id = $1',
+        [deviceId]
+      ).catch(() => {});
+    } else {
+      // Explicit offline status (e.g. LWT or disconnect) sets last_seen to past so it registers offline
+      await query(
+        "UPDATE devices SET is_active = false, last_seen = NOW() - INTERVAL '1 hour' WHERE device_id = $1",
+        [deviceId]
+      ).catch(() => {});
+    }
     if (ioInstance) {
-      ioInstance.emit('device:status', { device_id: deviceId, status: data.status, is_active: isOnline });
+      ioInstance.emit('device:status', { 
+        device_id: deviceId, 
+        status: data.status, 
+        is_active: isOnline,
+        last_seen: isOnline ? new Date().toISOString() : new Date(Date.now() - 3600000).toISOString()
+      });
     }
   } else if (subtopic === 'calibration/response') {
     console.log(`[MQTT Calibration ACK] Device ${deviceId} confirmed calibration:`, data);

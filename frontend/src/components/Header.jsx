@@ -52,21 +52,22 @@ export default function Header({
       dotBg: '#dc2626',
       pulse: false
     };
-  } else if (device) {
-    const online = isDeviceOnline(device);
-    if (!online) {
+  } else {
+    // Live telemetry stays active whenever ANY device is online (e.g. AWLR-002 online while AWLR-001 is offline)
+    const isCurrentOnline = device && isDeviceOnline(device);
+    const isAnyStationOnline = Array.isArray(devices) && devices.some(d => isDeviceOnline(d));
+    const hasLiveTelemetry = isCurrentOnline || isAnyStationOnline;
+
+    if (hasLiveTelemetry) {
       statusBadge = {
-        text: 'OFFLINE',
-        color: '#64748b',
-        bg: '#f8fafc',
-        border: '#e2e8f0',
-        dotBg: '#94a3b8',
-        pulse: false
+        text: 'LIVE',
+        color: '#059669',
+        bg: '#ecfdf5',
+        border: '#a7f3d0',
+        dotBg: '#10b981',
+        pulse: true
       };
-    }
-  } else if (devices && devices.length > 0) {
-    const anyOnline = devices.some(d => isDeviceOnline(d));
-    if (!anyOnline) {
+    } else {
       statusBadge = {
         text: 'OFFLINE',
         color: '#64748b',

@@ -151,10 +151,11 @@ function AppInner() {
       if (payload?.device_id) {
         setDevices((prev) => prev.map((d) => {
           if (d.device_id === payload.device_id) {
+            const isOnline = payload.status === 'online';
             return {
               ...d,
-              is_active: payload.is_active !== undefined ? payload.is_active : payload.status === 'online',
-              last_seen: payload.status === 'online' ? new Date().toISOString() : d.last_seen
+              is_active: payload.is_active !== undefined ? payload.is_active : isOnline,
+              last_seen: payload.last_seen || (isOnline ? new Date().toISOString() : new Date(Date.now() - 3600000).toISOString())
             };
           }
           return d;
@@ -546,10 +547,11 @@ function DeviceDetailRouteWrapper({
 
     socket.on('device:status', (payload) => {
       if (payload?.device_id === deviceId) {
+        const isOnline = payload.status === 'online';
         setDevice((prev) => prev ? {
           ...prev,
-          is_active: payload.is_active !== undefined ? payload.is_active : payload.status === 'online',
-          last_seen: payload.status === 'online' ? new Date().toISOString() : prev.last_seen
+          is_active: payload.is_active !== undefined ? payload.is_active : isOnline,
+          last_seen: payload.last_seen || (isOnline ? new Date().toISOString() : new Date(Date.now() - 3600000).toISOString())
         } : prev);
       }
     });

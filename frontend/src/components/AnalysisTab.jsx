@@ -519,8 +519,6 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                   <th>Waktu (WIB)</th>
                   <th>Elevasi Air</th>
                   <th>Jarak Sensor</th>
-                  <th>Suhu Ambien</th>
-                  <th>Tegangan Aki</th>
                   <th>Sinyal RSSI</th>
                   <th>Sumber</th>
                 </tr>
@@ -528,13 +526,13 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
               <tbody>
                 {loadingHistory ? (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
+                    <td colSpan="5" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
                       Memuat rekaman data historis...
                     </td>
                   </tr>
                 ) : paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
+                    <td colSpan="5" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
                       Tidak ditemukan data pembacaan dalam rentang tanggal yang dipilih.
                     </td>
                   </tr>
@@ -561,12 +559,6 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                       </td>
                       <td className="mono-text" style={{ color: '#475569' }}>
                         {row.raw_distance_cm != null ? `${Number(row.raw_distance_cm).toFixed(1)} cm` : '--'}
-                      </td>
-                      <td className="mono-text">
-                        {row.temperature_c != null ? `${Number(row.temperature_c).toFixed(1)} °C` : '--'}
-                      </td>
-                      <td className="mono-text" style={{ color: '#059669', fontWeight: 600 }}>
-                        {row.battery_voltage != null ? `${Number(row.battery_voltage).toFixed(2)} V` : '--'}
                       </td>
                       <td className="mono-text" style={{ color: '#64748b' }}>
                         {row.signal_quality != null ? `${row.signal_quality} dBm` : '--'}

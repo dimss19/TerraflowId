@@ -13,7 +13,6 @@ import {
   Cpu,
   Radio,
   HardDrive,
-  BatteryCharging,
   RotateCcw,
   HardDriveDownload,
   Check,
@@ -612,21 +611,6 @@ export default function DeviceTab({
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
               Sistem Berkas Mandiri &bull; Auto Re-mount
-            </div>
-          </div>
-
-          <div className="subtle-panel" style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <BatteryCharging size={16} color="#003882" />
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                DAYA &amp; AKI
-              </span>
-            </div>
-            <div className="mono-text" style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '6px' }}>
-              {latestReading?.battery_voltage != null ? `${Number(latestReading.battery_voltage).toFixed(2)} V` : '12.50 V'}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>
-              Solar Charger Siap Mandiri
             </div>
           </div>
         </div>

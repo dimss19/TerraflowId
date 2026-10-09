@@ -2,8 +2,6 @@ import React from 'react';
 import { 
   Radio, 
   MapPin, 
-  Battery, 
-  Thermometer, 
   Waves, 
   AlertTriangle, 
   ChevronRight, 
@@ -417,11 +415,11 @@ export default function DeviceOverview({
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(2, 1fr)',
-                  gap: '10px',
+                  gap: '12px',
                   background: '#f8fafc',
                   border: '1px solid #eef2f7',
                   borderRadius: '10px',
-                  padding: '12px',
+                  padding: '14px',
                   marginBottom: '16px'
                 }}>
                   {/* Water Level */}
@@ -429,45 +427,21 @@ export default function DeviceOverview({
                     <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
                       MUKA AIR
                     </div>
-                    <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#003882', marginTop: '2px' }}>
+                    <div className="mono-text" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#003882', marginTop: '2px' }}>
                       {latest?.water_level_cm != null 
                         ? `${(Number(latest.water_level_cm) / 100).toFixed(2)} m`
                         : '--'}
                     </div>
                   </div>
 
-                  {/* Battery */}
+                  {/* Raw Distance */}
                   <div>
                     <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                      TEGANGAN AKI
+                      JARAK SENSOR
                     </div>
-                    <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
-                      {latest?.battery_voltage != null 
-                        ? `${Number(latest.battery_voltage).toFixed(2)} V` 
-                        : '--'}
-                    </div>
-                  </div>
-
-                  {/* Temperature */}
-                  <div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                      TEMPERATUR
-                    </div>
-                    <div className="mono-text" style={{ fontSize: '0.95rem', fontWeight: 700, color: '#334155', marginTop: '2px' }}>
-                      {latest?.temperature_c != null 
-                        ? `${Number(latest.temperature_c).toFixed(1)} °C` 
-                        : '--'}
-                    </div>
-                  </div>
-
-                  {/* RSSI Signal */}
-                  <div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                      SINYAL
-                    </div>
-                    <div className="mono-text" style={{ fontSize: '0.95rem', fontWeight: 700, color: '#334155', marginTop: '2px' }}>
-                      {latest?.signal_quality != null 
-                        ? `${latest.signal_quality} dBm` 
+                    <div className="mono-text" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#334155', marginTop: '2px' }}>
+                      {latest?.raw_distance_cm != null 
+                        ? `${Number(latest.raw_distance_cm).toFixed(1)} cm` 
                         : '--'}
                     </div>
                   </div>

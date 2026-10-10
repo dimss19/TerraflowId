@@ -327,7 +327,7 @@ export default function DeviceOverview({
                   </div>
                 </div>
 
-                {/* Location & Operator Info */}
+                {/* Location & Coordinates & Operator Info */}
                 <div style={{ 
                   display: 'flex', 
                   flexDirection: 'column',
@@ -336,15 +336,17 @@ export default function DeviceOverview({
                   color: '#64748b',
                   marginBottom: '16px' 
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-                      <MapPin size={14} color="#94a3b8" />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {dev.location || 'Lokasi belum dikonfigurasi'}
-                      </span>
-                    </div>
+                  {/* Lokasi */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <MapPin size={14} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: '#334155' }}>
+                      {dev.location || 'Lokasi belum dikonfigurasi'}
+                    </span>
+                  </div>
 
-                    {dev.latitude && dev.longitude && (
+                  {/* Koordinat diletakkan di bawah lokasi */}
+                  {dev.latitude && dev.longitude && (
+                    <div style={{ paddingLeft: '20px' }}>
                       <a
                         href={`https://www.google.com/maps?q=${dev.latitude},${dev.longitude}`}
                         target="_blank"
@@ -354,60 +356,40 @@ export default function DeviceOverview({
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '3px',
+                          gap: '4px',
                           color: '#003882',
                           background: '#edf2fc',
                           border: '1px solid #bfdbfe',
-                          padding: '2px 7px',
-                          borderRadius: '10px',
+                          padding: '2px 8px',
+                          borderRadius: '8px',
                           textDecoration: 'none',
-                          fontSize: '0.68rem',
+                          fontSize: '0.72rem',
                           fontWeight: 700,
-                          flexShrink: 0,
                           transition: 'all 0.15s ease'
                         }}
                       >
                         <span className="mono-text">{Number(dev.latitude).toFixed(4)}, {Number(dev.longitude).toFixed(4)}</span>
                         <ExternalLink size={10} strokeWidth={2.5} />
                       </a>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
+                  {/* Operator Info - Plain text style like location */}
                   {currentUser?.role === 'admin' ? (
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      fontSize: '0.74rem',
-                      fontWeight: 600,
-                      color: dev.assigned_operator_name ? '#003882' : '#64748b',
-                      background: dev.assigned_operator_name ? '#edf2fc' : '#f1f5f9',
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      width: 'fit-content'
-                    }}>
-                      <User size={12} />
-                      <span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <User size={14} color="#94a3b8" style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: '#334155' }}>
                         {dev.assigned_operator_name 
                           ? `Operator: ${dev.assigned_operator_name}` 
-                          : 'Belum Ditugaskan'}
+                          : 'Operator: Belum Ditugaskan'}
                       </span>
                     </div>
                   ) : (
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: '#059669',
-                      background: '#ecfdf5',
-                      padding: '2px 8px',
-                      borderRadius: '6px',
-                      width: 'fit-content'
-                    }}>
-                      <CheckCircle2 size={12} />
-                      <span>Stasiun Tugas Anda</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CheckCircle2 size={14} color="#059669" style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: '#059669' }}>
+                        Stasiun Tugas Anda
+                      </span>
                     </div>
                   )}
                 </div>

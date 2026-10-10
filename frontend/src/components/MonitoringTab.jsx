@@ -17,6 +17,7 @@ export default function MonitoringTab({
           reading={latestReading} 
           sensorHeight={device?.sensor_height_cm}
           tidalStatus={tidalData?.currentStatus}
+          lastSeen={device?.last_seen}
         />
         <RealtimeChart 
           readings={realtimeReadings} 

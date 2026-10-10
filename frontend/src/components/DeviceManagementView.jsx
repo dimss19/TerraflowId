@@ -91,8 +91,8 @@ export default function DeviceManagementView({
       });
       const json = await res.json();
       if (json.success) {
-        // Filter active operators
-        const opList = (json.data || []).filter(u => u.role === 'operator' && u.is_active);
+        // Filter active & approved operators
+        const opList = (json.data || []).filter(u => u.role === 'operator' && u.is_active && u.is_approved !== false);
         setOperators(opList);
       }
     } catch (e) {

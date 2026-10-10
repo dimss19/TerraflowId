@@ -98,21 +98,21 @@ export default function LandingPageView({ onGoToLogin }) {
               onClick={handleScrollToSection('solusi-awlr')}
               style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}
             >
-              Solusi AWLR
+              Fitur AWLR
             </a>
             <a 
-              href="#layanan" 
-              onClick={handleScrollToSection('layanan')}
+              href="#keunggulan" 
+              onClick={handleScrollToSection('keunggulan')}
               style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}
             >
-              Layanan
+              Keunggulan Sistem
             </a>
             <a 
               href="#keamanan" 
               onClick={handleScrollToSection('keamanan')}
               style={{ fontSize: '0.92rem', color: '#475569', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}
             >
-              Keamanan &amp; Akses
+              Keamanan Data
             </a>
             <a 
               href="#kontak" 
@@ -181,7 +181,7 @@ export default function LandingPageView({ onGoToLogin }) {
               lineHeight: 1.15,
               marginBottom: '20px'
             }}>
-              Presisi Pemetaan Geospatial &amp; Monitoring <span style={{ color: '#003882' }}>AWLR Pintar.</span>
+              Sistem Pemantauan Muka Air &amp; Pasang Surut <span style={{ color: '#003882' }}>AWLR Presisi.</span>
             </h1>
 
             <p style={{
@@ -191,7 +191,7 @@ export default function LandingPageView({ onGoToLogin }) {
               maxWidth: '640px',
               marginBottom: '32px'
             }}>
-              Solusi instrumentasi Automatic Water Level Recorder (AWLR) portabel industri. Terintegrasi sensor level air presisi, transmisi data real-time, pencatatan offline mandiri, dan <strong>sistem keamanan akses terenkripsi</strong>.
+              Solusi instrumen Automatic Water Level Recorder (AWLR) portabel terpadu berstandar industri hidrometri. Dilengkapi sensor elevasi presisi tinggi, telemetri otomatis kontinu, proteksi penyimpanan data mandiri, serta <strong>analisis pasang surut air laut komprehensif</strong>.
             </p>
 
             {/* Action Buttons */}
@@ -237,11 +237,11 @@ export default function LandingPageView({ onGoToLogin }) {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: '#334155', fontWeight: 600 }}>
                 <CheckCircle2 size={18} color="#059669" />
-                <span>Telemetri Industri Real-Time</span>
+                <span>Telemetri Otomatis Kontinu</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: '#334155', fontWeight: 600 }}>
                 <CheckCircle2 size={18} color="#059669" />
-                <span>Pencatatan Offline Mandiri</span>
+                <span>Penyimpanan Cadangan Mandiri</span>
               </div>
             </div>
           </div>
@@ -446,15 +446,11 @@ export default function LandingPageView({ onGoToLogin }) {
                 backdropFilter: 'blur(8px)',
                 borderTop: '1px solid #dbeafe',
                 display: 'flex',
-                justifyContent: 'space-between',
+                justifyContent: 'flex-end',
                 alignItems: 'center',
                 fontSize: '0.76rem',
                 color: '#003882'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Radio size={14} />
-                  <span>Stasiun AWLR Cantilever &bull; Sensor Akustik Terarah</span>
-                </div>
                 <span className="mono-text" style={{ fontWeight: 700, color: '#64748b' }}>
                   PT Tanah Airku Teknologi
                 </span>
@@ -527,37 +523,49 @@ export default function LandingPageView({ onGoToLogin }) {
         </div>
       </section>
 
-      {/* 5. Services & Geospatial Solutions */}
-      <section id="layanan" className="landing-section" style={{ background: '#ffffff', borderTop: '1px solid #e2e8f0' }}>
+      {/* 5. Keunggulan Sistem AWLR TerraFlow */}
+      <section id="keunggulan" className="landing-section" style={{ background: '#ffffff', borderTop: '1px solid #e2e8f0' }}>
         <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
           <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 56px' }}>
             <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#003882', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px' }}>
-              LAYANAN GEOSPATIAL PT TANAH AIRKU TEKNOLOGI
+              KEUNGGULAN OPERASIONAL AWLR
             </div>
             <h2 style={{ fontSize: 'clamp(1.75rem, 4vw, 2.4rem)', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: '0 0 16px' }}>
-              Solusi Survei, Pemetaan &amp; Telemetri
+              Keandalan Tinggi untuk Hidrologi &amp; Laut
             </h2>
             <p style={{ fontSize: '1rem', color: '#64748b', lineHeight: 1.6 }}>
-              Menghadirkan layanan pemetaan pada bidang geospatial untuk mendukung kebutuhan survei, analisis, serta pengolahan data spasial secara efektif dan terukur.
+              Dioptimalkan untuk operasi tanpa henti di lokasi pesisir, dermaga, muara sungai, bendungan, dan pos hidrometri terpencil.
             </p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px' }}>
             <div className="corporate-card" style={{ padding: '28px' }}>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Survei Topografi</h4>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Pengukuran kontur terestris berpresisi tinggi untuk perencanaan teknik sipil dan infrastruktur.</p>
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', marginBottom: '14px' }}>
+                <Waves size={20} />
+              </div>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Analisis Pasang Surut Otomatis</h4>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Kalkulasi otomatis High Water (HHT), Low Water (LLT), Mean Sea Level (MSL), dan deteksi fase air tenang (slack water).</p>
             </div>
             <div className="corporate-card" style={{ padding: '28px' }}>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Survei GNSS Geodetik</h4>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Penentuan titik kontrol orde tinggi dengan teknologi RTK dan post-processing statis.</p>
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', marginBottom: '14px' }}>
+                <Radio size={20} />
+              </div>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Kalibrasi Jarak Jauh (OTA)</h4>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Penyesuaian offset elevasi, slope, dan tinggi acuan sensor langsung dari dashboard tanpa perlu membongkar mikrokontroler.</p>
             </div>
             <div className="corporate-card" style={{ padding: '28px' }}>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Aerial Mapping (UAV)</h4>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Pemotretan udara drone fotogrametri dan LiDAR resolusi tinggi untuk ortofoto dan DEM/DSM.</p>
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', marginBottom: '14px' }}>
+                <HardDrive size={20} />
+              </div>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Ketahanan Zero Data Loss</h4>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Pencatatan cadangan lokal mandiri saat transmisi jaringan terputus (*blank spot*), dengan sinkronisasi data otomatis saat stasiun kembali terhubung.</p>
             </div>
             <div className="corporate-card" style={{ padding: '28px' }}>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Survei Batimetri &amp; AWLR</h4>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Pemeruman alur navigasi dan pemantauan dinamika pasang surut air laut berkelanjutan.</p>
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#edf2fc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003882', marginBottom: '14px' }}>
+                <Battery size={20} />
+              </div>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Daya Mandiri Solar &amp; Baterai</h4>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Konsumsi daya ultra-efisien dengan telemetri voltase baterai terintegrasi, siap beroperasi 24/7 di perairan terisolasi.</p>
             </div>
           </div>
         </div>
@@ -598,7 +606,7 @@ export default function LandingPageView({ onGoToLogin }) {
               Terraflow Indonesia
             </h4>
             <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.6 }}>
-              <strong>PT Tanah Airku Teknologi</strong> menghadirkan layanan instrumentasi telemetri otomatis dan pemetaan geospatial berstandar industri hidrometri.
+              <strong>PT Tanah Airku Teknologi</strong> menghadirkan sistem instrumentasi Automatic Water Level Recorder (AWLR) portabel terpadu dan analitik hidrometri kelautan berstandar industri.
             </p>
           </div>
 

@@ -17,7 +17,10 @@ import {
   HardDriveDownload,
   Check,
   AlertTriangle,
-  Activity
+  Activity,
+  HelpCircle,
+  X,
+  Info
 } from 'lucide-react';
 
 export default function DeviceTab({ 
@@ -42,6 +45,38 @@ export default function DeviceTab({
   const [loadingCalib, setLoadingCalib] = useState(false);
   const [calibHistory, setCalibHistory] = useState([]);
   const [calibFeedback, setCalibFeedback] = useState(null);
+  const [activeInfoField, setActiveInfoField] = useState(null);
+
+  const calibInfoDescriptions = {
+    sensor_height: {
+      title: 'Tinggi Sensor Dari Dasar Referensi (cm)',
+      image: '/sensor-calibration-diagram.jpg',
+      desc: 'Ilustrasi teknis pengukuran hidrometri Automatic Water Level Recorder (AWLR): Tinggi Muka Air (TMA) dihitung dari selisih Tinggi Sensor ke Dasar dikurangi Jarak Sensor ke Permukaan Air.',
+      example: 'TMA = Tinggi Sensor dari Dasar - Jarak Sensor ke Air. Contoh: Jika tinggi sensor 615 cm dan jarak sensor ke air 200 cm, maka TMA = 415 cm (4.15 m).'
+    },
+    offset: {
+      title: 'Offset Elevasi (cm)',
+      image: '/offset-calibration-diagram.jpg',
+      desc: 'Nilai koreksi tetap (+ atau -) untuk mengompensasi pergeseran datum atau deviasi pembacaan awal (zero-point error). Digunakan jika hasil pembacaan sensor tidak sama persis dengan mistar ukur fisik / peil schaal acuan.',
+      example: 'Gunakan nilai (+) jika pembacaan sensor lebih rendah dari acuan (contoh: 138.8 cm vs 140.0 cm -> offset +1.2 cm). Gunakan nilai (-) jika pembacaan sensor lebih tinggi dari acuan (contoh: 141.2 cm vs 140.0 cm -> offset -1.2 cm).'
+    },
+    slope: {
+      title: 'Faktor Pengali (Slope)',
+      image: '/slope-calibration-diagram.jpg',
+      desc: 'Koefisien linear untuk menyesuaikan skala jarak gelombang sensor jika kesalahan (error) bertambah seiring jarak akibat propagasi gelombang atau temperatur udara.',
+      example: 'Rumus: Jarak Terkoreksi = Jarak Sensor × Slope. Nilai default adalah 1.0000. Biarkan default kecuali pengujian beberapa titik jarak (minimal 2-3 titik) membuktikan adanya galat skala yang meregang.'
+    },
+    applied_by: {
+      title: 'Nama Petugas / Teknisi',
+      desc: 'Identitas personel yang bertanggung jawab melakukan kalibrasi dan validasi fisik di lapangan untuk keperluan audit trail / riwayat pemeliharaan.',
+      example: 'Contoh: Teknisi AWLR / Tim Hidrologi Pos B'
+    },
+    notes: {
+      title: 'Catatan Perubahan',
+      desc: 'Keterangan alasan pembaruan kalibrasi (misal: perawatan rutin, penggantian bracket sensor, atau penyesuaian peil pasca banjir).',
+      example: 'Contoh: Penyesuaian pasca perbaikan bracket tiang penyangga.'
+    }
+  };
 
   // --- Diagnostics & Alerts State ---
   const [alerts, setAlerts] = useState([]);
@@ -78,8 +113,10 @@ export default function DeviceTab({
   }, [device, isAdmin]);
 
   const fetchCalibrationHistory = async () => {
+    if (!device?.device_id) return;
     try {
-      const res = await fetch(`/api/calibration/${device?.device_id || 'AWLR-001'}/history`);
+      const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+      const res = await fetch(`/api/calibration/${device.device_id}/history`, { headers });
       const json = await res.json();
       if (json.success) {
         setCalibHistory(json.data);
@@ -90,8 +127,10 @@ export default function DeviceTab({
   };
 
   const fetchAlerts = async () => {
+    if (!device?.device_id) return;
     try {
-      const res = await fetch(`/api/alerts/${device?.device_id || 'AWLR-001'}?status=active`);
+      const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+      const res = await fetch(`/api/alerts/${device.device_id}?status=active`, { headers });
       const json = await res.json();
       if (json.success) {
         setAlerts(json.data);
@@ -102,8 +141,10 @@ export default function DeviceTab({
   };
 
   const fetchDiagnostics = async () => {
+    if (!device?.device_id) return;
     try {
-      const res = await fetch(`/api/diagnostics/${device?.device_id || 'AWLR-001'}`);
+      const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+      const res = await fetch(`/api/diagnostics/${device.device_id}`, { headers });
       const json = await res.json();
       if (json.success && json.data.length > 0) {
         setDiagnostics(json.data[0]);
@@ -283,9 +324,19 @@ export default function DeviceTab({
           {/* Left: Calibration Form */}
           <form onSubmit={handleCalibrationSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
-                TINGGI SENSOR DARI DASAR REFERENSI (CM)
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                  TINGGI SENSOR DARI DASAR REFERENSI (CM)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setActiveInfoField('sensor_height')}
+                  title="Klik untuk melihat penjelasan detail"
+                  style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                >
+                  <HelpCircle size={15} />
+                </button>
+              </div>
               <input
                 type="number"
                 step="0.1"
@@ -296,14 +347,23 @@ export default function DeviceTab({
                 onChange={(e) => setFormData({ ...formData, sensor_height_cm: e.target.value })}
                 required
               />
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Jarak pemasangan sensor ke dasar acuan elevasi (nol ukur)</span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
-                  OFFSET ELEVASI (CM)
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                    OFFSET ELEVASI (CM)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setActiveInfoField('offset')}
+                    title="Klik untuk melihat penjelasan detail"
+                    style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                  >
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
                 <input
                   type="number"
                   step="0.01"
@@ -317,9 +377,19 @@ export default function DeviceTab({
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
-                  FAKTOR PENGALI (SLOPE)
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                    FAKTOR PENGALI (SLOPE)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setActiveInfoField('slope')}
+                    title="Klik untuk melihat penjelasan detail"
+                    style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                  >
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
                 <input
                   type="number"
                   step="0.0001"
@@ -334,9 +404,19 @@ export default function DeviceTab({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
-                NAMA PETUGAS / TEKNISI
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                  NAMA PETUGAS / TEKNISI
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setActiveInfoField('applied_by')}
+                  title="Klik untuk melihat penjelasan detail"
+                  style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                >
+                  <HelpCircle size={15} />
+                </button>
+              </div>
               <input
                 type="text"
                 className="corporate-input"
@@ -346,9 +426,19 @@ export default function DeviceTab({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
-                CATATAN PERUBAHAN
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                  CATATAN PERUBAHAN
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setActiveInfoField('notes')}
+                  title="Klik untuk melihat penjelasan detail"
+                  style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                >
+                  <HelpCircle size={15} />
+                </button>
+              </div>
               <input
                 type="text"
                 className="corporate-input"
@@ -431,6 +521,112 @@ export default function DeviceTab({
 
         </div>
 
+        {/* Info Modal / Popup Penjelasan Kalibrasi */}
+        {activeInfoField && calibInfoDescriptions[activeInfoField] && (
+          <div 
+            onClick={() => setActiveInfoField(null)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.45)',
+              backdropFilter: 'blur(3px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '16px'
+            }}
+          >
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: '#ffffff',
+                borderRadius: '14px',
+                maxWidth: calibInfoDescriptions[activeInfoField].image ? '680px' : '480px',
+                width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                padding: '24px',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                border: '1px solid #e2e8f0',
+                position: 'relative'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ background: '#e0f2fe', color: '#0284c7', padding: '8px', borderRadius: '10px' }}>
+                    <Info size={20} />
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
+                      {calibInfoDescriptions[activeInfoField].title}
+                    </h4>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Panduan Parameter Lapangan</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveInfoField(null)}
+                  style={{
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '6px',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Render Image if Available */}
+              {calibInfoDescriptions[activeInfoField].image && (
+                <div style={{ marginTop: '16px', borderRadius: '10px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#0f172a' }}>
+                  <img 
+                    src={calibInfoDescriptions[activeInfoField].image} 
+                    alt="Diagram Kalibrasi Sensor" 
+                    style={{ width: '100%', height: 'auto', display: 'block' }} 
+                  />
+                </div>
+              )}
+
+              <div style={{ marginTop: '16px', fontSize: '0.86rem', color: '#334155', lineHeight: 1.6 }}>
+                {calibInfoDescriptions[activeInfoField].desc}
+              </div>
+
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 14px',
+                background: '#f8fafc',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                fontSize: '0.78rem',
+                color: '#475569'
+              }}>
+                <strong style={{ color: '#0f172a' }}>Petunjuk Praktis:</strong>
+                <p style={{ margin: '4px 0 0 0' }}>{calibInfoDescriptions[activeInfoField].example}</p>
+              </div>
+
+              <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveInfoField(null)}
+                  className="btn btn-primary"
+                  style={{ padding: '8px 20px', fontSize: '0.82rem' }}
+                >
+                  Mengerti
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Calibration Audit History Table */}
         <div style={{ marginTop: '28px', paddingTop: '20px', borderTop: '1px solid #f1f5f9' }}>
           <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', marginBottom: '12px' }}>
@@ -493,165 +689,7 @@ export default function DeviceTab({
       </div>
       )}
 
-      {/* ========================================================= */}
-      {/* SECTION 2: KESEHATAN SISTEM & DIAGNOSTIK */}
-      {/* ========================================================= */}
-      <div className="corporate-card" style={{ padding: '28px' }}>
-        
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                background: '#edf2fc',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#003882'
-              }}>
-                <Activity size={22} />
-              </div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                Kesehatan &amp; Diagnostik Perangkat
-              </h2>
-            </div>
-            <p style={{ fontSize: '0.88rem', color: '#64748b', marginTop: '4px', marginBottom: 0 }}>
-              Kondisi telemetri internal stasiun pemantau, integritas memori, dan daya mandiri
-            </p>
-          </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={() => handleRemoteCommand('Restart', `/api/devices/${device?.device_id || 'AWLR-001'}/restart`)}
-              disabled={loadingAction}
-              className="btn btn-secondary"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <RotateCcw size={15} />
-              <span>Restart Stasiun</span>
-            </button>
-
-            <button
-              onClick={() => handleRemoteCommand('Sinkronisasi', `/api/devices/${device?.device_id || 'AWLR-001'}/sync`)}
-              disabled={loadingAction}
-              className="btn btn-secondary"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <HardDriveDownload size={15} />
-              <span>Sinkronisasi SD</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Action feedback toast */}
-        {actionFeedback && (
-          <div style={{
-            marginTop: '16px',
-            padding: '10px 16px',
-            borderRadius: '8px',
-            background: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            color: '#003882',
-            fontSize: '0.85rem',
-            fontWeight: 700
-          }}>
-            {actionFeedback}
-          </div>
-        )}
-
-        {/* System Telemetry Modules Grid (Without proprietary chip details) */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
-          gap: '14px', 
-          marginTop: '24px' 
-        }}>
-          <div className="subtle-panel" style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Cpu size={16} color="#003882" />
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                MODUL KONTROL UTAMA
-              </span>
-            </div>
-            <div className="mono-text" style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
-              Unit Pengendali Aktif
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>
-              Watchdog Pengaman Aktif &bull; Uptime: {diagnostics?.uptime_sec ? `${Math.floor(diagnostics.uptime_sec / 3600)}j ${Math.floor((diagnostics.uptime_sec % 3600) / 60)}m` : 'Normal'}
-            </div>
-          </div>
-
-          <div className="subtle-panel" style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Radio size={16} color="#003882" />
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                ANTARMUKA SENSOR
-              </span>
-            </div>
-            <div className="mono-text" style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
-              Sensor Muka Air
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#003882', fontWeight: 600, marginTop: '2px' }}>
-              Acuan Elevasi: {Number(device?.sensor_height_cm) || 600} cm &bull; Transmisi Digital Siap
-            </div>
-          </div>
-
-          <div className="subtle-panel" style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <HardDrive size={16} color="#003882" />
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                PENYIMPANAN OFFLINE
-              </span>
-            </div>
-            <div className="mono-text" style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '6px' }}>
-              Penyimpanan Lokal Siap
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-              Sistem Berkas Mandiri &bull; Auto Re-mount
-            </div>
-          </div>
-        </div>
-
-        {/* Diagnostics Snapshot Metrics */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
-          gap: '12px', 
-          marginTop: '16px' 
-        }}>
-          <div className="subtle-panel" style={{ padding: '12px' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>BOOT COUNT</span>
-            <div className="mono-text" style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
-              {diagnostics?.boot_count ?? 1} Kali
-            </div>
-          </div>
-
-          <div className="subtle-panel" style={{ padding: '12px' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>WATCHDOG TRIPS</span>
-            <div className="mono-text" style={{ fontSize: '1.1rem', fontWeight: 800, color: diagnostics?.watchdog_count ? '#dc2626' : '#059669' }}>
-              {diagnostics?.watchdog_count ?? 0} Kali
-            </div>
-          </div>
-
-          <div className="subtle-panel" style={{ padding: '12px' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>FREE MEMORY</span>
-            <div className="mono-text" style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
-              {diagnostics?.free_heap_bytes ? `${Math.round(diagnostics.free_heap_bytes / 1024)} KB` : '160 KB'}
-            </div>
-          </div>
-
-          <div className="subtle-panel" style={{ padding: '12px' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>VERSI PERANGKAT</span>
-            <div className="mono-text" style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882' }}>
-              {diagnostics?.firmware_version || 'v1.2.0'}
-            </div>
-          </div>
-        </div>
-
-      </div>
 
       {/* ========================================================= */}
       {/* SECTION 3: KONSOL PERINGATAN (ALERTS CONSOLE) */}

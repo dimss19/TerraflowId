@@ -132,11 +132,11 @@ function AppInner() {
 
   // Authentication State
   const [authToken, setAuthToken] = useState(() => {
-    return sessionStorage.getItem('terraflow_token') || null;
+    return localStorage.getItem('terraflow_token') || sessionStorage.getItem('terraflow_token') || null;
   });
 
   const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = sessionStorage.getItem('terraflow_user');
+    const savedUser = localStorage.getItem('terraflow_user') || sessionStorage.getItem('terraflow_user');
     try {
       return savedUser ? JSON.parse(savedUser) : null;
     } catch {
@@ -156,11 +156,20 @@ function AppInner() {
   }, []);
 
   // Auth Handlers
-  const handleLoginSuccess = (token, user) => {
+  const handleLoginSuccess = (token, user, rememberMe = false) => {
     setAuthToken(token);
     setCurrentUser(user);
-    sessionStorage.setItem('terraflow_token', token);
-    sessionStorage.setItem('terraflow_user', JSON.stringify(user));
+    if (rememberMe) {
+      localStorage.setItem('terraflow_token', token);
+      localStorage.setItem('terraflow_user', JSON.stringify(user));
+      sessionStorage.removeItem('terraflow_token');
+      sessionStorage.removeItem('terraflow_user');
+    } else {
+      sessionStorage.setItem('terraflow_token', token);
+      sessionStorage.setItem('terraflow_user', JSON.stringify(user));
+      localStorage.removeItem('terraflow_token');
+      localStorage.removeItem('terraflow_user');
+    }
     navigate('/dashboard');
     showActionToast(`Selamat datang, ${user.fullName || user.username}! Anda telah berhasil masuk.`);
   };
@@ -168,6 +177,8 @@ function AppInner() {
   const handleLogout = useCallback(() => {
     sessionStorage.removeItem('terraflow_token');
     sessionStorage.removeItem('terraflow_user');
+    localStorage.removeItem('terraflow_token');
+    localStorage.removeItem('terraflow_user');
     setAuthToken(null);
     setCurrentUser(null);
     navigate('/', { replace: true });
@@ -380,6 +391,8 @@ function AppInner() {
                 <UserManagementView 
                   authToken={authToken}
                   currentUser={currentUser}
+                  devices={devices}
+                  onRefreshDevices={fetchAllDevices}
                   onActionToast={showActionToast}
                   onBackToDashboard={() => navigate('/dashboard')}
                 />

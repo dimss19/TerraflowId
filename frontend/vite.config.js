@@ -18,11 +18,21 @@ export default defineConfig({
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('error', (err) => {
-            // Meredam log berisik saat backend belum siap atau klien memutus koneksi
+            // Meredam log saat backend restart atau tab browser di-refresh
             if (['ECONNREFUSED', 'ECONNABORTED', 'ECONNRESET'].includes(err.code)) {
               return;
             }
             console.error('[vite ws proxy error]:', err.message);
+          });
+          proxy.on('proxySocket', (proxySocket) => {
+            proxySocket.on('error', (err) => {
+              if (['ECONNREFUSED', 'ECONNABORTED', 'ECONNRESET'].includes(err.code)) return;
+            });
+          });
+          proxy.on('proxyReqWs', (proxyReq, req, socket) => {
+            socket.on('error', (err) => {
+              if (['ECONNREFUSED', 'ECONNABORTED', 'ECONNRESET'].includes(err.code)) return;
+            });
           });
         },
       },

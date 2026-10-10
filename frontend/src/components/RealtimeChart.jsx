@@ -4,22 +4,100 @@ import { Activity, Clock } from 'lucide-react';
 export default function RealtimeChart({ readings = [] }) {
   const [hoveredPoint, setHoveredPoint] = useState(null);
 
-  // Take the most recent 60 readings
-  const displayData = readings.slice(-60);
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000; // 60 menit jendela waktu
+  const startTime = now - windowMs;
 
+  // Filter hanya data yang berada dalam rentang 60 menit terakhir (now - 60 menit s/d now)
+  const displayData = readings.filter(d => {
+    if (!d.timestamp) return false;
+    const t = new Date(d.timestamp).getTime();
+    return t >= startTime && t <= (now + 5000); // toleransi 5 detik jam client
+  });
+
+  // Ambil informasi data terakhir yang tersimpan di sistem jika ada
+  const lastKnownReading = readings.length > 0 ? readings[readings.length - 1] : null;
+  const lastKnownTs = lastKnownReading?.timestamp ? new Date(lastKnownReading.timestamp).getTime() : null;
+
+  // Jika tidak ada data sama sekali dalam 60 menit terakhir
   if (displayData.length === 0) {
+    const formatLastTime = () => {
+      if (!lastKnownTs) return 'Belum ada data';
+      const d = new Date(lastKnownTs);
+      return `${d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+    };
+
     return (
-      <div className="corporate-card" style={{ padding: '24px', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Menunggu aliran data telemetri real-time...</p>
+      <div className="corporate-card" style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: '260px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              background: '#edf2fc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#003882'
+            }}>
+              <Activity size={18} />
+            </div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+              Grafik Telemetri Real-Time (60 Menit Terakhir)
+            </h3>
+          </div>
+          <span className="badge badge-navy" style={{ background: '#f1f5f9', color: '#64748b' }}>
+            <Clock size={12} /> 0 Sampel
+          </span>
+        </div>
+
+        <div style={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          background: '#f8fafc', 
+          borderRadius: '12px', 
+          border: '1px dashed #cbd5e1',
+          padding: '28px 20px',
+          textAlign: 'center',
+          gap: '8px'
+        }}>
+          <Clock size={32} color="#94a3b8" />
+          <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#334155' }}>
+            Tidak Ada Transmisi Telemetri dalam 60 Menit Terakhir
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#64748b', maxWidth: '420px', lineHeight: 1.4 }}>
+            Grafik ini hanya menampilkan aliran data 1 jam terakhir secara langsung. 
+            {lastKnownTs && (
+              <span style={{ display: 'block', marginTop: '6px', fontWeight: 600, color: '#003882' }}>
+                Data terakhir tercatat: {formatLastTime()} ({Number(lastKnownReading?.water_level_cm || 0).toFixed(1)} cm)
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Time axis footer */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', fontSize: '0.76rem', color: '#94a3b8', fontWeight: 600 }}>
+          <span>60 Menit Lalu</span>
+          <span>30 Menit Lalu</span>
+          <span>Sekarang</span>
+        </div>
       </div>
     );
   }
 
+  // Jika ADA data dalam 60 menit terakhir:
+  const latestTs = new Date(displayData[displayData.length - 1].timestamp).getTime();
+  const isLatestFresh = (now - latestTs) < 10 * 60 * 1000;
+
   const values = displayData.map(d => Number(d.water_level_cm) || 0);
-  const minVal = Math.floor(Math.min(...values) - 5);
-  const maxVal = Math.ceil(Math.max(...values) + 5);
+  const minVal = values.length ? Math.floor(Math.min(...values) - 5) : 100;
+  const maxVal = values.length ? Math.ceil(Math.max(...values) + 5) : 350;
   const range = Math.max(10, maxVal - minVal);
-  const currentVal = values[values.length - 1];
+  const currentVal = values.length ? values[values.length - 1] : null;
 
   // SVG dimensions
   const svgWidth = 600;
@@ -27,8 +105,11 @@ export default function RealtimeChart({ readings = [] }) {
   const paddingX = 20;
   const paddingY = 25;
 
-  const points = displayData.map((d, i) => {
-    const x = paddingX + (i / Math.max(1, displayData.length - 1)) * (svgWidth - paddingX * 2);
+  // Sumbu X merepresentasikan 60 menit terakhir (startTime = now - 60 min, endTime = now)
+  const points = displayData.map((d) => {
+    const t = new Date(d.timestamp).getTime();
+    const progress = Math.min(1, Math.max(0, (t - startTime) / windowMs));
+    const x = paddingX + progress * (svgWidth - paddingX * 2);
     const y = svgHeight - paddingY - ((Number(d.water_level_cm) - minVal) / range) * (svgHeight - paddingY * 2);
     return { x, y, data: d };
   });
@@ -116,11 +197,37 @@ export default function RealtimeChart({ readings = [] }) {
           {/* Area Fill */}
           <path d={areaD} fill="url(#realtimeAreaGrad)" className="chart-animated-area" />
 
+          {/* Empty/Awaiting Live Data Zone if latest data stopped/stale */}
+          {points.length > 0 && points[points.length - 1].x < (svgWidth - paddingX - 15) && (
+            <g>
+              <rect 
+                x={points[points.length - 1].x} 
+                y={paddingY} 
+                width={(svgWidth - paddingX) - points[points.length - 1].x} 
+                height={svgHeight - paddingY * 2} 
+                fill="#f8fafc" 
+                opacity="0.65"
+                stroke="#e2e8f0"
+                strokeDasharray="4 4"
+              />
+              <text 
+                x={points[points.length - 1].x + ((svgWidth - paddingX) - points[points.length - 1].x) / 2} 
+                y={svgHeight / 2} 
+                fill="#94a3b8" 
+                fontSize="11" 
+                fontWeight="700" 
+                textAnchor="middle"
+              >
+                (Belum ada data terbaru)
+              </text>
+            </g>
+          )}
+
           {/* Line Stroke */}
           <path d={pathD} fill="none" stroke="#003882" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" className="chart-animated-line" />
 
           {/* Live Telemetry Beacon Ping on Latest Reading */}
-          {points.length > 0 && (
+          {points.length > 0 && isLatestFresh && (
             <circle
               cx={points[points.length - 1].x}
               cy={points[points.length - 1].y}
@@ -194,7 +301,13 @@ export default function RealtimeChart({ readings = [] }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>
         <span>60 Menit Lalu</span>
         <span>30 Menit Lalu</span>
-        <span style={{ color: '#003882', fontWeight: 800 }}>Terkini ({currentVal?.toFixed(1)} cm)</span>
+        <span style={{ color: isLatestFresh ? '#003882' : '#d97706', fontWeight: 800 }}>
+          {isLatestFresh 
+            ? `Terkini (${currentVal?.toFixed(1)} cm)` 
+            : latestTs 
+              ? `Data Terakhir: ${Math.floor((now - latestTs) / 60000)} mnt lalu (${currentVal?.toFixed(1)} cm)`
+              : 'Tidak ada data'}
+        </span>
       </div>
 
     </div>

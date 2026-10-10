@@ -77,26 +77,50 @@ router.get('/readings/:device_id', async (req, res) => {
 // 3. TIDAL ANALYSIS (PASANG SURUT)
 // ==========================================
 
-// GET /api/readings/:device_id/tidal - 24-hour tidal curve and stats
+// GET /api/readings/:device_id/tidal - Tidal curve and stats with flexible date/time filtering
 router.get('/readings/:device_id/tidal', async (req, res) => {
   const { device_id } = req.params;
-  const { hours = 24 } = req.query;
-  const timeWindowHours = Math.min(72, Math.max(1, parseInt(hours, 10) || 24));
+  const { hours = 24, start, end } = req.query;
 
   try {
-    const result = await query(`
-      SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c, battery_voltage
-      FROM readings
-      WHERE device_id = $1
-        AND timestamp >= NOW() - ($2 || ' hours')::INTERVAL
-      ORDER BY timestamp ASC
-    `, [device_id, timeWindowHours.toString()]);
+    let result;
+    if (start || end) {
+      const conditions = ['device_id = $1'];
+      const params = [device_id];
+      let pIdx = 2;
+
+      if (start) {
+        conditions.push(`timestamp >= $${pIdx}`);
+        params.push(new Date(start).toISOString());
+        pIdx++;
+      }
+      if (end) {
+        conditions.push(`timestamp <= $${pIdx}`);
+        params.push(new Date(end).toISOString());
+        pIdx++;
+      }
+
+      result = await query(`
+        SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c, battery_voltage
+        FROM readings
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY timestamp ASC
+      `, params);
+    } else {
+      const timeWindowHours = Math.min(168, Math.max(1, parseInt(hours, 10) || 24));
+      result = await query(`
+        SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c, battery_voltage
+        FROM readings
+        WHERE device_id = $1
+          AND timestamp >= NOW() - ($2 || ' hours')::INTERVAL
+        ORDER BY timestamp ASC
+      `, [device_id, timeWindowHours.toString()]);
+    }
 
     const analysis = analyzeTidalReadings(result.rows);
     res.json({
       success: true,
       deviceId: device_id,
-      windowHours: timeWindowHours,
       ...analysis
     });
   } catch (err) {
@@ -235,9 +259,10 @@ router.get('/alerts/:device_id', async (req, res) => {
 });
 
 // PATCH /api/alerts/:id/resolve - Mark alert as resolved
-router.patch('/alerts/:id/resolve', async (req, res) => {
+router.patch('/alerts/:id/resolve', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { resolved_by } = req.body;
+  const operatorName = req.user?.fullName || req.user?.username || resolved_by || 'Operator Lapangan';
 
   try {
     const result = await query(`
@@ -245,7 +270,7 @@ router.patch('/alerts/:id/resolve', async (req, res) => {
       SET resolved = true, resolved_at = NOW(), resolved_by = $1
       WHERE id = $2
       RETURNING *
-    `, [resolved_by || 'Operator Lapangan', id]);
+    `, [operatorName, id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Alert tidak ditemukan' });

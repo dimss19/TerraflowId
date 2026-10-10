@@ -21,7 +21,14 @@ import {
   ArrowLeft
 } from 'lucide-react';
 
-export default function UserManagementView({ authToken, currentUser, onActionToast, onBackToDashboard }) {
+export default function UserManagementView({ 
+  authToken, 
+  currentUser, 
+  devices = [], 
+  onRefreshDevices, 
+  onActionToast, 
+  onBackToDashboard 
+}) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
@@ -32,6 +39,9 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [deleteConfirmUser, setDeleteConfirmUser] = useState(null);
+  const [approveModalUser, setApproveModalUser] = useState(null);
+  const [selectedStationId, setSelectedStationId] = useState('');
+  const [approving, setApproving] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -219,6 +229,67 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
       }
     } catch (err) {
       if (onActionToast) onActionToast(`Error: ${err.message}`);
+    }
+  };
+
+  // Open modal to approve operator and assign AWLR station
+  const handleOpenApproveModal = (u) => {
+    setApproveModalUser(u);
+    const assignedDev = devices.find(d => d.assigned_to === u.id || d.assigned_operator_id === u.id);
+    setSelectedStationId(assignedDev ? assignedDev.device_id : '');
+  };
+
+  // Confirm approval and assign station
+  const handleConfirmApproval = async () => {
+    if (!approveModalUser) return;
+    setApproving(true);
+    try {
+      // 1. Approve user account
+      const userRes = await fetch(`/api/users/${approveModalUser.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ is_approved: true })
+      });
+      const userData = await userRes.json();
+      if (!userData.success) {
+        throw new Error(userData.error || 'Gagal menyetujui akun pengguna');
+      }
+
+      // 2. Assign station if selected
+      if (selectedStationId) {
+        const devRes = await fetch(`/api/devices/${selectedStationId}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ assigned_to: approveModalUser.id })
+        });
+        const devData = await devRes.json();
+        if (!devData.success) {
+          throw new Error(devData.error || 'Gagal menugaskan stasiun');
+        }
+      }
+
+      const assignedDev = devices.find(d => d.device_id === selectedStationId);
+      if (onActionToast) {
+        onActionToast(
+          assignedDev 
+            ? `Akun '${approveModalUser.username}' disetujui & ditugaskan ke ${assignedDev.name}!`
+            : `Akun '${approveModalUser.username}' berhasil disetujui!`
+        );
+      }
+
+      setApproveModalUser(null);
+      fetchUsers();
+      if (onRefreshDevices) onRefreshDevices();
+    } catch (err) {
+      if (onActionToast) onActionToast(`Gagal: ${err.message}`);
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -436,8 +507,9 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
               <th>PENGGUNA</th>
               <th>EMAIL</th>
               <th>HAK AKSES (ROLE)</th>
-              <th>STATUS KREDENSIAL</th>
-              <th>STATUS</th>
+              <th>PERSETUJUAN AKUN</th>
+              <th>STASIUN AWLR</th>
+              <th>STATUS AKUN</th>
               <th>LOGIN TERAKHIR</th>
               <th style={{ textAlign: 'right' }}>AKSI</th>
             </tr>
@@ -516,23 +588,75 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
                       )}
                     </td>
 
-                    {/* Password Security Badge */}
+                    {/* Account Approval Status & Action */}
                     <td>
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        color: '#0284c7',
-                        background: '#f0f9ff',
-                        padding: '4px 10px',
-                        borderRadius: '20px',
-                        border: '1px solid #bae6fd'
-                      }}>
-                        <Lock size={12} />
-                        Terenkripsi BCrypt
-                      </span>
+                      {u.role === 'admin' ? (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          color: '#059669',
+                          background: '#ecfdf5',
+                          padding: '4px 10px',
+                          borderRadius: '20px',
+                          border: '1px solid #a7f3d0'
+                        }}>
+                          <CheckCircle2 size={12} />
+                          Otomatis
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleOpenApproveModal(u)}
+                          title="Klik untuk menyetujui akun dan menugaskan stasiun AWLR"
+                          style={{
+                            background: u.is_approved ? '#ecfdf5' : '#fffbeb',
+                            border: `1px solid ${u.is_approved ? '#a7f3d0' : '#fde68a'}`,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
+                            borderRadius: '20px',
+                            color: u.is_approved ? '#059669' : '#d97706',
+                            fontWeight: 700,
+                            fontSize: '0.74rem'
+                          }}
+                        >
+                          {u.is_approved ? <CheckCircle2 size={13} /> : <Clock size={13} />}
+                          <span>{u.is_approved ? 'Disetujui' : 'Menunggu Approval'}</span>
+                        </button>
+                      )}
+                    </td>
+
+                    {/* Assigned AWLR Station */}
+                    <td>
+                      {u.role === 'admin' ? (
+                        <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Semua Stasiun</span>
+                      ) : (() => {
+                        const assignedDev = devices.find(d => d.assigned_to === u.id || d.assigned_operator_id === u.id);
+                        return assignedDev ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#eff6ff',
+                            color: '#003882',
+                            border: '1px solid #bfdbfe',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700
+                          }}>
+                            {assignedDev.name}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: '0.72rem', fontStyle: 'italic' }}>
+                            Belum Ditugaskan
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Status Toggle */}
@@ -540,7 +664,7 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
                       <button
                         onClick={() => handleToggleActive(u)}
                         disabled={isCurrent}
-                        title={isCurrent ? 'Tidak dapat menonaktifkan akun sendiri' : 'Klik untuk mengubah status'}
+                        title={isCurrent ? 'Tidak dapat menonaktifkan akun sendiri' : 'Klik untuk mengubah status aktif/nonaktif'}
                         style={{
                           background: u.is_active ? '#f0fdf4' : '#fef2f2',
                           border: `1px solid ${u.is_active ? '#bbf7d0' : '#fecaca'}`,
@@ -999,6 +1123,115 @@ export default function UserManagementView({ authToken, currentUser, onActionToa
                 className="btn btn-danger"
               >
                 {submitting ? 'Menghapus...' : 'Ya, Hapus Akun'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Modal: Persetujuan Operator & Penugasan Stasiun AWLR */}
+      {approveModalUser && (
+        <div 
+          className="modal-backdrop" 
+          onClick={(e) => { if (e.target === e.currentTarget) setApproveModalUser(null); }}
+        >
+          <div className="modal-card" style={{ maxWidth: '480px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: '#ecfdf5',
+                  color: '#059669',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <UserCheck size={22} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                    Persetujuan &amp; Penugasan Stasiun
+                  </h3>
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0' }}>
+                    Verifikasi otorisasi akun operator AWLR
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setApproveModalUser(null)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Operator Summary Card */}
+            <div style={{
+              background: '#f8fafc',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0',
+              padding: '14px',
+              marginBottom: '18px'
+            }}>
+              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.94rem' }}>
+                {approveModalUser.full_name}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                @{approveModalUser.username} &bull; {approveModalUser.email}
+              </div>
+              {approveModalUser.phone && (
+                <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '4px' }}>
+                  No. Telepon: {approveModalUser.phone}
+                </div>
+              )}
+            </div>
+
+            {/* Station Assignment Select */}
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              <label className="form-label">
+                <span>PILIH STASIUN AWLR YANG DITUGASKAN</span>
+              </label>
+              <select
+                value={selectedStationId}
+                onChange={(e) => setSelectedStationId(e.target.value)}
+                className="form-select"
+                style={{ width: '100%', padding: '10px 12px' }}
+              >
+                <option value="">-- Belum Ditugaskan (Pilih Nanti) --</option>
+                {devices.map((d) => (
+                  <option key={d.device_id} value={d.device_id}>
+                    [{d.device_id}] {d.name} {d.location ? `— ${d.location}` : ''}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '6px', lineHeight: 1.4 }}>
+                Operator hanya akan memiliki izin memantau, mengkalibrasi, dan mengontrol stasiun AWLR yang ditugaskan kepada mereka.
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setApproveModalUser(null)}
+                className="btn btn-secondary"
+                style={{ padding: '9px 16px', fontSize: '0.86rem' }}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={approving}
+                onClick={handleConfirmApproval}
+                className="btn btn-primary"
+                style={{ padding: '9px 18px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <CheckCircle2 size={16} />
+                <span>{approving ? 'Memproses...' : 'Setujui & Tugaskan Stasiun'}</span>
               </button>
             </div>
           </div>

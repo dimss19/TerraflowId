@@ -12,8 +12,6 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
   const maxScaleM = maxScaleCm / 100.0;
   const waterLevelCm = hasData ? Number(reading.water_level_cm) : 0;
   const waterLevelM = waterLevelCm / 100.0;
-  const rawDistanceCm = hasData ? Number(reading.raw_distance_cm) : 0;
-  const rawDistanceM = rawDistanceCm / 100.0;
 
   // Percentage for gauge based on configured reference height
   const percent = hasData ? Math.min(100, Math.max(0, (waterLevelCm / maxScaleCm) * 100)) : 0;
@@ -98,184 +96,167 @@ export default function WaterLevelGauge({ reading, sensorHeight = 600, tidalStat
             </h3>
             <div>
               <span className="badge badge-navy" style={{ fontSize: '0.68rem', padding: '2px 8px', fontWeight: 700 }}>
-                TINGGI ACUAN ({maxScaleM.toFixed(1)} M)
+                TINGGI ACUAN TIANG ({maxScaleM.toFixed(2)} M)
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Radial SVG Gauge Container (Fully Responsive) */}
-      <div style={{ position: 'relative', width: '100%', maxWidth: '280px', display: 'flex', justifyContent: 'center' }}>
-        <svg
-          viewBox="0 0 280 200"
-          style={{ width: '100%', height: 'auto', display: 'block' }}
-        >
-          <defs>
-            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#0284c7" />
-              <stop offset="100%" stopColor="#003882" />
-            </linearGradient>
-          </defs>
-
-          {/* Background Track Arc */}
-          <circle
-            stroke="#e2e8f0"
-            fill="transparent"
-            strokeWidth={stroke}
-            strokeDasharray={`${arcLength} ${circumference}`}
-            style={{
-              transformOrigin: '140px 125px',
-              transform: 'rotate(150deg)'
-            }}
-            r={normalizedRadius}
-            cx="140"
-            cy="125"
-            strokeLinecap="round"
-          />
-
-          {/* Value Progress Arc */}
-          <circle
-            stroke="url(#gaugeGradient)"
-            fill="transparent"
-            strokeWidth={stroke}
-            strokeDasharray={`${arcLength} ${circumference}`}
-            strokeDashoffset={strokeDashoffset}
-            style={{
-              transformOrigin: '140px 125px',
-              transform: 'rotate(150deg)',
-              transition: 'stroke-dashoffset 1.4s cubic-bezier(0.16, 1, 0.3, 1)'
-            }}
-            r={normalizedRadius}
-            cx="140"
-            cy="125"
-            strokeLinecap="round"
-          />
-
-          {/* Main Water Level Number in METERS */}
-          <text
-            x="140"
-            y="112"
-            textAnchor="middle"
-            dominantBaseline="central"
-            style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}
+      {/* Radial SVG Gauge Container (Centered in vertical space) */}
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '220px',
+        margin: 'auto 0'
+      }}>
+        <div style={{ width: '100%', maxWidth: '290px', display: 'flex', justifyContent: 'center' }}>
+          <svg
+            viewBox="0 0 280 200"
+            style={{ width: '100%', height: 'auto', display: 'block' }}
           >
-            <tspan fontSize="36" fontWeight="800" fill={hasData ? '#0f172a' : '#94a3b8'} letterSpacing="-0.03em">
-              {hasData ? waterLevelM.toFixed(2) : '--'}
-            </tspan>
-            <tspan fontSize="18" fontWeight="800" fill={hasData ? '#003882' : '#94a3b8'} dx="4">
-              m
-            </tspan>
-          </text>
+            <defs>
+              <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#0284c7" />
+                <stop offset="100%" stopColor="#003882" />
+              </linearGradient>
+            </defs>
 
-          {/* Sub-badge: cm equivalent (Compact Pill) */}
-          <g>
-            <rect
-              x="86"
-              y="134"
-              width="108"
-              height="20"
-              rx="10"
-              fill={hasData ? '#edf2fc' : '#f1f5f9'}
-              stroke={hasData ? '#dbeafe' : '#e2e8f0'}
-              strokeWidth="1"
+            {/* Background Track Arc */}
+            <circle
+              stroke="#e2e8f0"
+              fill="transparent"
+              strokeWidth={stroke}
+              strokeDasharray={`${arcLength} ${circumference}`}
+              style={{
+                transformOrigin: '140px 125px',
+                transform: 'rotate(150deg)'
+              }}
+              r={normalizedRadius}
+              cx="140"
+              cy="125"
+              strokeLinecap="round"
             />
+
+            {/* Value Progress Arc */}
+            <circle
+              stroke="url(#gaugeGradient)"
+              fill="transparent"
+              strokeWidth={stroke}
+              strokeDasharray={`${arcLength} ${circumference}`}
+              strokeDashoffset={strokeDashoffset}
+              style={{
+                transformOrigin: '140px 125px',
+                transform: 'rotate(150deg)',
+                transition: 'stroke-dashoffset 1.4s cubic-bezier(0.16, 1, 0.3, 1)'
+              }}
+              r={normalizedRadius}
+              cx="140"
+              cy="125"
+              strokeLinecap="round"
+            />
+
+            {/* Main Water Level Number in METERS */}
             <text
               x="140"
-              y="144"
+              y="112"
               textAnchor="middle"
               dominantBaseline="central"
-              fontSize="10"
-              fontWeight="700"
-              fill={hasData ? '#003882' : '#64748b'}
               style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}
             >
-              {hasData ? `${waterLevelCm.toFixed(1)} cm` : 'Menunggu Sinyal'}
+              <tspan fontSize="36" fontWeight="800" fill={hasData ? '#0f172a' : '#94a3b8'} letterSpacing="-0.03em">
+                {hasData ? waterLevelM.toFixed(2) : '--'}
+              </tspan>
+              <tspan fontSize="18" fontWeight="800" fill={hasData ? '#003882' : '#94a3b8'} dx="4">
+                m
+              </tspan>
             </text>
-          </g>
 
-          {/* Min / Max Labels at the ends of arc */}
-          <text x="56" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">0 m</text>
-          <text x="224" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">{maxScaleM.toFixed(1)} m</text>
-        </svg>
-      </div>
+            {/* Sub-badge: cm equivalent (Compact Pill) */}
+            <g>
+              <rect
+                x="86"
+                y="134"
+                width="108"
+                height="20"
+                rx="10"
+                fill={hasData ? '#edf2fc' : '#f1f5f9'}
+                stroke={hasData ? '#dbeafe' : '#e2e8f0'}
+                strokeWidth="1"
+              />
+              <text
+                x="140"
+                y="144"
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize="10"
+                fontWeight="700"
+                fill={hasData ? '#003882' : '#64748b'}
+                style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}
+              >
+                {hasData ? `${waterLevelCm.toFixed(1)} cm` : 'Menunggu Sinyal'}
+              </text>
+            </g>
 
-      {/* Tidal Dynamic Indicator Badge */}
-      <div style={{
-        marginTop: '10px',
-        padding: '8px 16px',
-        borderRadius: '8px',
-        background: statusBg,
-        border: `1px solid ${statusBorder}`,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        fontSize: '0.82rem',
-        fontWeight: 700,
-        color: statusColor,
-        width: '100%',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <StatusIcon size={16} />
-          <span>{statusText}</span>
-        </div>
-        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
-          {hasData ? `${percent.toFixed(1)}% Terhadap Acuan (${maxScaleM.toFixed(1)} m)` : 'Sensor Standby / Off'}
-        </span>
-      </div>
-
-      {/* Info data terakhir diterima / menit lalu */}
-      <div style={{
-        width: '100%',
-        marginTop: '10px',
-        padding: '6px 12px',
-        borderRadius: '6px',
-        background: '#f8fafc',
-        border: '1px solid #eef2f7',
-        fontSize: '0.74rem',
-        color: hasData ? '#059669' : '#d97706',
-        fontWeight: 700,
-        textAlign: 'center',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '6px'
-      }}>
-        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: hasData ? '#10b981' : '#f59e0b' }} />
-        <span>{formatLastSeenText()}</span>
-      </div>
-
-      {/* Secondary Metric Tiles */}
-      <div style={{ width: '100%', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginTop: '12px' }}>
-        <div className="subtle-panel">
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Jarak Sensor (Raw)
-          </div>
-          <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-            {hasData ? (
-              <>
-                {rawDistanceM.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#003882' }}>m</span>
-                <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b', marginLeft: '4px' }}>({rawDistanceCm.toFixed(1)} cm)</span>
-              </>
-            ) : (
-              <span style={{ color: '#94a3b8' }}>-- m</span>
-            )}
-          </div>
-        </div>
-
-        <div className="subtle-panel">
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Tinggi Acuan Pemasangan
-          </div>
-          <div className="mono-text" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-            {maxScaleM.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#003882' }}>m</span>
-            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b', marginLeft: '4px' }}>({maxScaleCm.toFixed(0)} cm)</span>
-          </div>
+            {/* Min / Max Labels at the ends of arc */}
+            <text x="56" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">0 m</text>
+            <text x="224" y="190" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle">{maxScaleM.toFixed(2)} m</text>
+          </svg>
         </div>
       </div>
 
+      {/* Bottom Anchored Area (Tidal Status & Last Seen) */}
+      <div style={{ width: '100%', marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {/* Tidal Dynamic Indicator Badge */}
+        <div style={{
+          padding: '8px 16px',
+          borderRadius: '8px',
+          background: statusBg,
+          border: `1px solid ${statusBorder}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '0.82rem',
+          fontWeight: 700,
+          color: statusColor,
+          width: '100%',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <StatusIcon size={16} />
+            <span>{statusText}</span>
+          </div>
+          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+            {hasData ? `${percent.toFixed(1)}% Terhadap Acuan (${maxScaleM.toFixed(1)} m)` : 'Sensor Standby / Off'}
+          </span>
+        </div>
+
+        {/* Info data terakhir diterima / menit lalu */}
+        <div style={{
+          width: '100%',
+          padding: '6px 12px',
+          borderRadius: '6px',
+          background: '#f8fafc',
+          border: '1px solid #eef2f7',
+          fontSize: '0.74rem',
+          color: hasData ? '#059669' : '#d97706',
+          fontWeight: 700,
+          textAlign: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '6px'
+        }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: hasData ? '#10b981' : '#f59e0b' }} />
+          <span>{formatLastSeenText()}</span>
+        </div>
+      </div>
     </div>
   );
 }

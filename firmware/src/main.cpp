@@ -10,6 +10,7 @@
 #include "sdcard_logger.h"
 #include "mqtt_client.h"
 #include "watchdog_mgr.h"
+#include "web_server_mgr.h"
 
 // Subsystem Instances
 SensorA16 sensor;
@@ -20,11 +21,15 @@ MqttManager mqttMgr;
 BootStats bootStats;
 int readingCount = 0;
 unsigned long lastHourlyDiagMs = 0;
+unsigned long lastHealthPollMs = 0;
 
-// Read battery voltage via ADC voltage divider
+// Read battery voltage via ADC voltage divider (safe fallback when hardware is not present)
 float readBatteryVoltage() {
+  if (PIN_BATT_ADC < 0) {
+    return 0.0f; // Modul pembagi tegangan aki tidak terpasang
+  }
   int rawAdc = analogRead(PIN_BATT_ADC);
-  // 12V lead-acid / LiFePO4 battery divider ratio (e.g. 100k / 20k => factor ~6.0)
+  // 12V lead-acid / LiFePO4 battery divider ratio
   float voltage = (rawAdc / 4095.0f) * 3.3f * 4.24f;
   return voltage;
 }
@@ -34,98 +39,202 @@ float readBatteryVoltage() {
 // ==========================================
 void samplingTask(void *pvParameters) {
   TickType_t lastWakeTime = xTaskGetTickCount();
-  const TickType_t interval = pdMS_TO_TICKS(SAMPLING_INTERVAL_MS);
 
   while (true) {
     readingCount++;
-    Serial.printf("\n[CYCLE #%d] Starting 1-minute AWLR sampling...\n", readingCount);
+    uint32_t intervalSec = webServerMgr.getSettings().samplingIntervalSec;
+    if (intervalSec < 5) intervalSec = 60;
+    TickType_t cycleInterval = pdMS_TO_TICKS(intervalSec * 1000);
 
-    // 1. Read A16 Ultrasonic Sensor via RS485 with Wave Filtering & Acoustic Compensation
-    A16Reading reading = sensor.readFilteredDistance(5);
+    Serial.printf("\n[CYCLE #%d] Starting AWLR sampling (Interval: %lu s)...\n",
+      readingCount, (unsigned long)intervalSec);
+
+    bool realActive = webServerMgr.isRealSensorEnabled();
+    bool dummyActive = webServerMgr.isDummySensorEnabled();
+    const char *dataSource = "none";
+    A16Reading reading;
+    reading.isValid = false;
+
     float batteryV = readBatteryVoltage();
     int batteryPct = min(100, max(0, (int)(((batteryV - 10.5f) / 2.3f) * 100.0f)));
 
+    // 1. Data Acquisition Strategy (Real Sensor vs Dummy / Demo Simulation)
+    if (realActive) {
+      // Mode operasional sungai normal di lapangan (RS485 A16)
+      reading = sensor.readFilteredDistance(5);
+      if (reading.isValid) {
+        dataSource = "live";
+      } else if (dummyActive) {
+        Serial.printf("[SENSOR FALLBACK] Real sensor disconnected/failed (%s). Fallback to dummy simulation.\n",
+          reading.errorMsg.c_str());
+      }
+    }
+
+    if (!reading.isValid && dummyActive) {
+      // Mode demo meja pameran / presentasi tanpa sensor fisik
+      static float simPhase = 0.0f;
+      simPhase += 0.25f;
+      CalibrationData calib = mqttMgr.getCalibration();
+      float dummyWaterLevel = 250.0f + sinf(simPhase) * 18.0f + ((float)(esp_random() % 100) / 100.0f - 0.5f) * 3.0f;
+      float effectiveDist = calib.sensorHeightCm - dummyWaterLevel;
+
+      reading.isValid = true;
+      reading.rawDistanceCm = effectiveDist;
+      reading.filteredDistanceCm = effectiveDist;
+      reading.temperatureC = 27.5f;
+      reading.validSamples = 5;
+      reading.errorMsg = "";
+      dataSource = "dummy";
+      Serial.printf("[DEMO MODE] Generated dummy wave: Level=%.1f cm (Dist=%.1f cm)\n",
+        dummyWaterLevel, effectiveDist);
+    }
+
+    // 2. Process Telemetry when Valid Data Exists
     if (reading.isValid) {
-      // 2. Apply NVS Calibration Formula:
-      // Water Level = Sensor Height - (Filtered Distance * Slope + Offset)
       CalibrationData calib = mqttMgr.getCalibration();
       float effectiveDist = (reading.filteredDistanceCm > 0.0f) ? reading.filteredDistanceCm : reading.rawDistanceCm;
       float waterLevel = calib.sensorHeightCm - (effectiveDist * calib.slope + calib.offsetCm);
 
       LogRecord record;
-      record.timestamp = millis() / 1000;
-      record.rawDistanceCm = effectiveDist;
+      memset(&record, 0, sizeof(record));
+
+      time_t now = time(nullptr);
+      struct tm timeinfo;
+      if (now > 1700000000 && localtime_r(&now, &timeinfo)) {
+        strftime(record.date, sizeof(record.date), "%Y-%m-%d", &timeinfo);
+        strftime(record.time, sizeof(record.time), "%H:%M:%S", &timeinfo);
+        record.minute = (uint8_t)timeinfo.tm_min;
+        record.timestamp = (uint32_t)now;
+      } else {
+        uint32_t upSec = millis() / 1000;
+        uint32_t upMin = (upSec / 60) % 60;
+        uint32_t upHour = (upSec / 3600) % 24;
+        uint32_t upDay = 1 + (upSec / 86400);
+        snprintf(record.date, sizeof(record.date), "2026-10-%02u", upDay > 31 ? 31 : upDay);
+        snprintf(record.time, sizeof(record.time), "%02u:%02u:%02u", upHour, upMin, upSec % 60);
+        record.minute = (uint8_t)upMin;
+        record.timestamp = upSec;
+      }
+
+      record.rawDistanceCm = reading.rawDistanceCm;
+      record.filteredDistanceCm = effectiveDist;
       record.waterLevelCm = waterLevel;
       record.temperatureC = reading.temperatureC;
       record.batteryVoltage = batteryV;
       record.batteryPercent = batteryPct;
       record.isSent = false;
 
-      // 3. Mandatory Offline-First Storage on SD Card
-      String filename = "2026-10-07.csv"; // In production, formatted from NTP/RTC date
+      // 3. Mandatory Offline-First Storage on SD Card (Dynamic NTP-based filename)
+      String filename = webServerMgr.getCurrentLogFilename();
       sdLogger.appendRecord(filename, record);
 
       // 4. Publish Real-time Telemetry via MQTT
       if (mqttMgr.isConnected()) {
-        bool ok = mqttMgr.publishReading(record, readingCount);
+        bool ok = mqttMgr.publishReading(record, readingCount, dataSource);
         if (ok) {
           record.isSent = true;
           sdLogger.markRecordSent(filename, record.timestamp);
-          Serial.printf("[TELEMETRY SENT] Level: %.1f cm | Dist: %.1f cm | Batt: %.2fV\n",
-            waterLevel, reading.rawDistanceCm, batteryV);
+          Serial.printf("[TELEMETRY SENT (%s)] Level: %.1f cm | Dist: %.1f cm | Batt: %.2fV\n",
+            dataSource, waterLevel, reading.rawDistanceCm, batteryV);
         }
 
-        // If there are unsent offline records, trigger bulk sync
+        // Trigger bulk sync if offline buffer has pending records
         if (sdLogger.getPendingCount() > 0) {
           mqttMgr.triggerBulkSync(sdLogger);
         }
       } else {
-        Serial.printf("[OFFLINE] No MQTT connection. Record buffered to SD Card (%d pending)\n",
-          sdLogger.getPendingCount());
+        Serial.printf("[OFFLINE] No MQTT. Buffered to SD Card %s (%d pending)\n",
+          filename.c_str(), sdLogger.getPendingCount());
       }
+
+      // 5. Update Web Telemetry Snapshot for local Web Dashboard
+      TelemetrySnapshot snap;
+      snap.waterLevelCm = waterLevel;
+      snap.rawDistanceCm = reading.rawDistanceCm;
+      snap.filteredDistanceCm = effectiveDist;
+      snap.temperatureC = reading.temperatureC;
+      snap.batteryVoltage = batteryV;
+      snap.batteryPercent = batteryPct;
+      snap.signalRssi = WiFi.RSSI();
+      snap.sdCardOk = sdLogger.isReady();
+      snap.pendingLogs = sdLogger.getPendingCount();
+      snap.readingCount = readingCount;
+      snap.wifiConnected = (WiFi.status() == WL_CONNECTED);
+      snap.mqttConnected = mqttMgr.isConnected();
+      strncpy(snap.dataSource, dataSource, sizeof(snap.dataSource) - 1);
+      snprintf(snap.lastSampleTime, sizeof(snap.lastSampleTime), "%lu s", (unsigned long)(millis() / 1000));
+      webServerMgr.updateTelemetry(snap);
+
     } else {
-      Serial.printf("[SENSOR ERROR] Reading skipped: %s\n", reading.errorMsg.c_str());
+      if (!realActive && !dummyActive) {
+        Serial.println("[STANDBY] Both Real Sensor and Dummy Simulation are OFF. Sampling paused.");
+        TelemetrySnapshot snap = webServerMgr.getTelemetry();
+        strncpy(snap.dataSource, "paused", sizeof(snap.dataSource) - 1);
+        snap.batteryVoltage = batteryV;
+        snap.batteryPercent = batteryPct;
+        webServerMgr.updateTelemetry(snap);
+      } else {
+        Serial.printf("[SENSOR ERROR] Reading skipped: %s\n", reading.errorMsg.c_str());
+      }
     }
 
-    // Wait until next 60-second cycle
-    vTaskDelayUntil(&lastWakeTime, interval);
+    // Wait until next configured cycle interval
+    vTaskDelayUntil(&lastWakeTime, cycleInterval);
   }
 }
 
 // ==========================================
-// FREERTOS TASK 2: HEALTH MONITOR (CORE 0)
+// FREERTOS TASK 2: HEALTH & NETWORK MONITOR (CORE 0)
 // ==========================================
 void healthTask(void *pvParameters) {
-  while (true) {
-    // 1. Feed Task Watchdog Timer
-    feedWatchdog();
+  unsigned long lastWdtFeedMs = 0;
 
-    // 2. Process MQTT loop
+  while (true) {
+    unsigned long now = millis();
+
+    // 1. Feed Task Watchdog Timer every 1 second (completely prevents WDT timeouts!)
+    if (now - lastWdtFeedMs >= 1000) {
+      feedWatchdog();
+      lastWdtFeedMs = now;
+    }
+
+    // 2. Process MQTT network loop
     mqttMgr.loop();
 
-    // 3. Sensor Health Check
-    if (sensor.getConsecutiveFailures() >= 5) {
-      mqttMgr.publishAlert(
-        "SENSOR_FAIL", "CRITICAL",
-        "Sensor A16 RS485 gagal merespons 5 siklus berturut-turut. Siklus daya otomatis dijalankan."
-      );
+    // 3. Process Web Server background / Captive Portal DNS
+    webServerMgr.loop();
+
+    // Periodic slower health evaluations (every 30 seconds)
+    if (now - lastHealthPollMs >= 30000) {
+      lastHealthPollMs = now;
+
+      // Sensor Health Check (only active when physical real sensor is enabled)
+      if (webServerMgr.isRealSensorEnabled() && sensor.getConsecutiveFailures() >= 5) {
+        mqttMgr.publishAlert(
+          "SENSOR_FAIL", "CRITICAL",
+          "Sensor A16 RS485 gagal merespons 5 siklus berturut-turut. Siklus daya otomatis dijalankan."
+        );
+      }
+
+      // Battery Voltage Check (only active if hardware divider pin is defined)
+      if (PIN_BATT_ADC >= 0) {
+        float battV = readBatteryVoltage();
+        if (battV > 1.0f && battV < 10.5f) {
+          mqttMgr.publishAlert("BATTERY_CRITICAL", "CRITICAL", "Tegangan baterai sangat rendah (<10.5V).");
+        } else if (battV >= 10.5f && battV < 11.5f) {
+          mqttMgr.publishAlert("BATTERY_LOW", "WARNING", "Tegangan baterai menurun di bawah ambang (<11.5V).");
+        }
+      }
+
+      // Memory Health Check
+      if (esp_get_free_heap_size() < 20480) {
+        mqttMgr.publishAlert("HEAP_LOW", "WARNING", "Sisa heap memory ESP32 rendah (<20KB).");
+      }
     }
 
-    // 4. Battery Voltage Check
-    float battV = readBatteryVoltage();
-    if (battV < 10.5f) {
-      mqttMgr.publishAlert("BATTERY_CRITICAL", "CRITICAL", "Tegangan baterai sangat rendah (<10.5V). Sistem siap sleep.");
-    } else if (battV < 11.5f) {
-      mqttMgr.publishAlert("BATTERY_LOW", "WARNING", "Tegangan baterai menurun di bawah ambang peringatan (<11.5V).");
-    }
-
-    // 5. Memory Health Check
-    if (esp_get_free_heap_size() < 20480) {
-      mqttMgr.publishAlert("HEAP_LOW", "WARNING", "Sisa heap memory mikrokontroler rendah (<20KB).");
-    }
-
-    // 6. Hourly Diagnostics Report
-    if (millis() - lastHourlyDiagMs > DIAGNOSTICS_MS) {
+    // 4. Hourly Diagnostics Report
+    if (now - lastHourlyDiagMs > DIAGNOSTICS_MS) {
+      float battV = readBatteryVoltage();
       mqttMgr.publishDiagnostics(
         bootStats.reasonStr,
         bootStats.bootCount,
@@ -133,10 +242,11 @@ void healthTask(void *pvParameters) {
         battV,
         sdLogger.getPendingCount()
       );
-      lastHourlyDiagMs = millis();
+      lastHourlyDiagMs = now;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(HEALTH_CHECK_MS));
+    // Fast 30ms yield allows instant DNS resolution and responsive captive portal HTTP handling
+    vTaskDelay(pdMS_TO_TICKS(30));
   }
 }
 
@@ -165,10 +275,13 @@ void setup() {
   // 3. Inisialisasi Sensor A16 (RS485 GPIO 15, 16)
   sensor.begin();
 
-  // 4. Inisialisasi WiFi & MQTT Manager
+  // 4. Inisialisasi Web Server Manager dengan SD Logger Reference
+  webServerMgr.begin(&sdLogger);
+
+  // 5. Inisialisasi MQTT Manager (menggunakan dynamic settings dari WebServerMgr)
   mqttMgr.begin();
 
-  // 5. Spawn FreeRTOS Tasks
+  // 6. Spawn FreeRTOS Tasks
   xTaskCreatePinnedToCore(
     samplingTask,
     "SamplingTask",
@@ -176,7 +289,7 @@ void setup() {
     NULL,
     2,
     NULL,
-    1 // Pin to Core 1
+    1 // Pin to Core 1 (Sensor & Sampling)
   );
 
   xTaskCreatePinnedToCore(
@@ -186,13 +299,14 @@ void setup() {
     NULL,
     1,
     NULL,
-    0 // Pin to Core 0
+    0 // Pin to Core 0 (Network & WDT)
   );
 
-  Serial.println("[SYSTEM] TerraFlow AWLR running in normal operational mode.");
+  Serial.printf("[SYSTEM] TerraFlow AWLR running for Device '%s' with Multi-Device Unified Firmware.\n",
+    webServerMgr.getEffectiveDeviceId().c_str());
 }
 
 void loop() {
-  // Main loop remains empty as FreeRTOS tasks manage execution
+  // Main loop yields as FreeRTOS tasks manage execution
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

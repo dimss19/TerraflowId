@@ -1,32 +1,57 @@
 import React, { useState } from 'react';
-import { Activity, Clock } from 'lucide-react';
+import { Activity, Clock, Zap } from 'lucide-react';
+
+/**
+ * RealtimeChart: Menampilkan telemetri ketinggian air secara real-time.
+ * 
+ * Logic penyesuaian:
+ * 1. "Semakin banyak akan semakin kecil": 
+ *    - Titik data terdistribusi merata dari batas kiri (awal pembacaan) ke batas kanan (terkini).
+ *    - Jarak (step interval) antar titik mengecil secara otomatis seiring bertambahnya sampel.
+ *    - Ukuran dot (radius lingkaran) mengecil secara adaptif saat jumlah data bertambah banyak.
+ * 2. "Jika tidak ada data sama sekali selama beberapa jam, gunakan acuan data terbaru sebagai awal pembacaan":
+ *    - Menghilangkan cutoff 60 menit kaku yang sebelumnya membuang data lama atau membuat data berhimpit di pojok kanan.
+ *    - Buffer data terbaru (hingga 60 sampel terakhir) langsung digunakan sebagai deret aktif.
+ *    - Titik pertama dari deret terbaru menjadi acuan "Awal Pembacaan" dan titik terakhir menjadi "Terkini".
+ */
+
+// Helper untuk menghasilkan kurva Bezier halus yang stabil
+function createSmoothPath(pts) {
+  if (!pts || pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? 0 : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
 
 export default function RealtimeChart({ readings = [] }) {
   const [hoveredPoint, setHoveredPoint] = useState(null);
 
-  const now = Date.now();
-  const windowMs = 60 * 60 * 1000; // 60 menit jendela waktu
-  const startTime = now - windowMs;
-
-  // Filter hanya data yang berada dalam rentang 60 menit terakhir (now - 60 menit s/d now)
-  const displayData = readings.filter(d => {
-    if (!d.timestamp) return false;
-    const t = new Date(d.timestamp).getTime();
-    return t >= startTime && t <= (now + 5000); // toleransi 5 detik jam client
+  // Ambil hanya data yang memiliki timestamp dan water_level_cm yang valid
+  const validReadings = (readings || []).filter(d => {
+    return d && d.timestamp && !isNaN(new Date(d.timestamp).getTime()) && d.water_level_cm !== null && d.water_level_cm !== undefined;
   });
 
-  // Ambil informasi data terakhir yang tersimpan di sistem jika ada
-  const lastKnownReading = readings.length > 0 ? readings[readings.length - 1] : null;
-  const lastKnownTs = lastKnownReading?.timestamp ? new Date(lastKnownReading.timestamp).getTime() : null;
+  // Ambil hingga 60 sampel terbaru sebagai deret aktif
+  const displayData = validReadings.slice(-60);
+  const totalCount = displayData.length;
 
-  // Jika tidak ada data sama sekali dalam 60 menit terakhir
-  if (displayData.length === 0) {
-    const formatLastTime = () => {
-      if (!lastKnownTs) return 'Belum ada data';
-      const d = new Date(lastKnownTs);
-      return `${d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
-    };
-
+  // Jika belum ada data telemetri sama sekali
+  if (totalCount === 0) {
     return (
       <div className="corporate-card" style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: '260px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -44,7 +69,7 @@ export default function RealtimeChart({ readings = [] }) {
               <Activity size={18} />
             </div>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
-              Grafik Telemetri Real-Time (60 Menit Terakhir)
+              Grafik Telemetri Real-Time
             </h3>
           </div>
           <span className="badge badge-navy" style={{ background: '#f1f5f9', color: '#64748b' }}>
@@ -67,75 +92,103 @@ export default function RealtimeChart({ readings = [] }) {
         }}>
           <Clock size={32} color="#94a3b8" />
           <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#334155' }}>
-            Tidak Ada Transmisi Telemetri dalam 60 Menit Terakhir
+            Belum Ada Transmisi Telemetri
           </div>
           <div style={{ fontSize: '0.8rem', color: '#64748b', maxWidth: '420px', lineHeight: 1.4 }}>
-            Grafik ini hanya menampilkan aliran data 1 jam terakhir secara langsung. 
-            {lastKnownTs && (
-              <span style={{ display: 'block', marginTop: '6px', fontWeight: 600, color: '#003882' }}>
-                Data terakhir tercatat: {formatLastTime()} ({Number(lastKnownReading?.water_level_cm || 0).toFixed(1)} cm)
-              </span>
-            )}
+            Menunggu sinyal data dari perangkat AWLR melalui koneksi MQTT/HTTP.
           </div>
         </div>
 
-        {/* Time axis footer */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', fontSize: '0.76rem', color: '#94a3b8', fontWeight: 600 }}>
-          <span>60 Menit Lalu</span>
-          <span>30 Menit Lalu</span>
-          <span>Sekarang</span>
+          <span>Awal Pembacaan</span>
+          <span>Rentang Sampel</span>
+          <span>Terkini</span>
         </div>
       </div>
     );
   }
 
-  // Jika ADA data dalam 60 menit terakhir:
-  const latestTs = new Date(displayData[displayData.length - 1].timestamp).getTime();
-  const isLatestFresh = (now - latestTs) < 10 * 60 * 1000;
+  // Parameter waktu data
+  const firstItem = displayData[0];
+  const latestItem = displayData[totalCount - 1];
+  const firstTs = new Date(firstItem.timestamp).getTime();
+  const latestTs = new Date(latestItem.timestamp).getTime();
+  const timeSpanMs = Math.max(0, latestTs - firstTs);
+  const now = Date.now();
+  const isLatestFresh = (now - latestTs) < 5 * 60 * 1000; // Fresh jika diterima dalam 5 menit terakhir
 
+  // Kalkulasi statistik nilai air
   const values = displayData.map(d => Number(d.water_level_cm) || 0);
-  const minVal = values.length ? Math.floor(Math.min(...values) - 5) : 100;
-  const maxVal = values.length ? Math.ceil(Math.max(...values) + 5) : 350;
-  const range = Math.max(10, maxVal - minVal);
-  const currentVal = values.length ? values[values.length - 1] : null;
+  const minRaw = Math.min(...values);
+  const maxRaw = Math.max(...values);
+  const spread = maxRaw - minRaw;
+  const paddingVal = spread < 2 ? 10 : Math.max(4, spread * 0.15);
+  const minVal = Math.max(0, Math.floor(minRaw - paddingVal));
+  const maxVal = Math.ceil(maxRaw + paddingVal);
+  const range = Math.max(5, maxVal - minVal);
+  const currentVal = values[totalCount - 1];
 
-  // SVG dimensions
+  // SVG Canvas dimensions
   const svgWidth = 600;
   const svgHeight = 220;
-  const paddingX = 20;
-  const paddingY = 25;
+  const paddingX = 24;
+  const paddingY = 28;
+  const usableWidth = svgWidth - paddingX * 2;
+  const usableHeight = svgHeight - paddingY * 2;
 
-  // Sumbu X merepresentasikan 60 menit terakhir (startTime = now - 60 min, endTime = now)
-  const points = displayData.map((d) => {
-    const t = new Date(d.timestamp).getTime();
-    const progress = Math.min(1, Math.max(0, (t - startTime) / windowMs));
-    const x = paddingX + progress * (svgWidth - paddingX * 2);
-    const y = svgHeight - paddingY - ((Number(d.water_level_cm) - minVal) / range) * (svgHeight - paddingY * 2);
-    return { x, y, data: d };
+  // Pemetaan titik (X & Y)
+  // X: Terdistribusi merata dari 0 s/d (totalCount - 1). 
+  // Semakin banyak data (totalCount bertambah), jarak antar titik (usableWidth / (totalCount - 1)) semakin kecil.
+  const points = displayData.map((d, idx) => {
+    const x = totalCount === 1 
+      ? svgWidth / 2 
+      : paddingX + (idx / (totalCount - 1)) * usableWidth;
+    
+    const yVal = Number(d.water_level_cm) || 0;
+    const y = svgHeight - paddingY - ((yVal - minVal) / range) * usableHeight;
+    return { x, y, data: d, index: idx };
   });
 
-  const pathD = points.length > 0 
-    ? `M ${points[0].x} ${points[0].y} ` + points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
-    : '';
-
-  const areaD = points.length > 0
+  const pathD = totalCount > 1 ? createSmoothPath(points) : '';
+  const areaD = totalCount > 1
     ? `${pathD} L ${points[points.length - 1].x} ${svgHeight - paddingY} L ${points[0].x} ${svgHeight - paddingY} Z`
     : '';
 
-  const formatPointTime = (ts) => {
-    if (!ts) return '--:--:--';
-    try {
-      const date = typeof ts === 'number' && ts < 1e11 ? new Date(ts * 1000) : new Date(ts);
-      if (isNaN(date.getTime())) return '--:--:--';
-      const h = String(date.getHours()).padStart(2, '0');
-      const m = String(date.getMinutes()).padStart(2, '0');
-      const s = String(date.getSeconds()).padStart(2, '0');
-      return `${h}:${m}:${s}`;
-    } catch {
-      return '--:--:--';
+  // Adaptive radius: semakin banyak titik data, ukuran lingkaran semakin mengecil
+  const baseDotRadius = totalCount <= 12 ? 4.2 : totalCount <= 25 ? 3.0 : totalCount <= 40 ? 2.2 : 1.7;
+
+  // Format Waktu
+  const formatTimeStr = (ts, includeDate = false) => {
+    if (!ts) return '--:--';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '--:--';
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const secs = String(d.getSeconds()).padStart(2, '0');
+    if (includeDate) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      return `${day}/${month} ${hours}:${mins}:${secs}`;
     }
+    return `${hours}:${mins}:${secs}`;
   };
 
+  // Cek apakah rentang data melewati pergantian hari
+  const isMultiDay = new Date(firstTs).toDateString() !== new Date(latestTs).toDateString();
+
+  // Format durasi rentang
+  const formatTimeSpan = () => {
+    if (totalCount <= 1) return '1 Titik Data';
+    if (timeSpanMs < 60000) {
+      return `${Math.max(1, Math.round(timeSpanMs / 1000))} dtk (${totalCount} sampel)`;
+    }
+    if (timeSpanMs < 3600000) {
+      return `${Math.round(timeSpanMs / 60000)} menit (${totalCount} sampel)`;
+    }
+    return `${(timeSpanMs / 3600000).toFixed(1)} jam (${totalCount} sampel)`;
+  };
+
+  // Posisi Tooltip
   const tooltipXPercent = hoveredPoint ? (hoveredPoint.x / svgWidth) * 100 : 0;
   const tooltipYPercent = hoveredPoint ? (hoveredPoint.y / svgHeight) * 100 : 0;
   const translateX = tooltipXPercent > 82 ? '-90%' : tooltipXPercent < 18 ? '-10%' : '-50%';
@@ -159,18 +212,21 @@ export default function RealtimeChart({ readings = [] }) {
           }}>
             <Activity size={18} />
           </div>
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
-            Grafik Telemetri Real-Time (60 Menit Terakhir)
-          </h3>
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+              Grafik Telemetri Real-Time
+            </h3>
+          </div>
         </div>
         
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
-            Min: <span className="mono-text" style={{ color: '#003882', fontWeight: 700 }}>{minVal + 5} cm</span> &bull; 
-            Max: <span className="mono-text" style={{ color: '#003882', fontWeight: 700 }}> {maxVal - 5} cm</span>
+            Min: <span className="mono-text" style={{ color: '#003882', fontWeight: 700 }}>{minRaw.toFixed(1)} cm</span> &bull; 
+            Max: <span className="mono-text" style={{ color: '#003882', fontWeight: 700 }}> {maxRaw.toFixed(1)} cm</span>
           </div>
-          <span className="badge badge-navy">
-            <Clock size={12} /> {displayData.length} Sampel
+          <span className="badge badge-navy" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            {isLatestFresh ? <Zap size={11} color="#0284c7" /> : <Clock size={11} />}
+            {totalCount} Sampel
           </span>
         </div>
       </div>
@@ -195,36 +251,22 @@ export default function RealtimeChart({ readings = [] }) {
           <line x1={paddingX} y1={svgHeight - paddingY} x2={svgWidth - paddingX} y2={svgHeight - paddingY} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1.5" />
 
           {/* Area Fill */}
-          <path d={areaD} fill="url(#realtimeAreaGrad)" className="chart-animated-area" />
-
-          {/* Empty/Awaiting Live Data Zone if latest data stopped/stale */}
-          {points.length > 0 && points[points.length - 1].x < (svgWidth - paddingX - 15) && (
-            <g>
-              <rect 
-                x={points[points.length - 1].x} 
-                y={paddingY} 
-                width={(svgWidth - paddingX) - points[points.length - 1].x} 
-                height={svgHeight - paddingY * 2} 
-                fill="#f8fafc" 
-                opacity="0.65"
-                stroke="#e2e8f0"
-                strokeDasharray="4 4"
-              />
-              <text 
-                x={points[points.length - 1].x + ((svgWidth - paddingX) - points[points.length - 1].x) / 2} 
-                y={svgHeight / 2} 
-                fill="#94a3b8" 
-                fontSize="11" 
-                fontWeight="700" 
-                textAnchor="middle"
-              >
-                (Belum ada data terbaru)
-              </text>
-            </g>
+          {areaD && (
+            <path d={areaD} fill="url(#realtimeAreaGrad)" className="chart-animated-area" />
           )}
 
           {/* Line Stroke */}
-          <path d={pathD} fill="none" stroke="#003882" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" className="chart-animated-line" />
+          {pathD && (
+            <path 
+              d={pathD} 
+              fill="none" 
+              stroke="#003882" 
+              strokeWidth="2.8" 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              className="chart-animated-line" 
+            />
+          )}
 
           {/* Live Telemetry Beacon Ping on Latest Reading */}
           {points.length > 0 && isLatestFresh && (
@@ -241,20 +283,26 @@ export default function RealtimeChart({ readings = [] }) {
           )}
 
           {/* Data Points on Hover / End */}
-          {points.map((p, idx) => (
-            <circle
-              key={idx}
-              cx={p.x}
-              cy={p.y}
-              r={hoveredPoint?.data === p.data ? 6.5 : (idx === points.length - 1 ? 5.5 : 2.5)}
-              fill={idx === points.length - 1 ? "#003882" : "#38bdf8"}
-              stroke="#ffffff"
-              strokeWidth={idx === points.length - 1 ? 2.5 : 1}
-              style={{ cursor: 'pointer', transition: 'all 0.15s ease' }}
-              onMouseEnter={() => setHoveredPoint(p)}
-              onMouseLeave={() => setHoveredPoint(null)}
-            />
-          ))}
+          {points.map((p, idx) => {
+            const isLast = idx === points.length - 1;
+            const isHovered = hoveredPoint?.data === p.data;
+            const radius = isHovered ? 6.5 : (isLast ? Math.max(4.5, baseDotRadius * 1.4) : baseDotRadius);
+
+            return (
+              <circle
+                key={idx}
+                cx={p.x}
+                cy={p.y}
+                r={radius}
+                fill={isLast ? "#003882" : (isHovered ? "#0284c7" : "#38bdf8")}
+                stroke="#ffffff"
+                strokeWidth={isLast ? 2.5 : (isHovered ? 2 : 1)}
+                style={{ cursor: 'pointer', transition: 'r 0.15s ease, fill 0.15s ease' }}
+                onMouseEnter={() => setHoveredPoint(p)}
+                onMouseLeave={() => setHoveredPoint(null)}
+              />
+            );
+          })}
         </svg>
 
         {/* Hover Tooltip */}
@@ -285,29 +333,66 @@ export default function RealtimeChart({ readings = [] }) {
               color: '#003882'
             }}>
               <Clock size={11} strokeWidth={2.5} />
-              <span>{formatPointTime(hoveredPoint.data.timestamp)}</span>
+              <span>{formatTimeStr(hoveredPoint.data.timestamp, isMultiDay)}</span>
             </div>
             <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
               {Number(hoveredPoint.data.water_level_cm).toFixed(1)} <span style={{ fontSize: '0.74rem', color: '#003882', fontWeight: 700 }}>cm</span>
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-              Jarak: {Number(hoveredPoint.data.raw_distance_cm).toFixed(1)} cm
+              TMA: {(Number(hoveredPoint.data.water_level_cm) / 100).toFixed(2)} m
             </div>
           </div>
         )}
       </div>
 
       {/* Time axis footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>
-        <span>60 Menit Lalu</span>
-        <span>30 Menit Lalu</span>
-        <span style={{ color: isLatestFresh ? '#003882' : '#d97706', fontWeight: 800 }}>
-          {isLatestFresh 
-            ? `Terkini (${currentVal?.toFixed(1)} cm)` 
-            : latestTs 
-              ? `Data Terakhir: ${Math.floor((now - latestTs) / 60000)} mnt lalu (${currentVal?.toFixed(1)} cm)`
-              : 'Tidak ada data'}
-        </span>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        marginTop: '14px', 
+        paddingTop: '10px',
+        borderTop: '1px solid #f1f5f9',
+        fontSize: '0.76rem'
+      }}>
+        {/* Sisi Kiri: Awal Pembacaan Data */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <span style={{ fontSize: '0.67rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Awal Pembacaan
+          </span>
+          <span style={{ fontWeight: 700, color: '#334155' }}>
+            {formatTimeStr(firstTs, isMultiDay)}
+          </span>
+        </div>
+
+        {/* Sisi Tengah: Rentang Data & Jumlah Titik */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.67rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Rentang Pembacaan
+          </span>
+          <span style={{ fontWeight: 700, color: '#003882' }}>
+            {formatTimeSpan()}
+          </span>
+        </div>
+
+        {/* Sisi Kanan: Data Terkini */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+          <span style={{ 
+            fontSize: '0.67rem', 
+            fontWeight: 700,
+            textTransform: 'uppercase', 
+            letterSpacing: '0.04em',
+            color: isLatestFresh ? '#0284c7' : '#d97706',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            {isLatestFresh ? 'Terkini (Live)' : 'Data Terakhir'}
+          </span>
+          <span style={{ fontWeight: 800, color: isLatestFresh ? '#003882' : '#b45309' }}>
+            {formatTimeStr(latestTs, isMultiDay)} ({currentVal?.toFixed(1)} cm)
+          </span>
+        </div>
       </div>
 
     </div>

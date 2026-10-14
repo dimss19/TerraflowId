@@ -5,8 +5,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <Preferences.h>
 #include "sdcard_logger.h"
+#include "web_server_mgr.h"
 
 struct CalibrationData {
   float sensorHeightCm;
@@ -21,23 +21,23 @@ public:
   void loop();
   bool isConnected();
   
-  bool publishReading(const LogRecord &record, int readingCount);
+  bool publishReading(const LogRecord &record, int readingCount, const char *source = "live");
   bool publishAlert(const String &code, const String &severity, const String &message, const String &detailsJson = "{}");
   bool publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, float battV, int pendingCount);
   
   void triggerBulkSync(SdCardLogger &sdLogger);
-  CalibrationData getCalibration() const { return calibration; }
+  CalibrationData getCalibration() const;
 
 private:
   WiFiClient wifiClient;
   PubSubClient client;
-  Preferences prefs;
-  CalibrationData calibration;
+  unsigned long lastReconnectAttempt;
   
   void reconnect();
   void handleMessage(char *topic, byte *payload, unsigned int length);
-  void saveCalibrationToNvs();
-  void loadCalibrationFromNvs();
+  
+  // Topic helpers
+  String getTopic(const char *subtopic);
 };
 
 #endif // MQTT_CLIENT_H

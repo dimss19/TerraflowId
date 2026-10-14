@@ -608,8 +608,10 @@ function DeviceDetailRouteWrapper({
       reconnectionAttempts: 10,
     });
 
+    const matchesThisDevice = (id) => !id || id === deviceId || (id && deviceId && id.replace(/\s+/g, '-') === deviceId.replace(/\s+/g, '-'));
+
     const handleNewData = (data) => {
-      if (data && (data.device_id === deviceId || !data.device_id)) {
+      if (data && matchesThisDevice(data.device_id)) {
         setLatestReading(data);
         setRealtimeReadings((prev) => {
           const updated = [...prev, data];
@@ -625,19 +627,19 @@ function DeviceDetailRouteWrapper({
     };
 
     socket.on('telemetry', (payload) => {
-      if (payload?.device_id === deviceId) {
+      if (matchesThisDevice(payload?.device_id)) {
         handleNewData(payload.data || payload);
       }
     });
 
     socket.on('sensor:data', (data) => {
-      if (data?.device_id === deviceId) {
+      if (matchesThisDevice(data?.device_id)) {
         handleNewData(data);
       }
     });
 
     socket.on('device:status', (payload) => {
-      if (payload?.device_id === deviceId) {
+      if (matchesThisDevice(payload?.device_id)) {
         const isOnline = payload.status === 'online';
         setDevice((prev) => prev ? {
           ...prev,

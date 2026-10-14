@@ -9,12 +9,14 @@ import {
   MapPin, 
   RefreshCw,
   Clock,
-  ExternalLink
+  ExternalLink,
+  HardDriveDownload
 } from 'lucide-react';
 
 import MonitoringTab from './MonitoringTab';
 import AnalysisTab from './AnalysisTab';
 import DeviceTab from './DeviceTab';
+import OfflineConversionTab from './OfflineConversionTab';
 
 export default function DeviceDetailView({ 
   device, 
@@ -275,6 +277,15 @@ export default function DeviceDetailView({
             </span>
           )}
         </button>
+
+        <button 
+          className={`tab-btn ${currentTab === 'offline' ? 'active' : ''}`}
+          onClick={() => handleTabChange('offline')}
+          title="Konversi Data Offline (MicroSD / CSV)"
+        >
+          <span className="tab-icon"><HardDriveDownload size={16} /></span>
+          <span className="tab-label">Konversi Data Offline</span>
+        </button>
       </div>
 
       {/* 3. Tab Contents */}
@@ -303,6 +314,14 @@ export default function DeviceDetailView({
           activeAlertsCount={activeAlertsCount}
           onCalibrationUpdated={onRefresh}
           authToken={authToken}
+        />
+      )}
+
+      {currentTab === 'offline' && (
+        <OfflineConversionTab 
+          device={device}
+          authToken={authToken}
+          onRefresh={onRefresh}
         />
       )}
 

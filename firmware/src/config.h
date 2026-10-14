@@ -9,10 +9,13 @@
 #include <Arduino.h>
 
 // ==========================================
-// 1. DEVICE IDENTIFICATION
+// 1. DEVICE IDENTIFICATION & DEFAULTS
 // ==========================================
+// NOTE: DEVICE_ID below is used as factory default fallback only.
+// The unified firmware auto-derives unique IDs (e.g. AWLR-<MAC>) if NVS is blank,
+// or reads the custom Device ID configured via the local Web Portal (/settings).
 #define DEVICE_ID             "AWLR-001"
-#define FIRMWARE_VERSION      "1.2.0"
+#define FIRMWARE_VERSION      "1.3.0"
 #define COMPANY_NAME          "PT Tanah Airku Teknologi"
 #define SYSTEM_NAME           "TerraFlow Portable AWLR"
 
@@ -25,13 +28,13 @@
 #define PIN_SD_MISO           12
 #define PIN_SD_SCK            13
 
-// RS485 Interface to A16 Ultrasonic Sensor (Serial2)
-#define PIN_RS485_TX          15  // Connect to A16 RX / MAX485 DI
-#define PIN_RS485_RX          16  // Connect to A16 TX / MAX485 RO
+// Serial2 (UART / RS485) Interface to A16 Ultrasonic Sensor
+#define PIN_RS485_TX          15  // ESP32 TX2 (GPIO 15) -> Connect to A16 RX (Kaki 3 / Kuning) / MAX485 DI
+#define PIN_RS485_RX          16  // ESP32 RX2 (GPIO 16) -> Connect to A16 TX (Kaki 4 / Putih) / MAX485 RO
 #define PIN_RS485_DE_RE       -1  // Set pin if hardware auto-direction is not used
 
-// Battery Voltage ADC Monitor
-#define PIN_BATT_ADC          4   // Voltage divider from 12V battery
+// Battery Voltage ADC Monitor (-1: tidak ada modul hardware pembagi tegangan aki)
+#define PIN_BATT_ADC          -1
 
 // Sensor Power Relay / MOSFET Gate (for power cycling hung sensor)
 #define PIN_SENSOR_PWR        5
@@ -42,8 +45,8 @@
 // ==========================================
 // 3. OPERATING TIMINGS & INTERVALS
 // ==========================================
-#define SAMPLING_INTERVAL_MS  60000   // 1 reading per minute
-#define HEALTH_CHECK_MS       30000   // Health check every 30 seconds
+#define SAMPLING_INTERVAL_MS  60000   // Default 1 reading per minute
+#define HEALTH_CHECK_MS       1000    // Feed watchdog & network loop every 1 second (prevents WDT resets!)
 #define DIAGNOSTICS_MS        3600000 // Hourly diagnostics report (1 hour)
 #define WATCHDOG_TIMEOUT_SEC  30      // Task WDT 30s timeout
 #define BULK_CHUNK_SIZE       10      // 10 records per bulk sync MQTT chunk

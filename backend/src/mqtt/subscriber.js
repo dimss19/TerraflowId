@@ -83,7 +83,7 @@ async function handleMessage(deviceId, subtopic, data) {
   // Only update device last_seen to NOW() if actual telemetry data or active report is sent
   if (subtopic === 'data' || subtopic === 'data/bulk' || subtopic === 'diagnostics' || (subtopic === 'status' && data?.status === 'online')) {
     await query(
-      'UPDATE devices SET last_seen = NOW(), is_active = true WHERE device_id = $1',
+      'UPDATE devices SET last_seen = NOW() WHERE device_id = $1',
       [deviceId]
     ).catch(() => {});
   }
@@ -100,13 +100,13 @@ async function handleMessage(deviceId, subtopic, data) {
     const isOnline = data.status === 'online';
     if (isOnline) {
       await query(
-        'UPDATE devices SET is_active = true, last_seen = NOW() WHERE device_id = $1',
+        'UPDATE devices SET last_seen = NOW() WHERE device_id = $1',
         [deviceId]
       ).catch(() => {});
     } else {
       // Explicit offline status (e.g. LWT or disconnect) sets last_seen to past so it registers offline
       await query(
-        "UPDATE devices SET is_active = false, last_seen = NOW() - INTERVAL '1 hour' WHERE device_id = $1",
+        "UPDATE devices SET last_seen = NOW() - INTERVAL '1 hour' WHERE device_id = $1",
         [deviceId]
       ).catch(() => {});
     }
@@ -129,6 +129,30 @@ async function handleMessage(deviceId, subtopic, data) {
 async function handleSingleReading(deviceId, data) {
   const ts = data.timestamp ? new Date(typeof data.timestamp === 'number' && data.timestamp < 1e11 ? data.timestamp * 1000 : data.timestamp) : new Date();
   
+  // Aturan perhitungan muka air server-side dari data mentah sensor
+  let waterLevel = data.water_level_cm != null ? Number(data.water_level_cm) : null;
+  const rawDist = data.raw_distance_cm != null ? Number(data.raw_distance_cm) : null;
+
+  if (rawDist != null) {
+    try {
+      const calibRes = await query(
+        `SELECT sensor_height_cm, offset_cm, slope 
+         FROM calibrations 
+         WHERE device_id = $1 AND is_active = true 
+         ORDER BY applied_at DESC LIMIT 1`,
+        [deviceId]
+      );
+      if (calibRes.rows.length > 0) {
+        const h = parseFloat(calibRes.rows[0].sensor_height_cm) || 600.0;
+        const off = parseFloat(calibRes.rows[0].offset_cm) || 0.0;
+        const slp = parseFloat(calibRes.rows[0].slope) || 1.0;
+        waterLevel = +(h - (rawDist * slp + off)).toFixed(2);
+      }
+    } catch (e) {
+      console.warn('[Calibration Rule Warning]', e.message);
+    }
+  }
+
   const insertSql = `
     INSERT INTO readings (
       device_id, timestamp, raw_distance_cm, water_level_cm,
@@ -146,8 +170,8 @@ async function handleSingleReading(deviceId, data) {
   const values = [
     deviceId,
     ts,
-    data.raw_distance_cm != null ? Number(data.raw_distance_cm) : null,
-    data.water_level_cm != null ? Number(data.water_level_cm) : null,
+    rawDist,
+    waterLevel,
     data.temperature_c != null ? Number(data.temperature_c) : null,
     data.battery_voltage != null ? Number(data.battery_voltage) : null,
     data.battery_percent != null ? Number(data.battery_percent) : null,
@@ -300,4 +324,5 @@ module.exports = {
   initSubscriber,
   setSocketIO,
   getMqttClient: () => mqttClient,
+  getSocketIO: () => ioInstance,
 };

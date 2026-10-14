@@ -38,8 +38,8 @@ router.get('/', authenticateToken, async (req, res) => {
     const params = [];
 
     if (isOperator) {
-      // Operators can only view devices assigned specifically to them and active
-      sql += ` WHERE d.assigned_to = $1 AND d.is_active = true `;
+      // Operators can view all devices assigned specifically to them
+      sql += ` WHERE d.assigned_to = $1 `;
       params.push(req.user.id);
     }
 
@@ -55,6 +55,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // GET /api/devices/:device_id - Get specific device details
 router.get('/:device_id', authenticateToken, async (req, res) => {
   const { device_id } = req.params;
+  const normalizedId = (device_id || '').trim().replace(/\s+/g, '-');
   try {
     const result = await query(`
       SELECT d.*, 
@@ -69,8 +70,9 @@ router.get('/:device_id', authenticateToken, async (req, res) => {
       FROM devices d
       LEFT JOIN users u ON u.id = d.assigned_to
       LEFT JOIN calibrations c ON c.device_id = d.device_id AND c.is_active = true
-      WHERE d.device_id = $1
-    `, [device_id]);
+      WHERE (d.device_id = $1 OR d.device_id = $2)
+      LIMIT 1
+    `, [device_id, normalizedId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });

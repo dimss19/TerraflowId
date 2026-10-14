@@ -1,33 +1,45 @@
 #include "mqtt_client.h"
 #include "config.h"
 
-MqttManager::MqttManager() : client(wifiClient) {
-  calibration.sensorHeightCm = DEFAULT_SENSOR_HEIGHT;
-  calibration.offsetCm = DEFAULT_OFFSET;
-  calibration.slope = DEFAULT_SLOPE;
+MqttManager::MqttManager() : client(wifiClient), lastReconnectAttempt(0) {}
+
+String MqttManager::getTopic(const char *subtopic) {
+  String devId = webServerMgr.getEffectiveDeviceId();
+  return "terraflow/" + devId + "/" + subtopic;
+}
+
+CalibrationData MqttManager::getCalibration() const {
+  DeviceSettings &s = webServerMgr.getSettings();
+  CalibrationData calib;
+  calib.sensorHeightCm = s.sensorHeightCm;
+  calib.offsetCm = s.offsetCm;
+  calib.slope = s.slope;
+  return calib;
 }
 
 void MqttManager::begin() {
-  loadCalibrationFromNvs();
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("[WIFI] Connecting to SSID: %s\n", WIFI_SSID);
-
-  client.setServer(MQTT_BROKER, MQTT_PORT);
+  DeviceSettings &s = webServerMgr.getSettings();
+  client.setServer(s.mqttBroker, s.mqttPort);
   client.setBufferSize(2048); // Expand buffer for JSON bulk payloads
 
   client.setCallback([this](char *topic, byte *payload, unsigned int length) {
     this->handleMessage(topic, payload, length);
   });
+  Serial.printf("[MQTT] Initialized for Broker: %s:%d (Device ID: %s)\n",
+    s.mqttBroker, s.mqttPort, webServerMgr.getEffectiveDeviceId().c_str());
 }
 
 void MqttManager::loop() {
   if (WiFi.status() == WL_CONNECTED) {
     if (!client.connected()) {
-      reconnect();
+      unsigned long now = millis();
+      if (now - lastReconnectAttempt > 5000) {
+        lastReconnectAttempt = now;
+        reconnect();
+      }
+    } else {
+      client.loop();
     }
-    client.loop();
   }
 }
 
@@ -38,24 +50,30 @@ bool MqttManager::isConnected() {
 void MqttManager::reconnect() {
   if (client.connected()) return;
 
-  Serial.println("[MQTT] Attempting broker connection...");
-  String clientId = String("ESP32S3_") + DEVICE_ID + "_" + String(random(0xffff), HEX);
+  DeviceSettings &s = webServerMgr.getSettings();
+  String devId = webServerMgr.getEffectiveDeviceId();
+  String clientId = String("ESP32S3_") + devId + "_" + String(random(0xffff), HEX);
 
   // LWT status topic
-  String willTopic = TOPIC_STATUS;
-  String willPayload = "{\"device_id\":\"" DEVICE_ID "\",\"status\":\"offline\"}";
+  String willTopic = getTopic("status");
+  String willPayload = "{\"device_id\":\"" + devId + "\",\"status\":\"offline\"}";
 
-  if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS, willTopic.c_str(), 1, false, willPayload.c_str())) {
+  Serial.printf("[MQTT] Connecting as '%s' to %s:%d...\n", clientId.c_str(), s.mqttBroker, s.mqttPort);
+
+  if (client.connect(clientId.c_str(), s.mqttUser, s.mqttPass, willTopic.c_str(), 1, false, willPayload.c_str())) {
     Serial.println("[MQTT] Connected to broker successfully!");
 
     // Send online status
-    client.publish(TOPIC_STATUS, "{\"device_id\":\"" DEVICE_ID "\",\"status\":\"online\"}", true);
+    String onlinePayload = "{\"device_id\":\"" + devId + "\",\"status\":\"online\"}";
+    client.publish(willTopic.c_str(), onlinePayload.c_str(), true);
 
-    // Subscribe to commands
-    client.subscribe(TOPIC_CALIB_SET);
-    client.subscribe(TOPIC_CMD_RESTART);
-    client.subscribe(TOPIC_CMD_SYNC);
-    client.subscribe(TOPIC_DATA_BULK_ACK);
+    // Subscribe to dynamic commands
+    client.subscribe(getTopic("calibration/set").c_str());
+    client.subscribe(getTopic("command/restart").c_str());
+    client.subscribe(getTopic("command/sync_request").c_str());
+    client.subscribe(getTopic("data/bulk/ack").c_str());
+    
+    Serial.printf("[MQTT] Subscribed to commands for '%s'\n", devId.c_str());
   } else {
     Serial.printf("[MQTT ERROR] Connect failed, rc=%d\n", client.state());
   }
@@ -72,44 +90,54 @@ void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
   DeserializationError err = deserializeJson(doc, msg);
   if (err) return;
 
-  if (String(topic) == TOPIC_CALIB_SET) {
+  String topicStr(topic);
+  String calibSetTopic = getTopic("calibration/set");
+  String restartTopic  = getTopic("command/restart");
+
+  if (topicStr == calibSetTopic) {
+    DeviceSettings &s = webServerMgr.getSettings();
+    float newHeight = s.sensorHeightCm;
+    float newOffset = s.offsetCm;
+    float newSlope  = s.slope;
+
     if (doc["sensor_height_cm"].is<float>()) {
-      calibration.sensorHeightCm = doc["sensor_height_cm"];
+      newHeight = doc["sensor_height_cm"];
     }
     if (doc["offset_cm"].is<float>()) {
-      calibration.offsetCm = doc["offset_cm"];
+      newOffset = doc["offset_cm"];
     }
     if (doc["slope"].is<float>()) {
-      calibration.slope = doc["slope"];
+      newSlope = doc["slope"];
     }
 
-    saveCalibrationToNvs();
-    Serial.printf("[CALIBRATION] Updated: Height=%.1f, Offset=%.2f, Slope=%.6f\n",
-      calibration.sensorHeightCm, calibration.offsetCm, calibration.slope);
+    webServerMgr.updateCalibration(newHeight, newOffset, newSlope);
+    Serial.printf("[CALIBRATION] Applied from MQTT: Height=%.1f, Offset=%.2f, Slope=%.6f\n",
+      newHeight, newOffset, newSlope);
 
     // Respond back
     JsonDocument resp;
-    resp["device_id"] = DEVICE_ID;
+    resp["device_id"] = webServerMgr.getEffectiveDeviceId();
     resp["status"] = "applied";
-    resp["sensor_height_cm"] = calibration.sensorHeightCm;
-    resp["offset_cm"] = calibration.offsetCm;
-    resp["slope"] = calibration.slope;
+    resp["sensor_height_cm"] = newHeight;
+    resp["offset_cm"] = newOffset;
+    resp["slope"] = newSlope;
 
     char respBuf[256];
     serializeJson(resp, respBuf);
-    client.publish(TOPIC_CALIB_RESP, respBuf);
-  } else if (String(topic) == TOPIC_CMD_RESTART) {
-    Serial.println("[CMD] Remote reboot request received! Rebooting...");
+    client.publish(getTopic("calibration/response").c_str(), respBuf);
+  } else if (topicStr == restartTopic) {
+    Serial.println("[CMD] Remote reboot request received! Rebooting in 500ms...");
     delay(500);
     esp_restart();
   }
 }
 
-bool MqttManager::publishReading(const LogRecord &record, int readingCount) {
+bool MqttManager::publishReading(const LogRecord &record, int readingCount, const char *source) {
   if (!isConnected()) return false;
 
+  String devId = webServerMgr.getEffectiveDeviceId();
   JsonDocument doc;
-  doc["device_id"] = DEVICE_ID;
+  doc["device_id"] = devId;
   doc["timestamp"] = record.timestamp;
   doc["raw_distance_cm"] = record.rawDistanceCm;
   doc["water_level_cm"] = record.waterLevelCm;
@@ -119,18 +147,19 @@ bool MqttManager::publishReading(const LogRecord &record, int readingCount) {
   doc["signal_quality"] = WiFi.RSSI();
   doc["sd_status"] = "ok";
   doc["reading_count"] = readingCount;
-  doc["source"] = "live";
+  doc["source"] = source;
 
   char buf[512];
   serializeJson(doc, buf);
-  return client.publish(TOPIC_DATA, buf);
+  return client.publish(getTopic("data").c_str(), buf);
 }
 
 bool MqttManager::publishAlert(const String &code, const String &severity, const String &message, const String &detailsJson) {
   if (!isConnected()) return false;
 
+  String devId = webServerMgr.getEffectiveDeviceId();
   JsonDocument doc;
-  doc["device_id"] = DEVICE_ID;
+  doc["device_id"] = devId;
   doc["timestamp"] = millis() / 1000;
   doc["alert_code"] = code;
   doc["severity"] = severity;
@@ -142,14 +171,15 @@ bool MqttManager::publishAlert(const String &code, const String &severity, const
 
   char buf[512];
   serializeJson(doc, buf);
-  return client.publish(TOPIC_ALERT, buf);
+  return client.publish(getTopic("alert").c_str(), buf);
 }
 
 bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, float battV, int pendingCount) {
   if (!isConnected()) return false;
 
+  String devId = webServerMgr.getEffectiveDeviceId();
   JsonDocument doc;
-  doc["device_id"] = DEVICE_ID;
+  doc["device_id"] = devId;
   doc["timestamp"] = millis() / 1000;
   doc["boot_reason"] = bootReason;
   doc["uptime_sec"] = millis() / 1000;
@@ -160,7 +190,8 @@ bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, in
   doc["free_heap_bytes"] = esp_get_free_heap_size();
   doc["wifi_rssi"] = WiFi.RSSI();
   doc["sd_card_ok"] = true;
-  doc["sensor_ok"] = true;
+  doc["sensor_ok"] = webServerMgr.isRealSensorEnabled();
+  doc["demo_mode"] = webServerMgr.isDummySensorEnabled();
   doc["battery_voltage"] = battV;
   doc["esp_temp_c"] = temperatureRead();
   doc["pending_unsent"] = pendingCount;
@@ -168,7 +199,7 @@ bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, in
 
   char buf[768];
   serializeJson(doc, buf);
-  return client.publish(TOPIC_DIAGNOSTICS, buf);
+  return client.publish(getTopic("diagnostics").c_str(), buf);
 }
 
 void MqttManager::triggerBulkSync(SdCardLogger &sdLogger) {
@@ -177,10 +208,11 @@ void MqttManager::triggerBulkSync(SdCardLogger &sdLogger) {
   std::vector<LogRecord> unsent = sdLogger.getUnsentRecords("2026-10-07.csv", BULK_CHUNK_SIZE);
   if (unsent.empty()) return;
 
-  Serial.printf("[BULK SYNC] Syncing %d buffered records...\n", unsent.size());
+  String devId = webServerMgr.getEffectiveDeviceId();
+  Serial.printf("[BULK SYNC] Syncing %d buffered records for %s...\n", unsent.size(), devId.c_str());
 
   JsonDocument doc;
-  doc["device_id"] = DEVICE_ID;
+  doc["device_id"] = devId;
   doc["batch_id"] = String("BATCH_") + String(millis());
   doc["chunk"] = 1;
   doc["total_chunks"] = 1;
@@ -200,24 +232,6 @@ void MqttManager::triggerBulkSync(SdCardLogger &sdLogger) {
 
   char buf[2048];
   serializeJson(doc, buf);
-  client.publish(TOPIC_DATA_BULK, buf);
+  client.publish(getTopic("data/bulk").c_str(), buf);
   delay(BULK_THROTTLE_MS);
-}
-
-void MqttManager::saveCalibrationToNvs() {
-  prefs.begin("terraflow", false);
-  prefs.putFloat("height", calibration.sensorHeightCm);
-  prefs.putFloat("offset", calibration.offsetCm);
-  prefs.putFloat("slope", calibration.slope);
-  prefs.end();
-}
-
-void MqttManager::loadCalibrationFromNvs() {
-  prefs.begin("terraflow", true);
-  calibration.sensorHeightCm = prefs.getFloat("height", DEFAULT_SENSOR_HEIGHT);
-  calibration.offsetCm = prefs.getFloat("offset", DEFAULT_OFFSET);
-  calibration.slope = prefs.getFloat("slope", DEFAULT_SLOPE);
-  prefs.end();
-  Serial.printf("[NVS] Loaded Calibration: Height=%.1f, Offset=%.2f, Slope=%.6f\n",
-    calibration.sensorHeightCm, calibration.offsetCm, calibration.slope);
 }

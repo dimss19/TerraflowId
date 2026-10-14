@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Sliders, 
-  Send, 
-  History, 
+  Save, 
   CheckCircle2, 
   AlertCircle, 
   RefreshCw, 
@@ -37,44 +36,31 @@ export default function DeviceTab({
   const [formData, setFormData] = useState({
     sensor_height_cm: 600.0,
     offset_cm: 0.0,
-    slope: 1.0,
-    applied_by: 'Teknisi AWLR',
-    notes: 'Penyesuaian parameter kalibrasi lapangan'
+    slope: 1.0
   });
 
   const [loadingCalib, setLoadingCalib] = useState(false);
-  const [calibHistory, setCalibHistory] = useState([]);
   const [calibFeedback, setCalibFeedback] = useState(null);
   const [activeInfoField, setActiveInfoField] = useState(null);
 
   const calibInfoDescriptions = {
     sensor_height: {
-      title: 'Tinggi Sensor Dari Dasar Referensi (cm)',
+      title: 'Tinggi Sensor ke Dasar Sungai / Peil Nol (cm)',
       image: '/sensor-calibration-diagram.jpg',
-      desc: 'Ilustrasi teknis pengukuran hidrometri Automatic Water Level Recorder (AWLR): Tinggi Muka Air (TMA) dihitung dari selisih Tinggi Sensor ke Dasar dikurangi Jarak Sensor ke Permukaan Air.',
-      example: 'TMA = Tinggi Sensor dari Dasar - Jarak Sensor ke Air. Contoh: Jika tinggi sensor 615 cm dan jarak sensor ke air 200 cm, maka TMA = 415 cm (4.15 m).'
+      desc: 'Jarak fisik vertikal dari bibir bawah sensor ultrasonik A16 sampai ke dasar sungai / datum nol meter peil schaal. Nilai ini menjadi tinggi acuan statis di server web untuk mengonversi data jarak mentah menjadi Tinggi Muka Air (TMA).',
+      example: 'TMA = Tinggi Sensor Acuan (H) - Jarak Sensor ke Air (D). Contoh: Diukur dengan meteran dari bibir sensor ke dasar sungai adalah 600 cm (6.00 m). Jika sensor mendeteksi jarak muka air 420 cm, maka Ketinggian Air = 600 - 420 = 180 cm (1.80 m).'
     },
     offset: {
       title: 'Offset Elevasi (cm)',
       image: '/offset-calibration-diagram.jpg',
-      desc: 'Nilai koreksi tetap (+ atau -) untuk mengompensasi pergeseran datum atau deviasi pembacaan awal (zero-point error). Digunakan jika hasil pembacaan sensor tidak sama persis dengan mistar ukur fisik / peil schaal acuan.',
+      desc: 'Nilai koreksi tetap (+ atau -) untuk mengompensasi pergeseran datum atau deviasi pembacaan awal (zero-point error). Digunakan jika hasil pembacaan sensor memiliki selisih tetap terhadap mistar ukur fisik / peil schaal acuan.',
       example: 'Gunakan nilai (+) jika pembacaan sensor lebih rendah dari acuan (contoh: 138.8 cm vs 140.0 cm -> offset +1.2 cm). Gunakan nilai (-) jika pembacaan sensor lebih tinggi dari acuan (contoh: 141.2 cm vs 140.0 cm -> offset -1.2 cm).'
     },
     slope: {
       title: 'Faktor Pengali (Slope)',
       image: '/slope-calibration-diagram.jpg',
       desc: 'Koefisien linear untuk menyesuaikan skala jarak gelombang sensor jika kesalahan (error) bertambah seiring jarak akibat propagasi gelombang atau temperatur udara.',
-      example: 'Rumus: Jarak Terkoreksi = Jarak Sensor × Slope. Nilai default adalah 1.0000. Biarkan default kecuali pengujian beberapa titik jarak (minimal 2-3 titik) membuktikan adanya galat skala yang meregang.'
-    },
-    applied_by: {
-      title: 'Nama Petugas / Teknisi',
-      desc: 'Identitas personel yang bertanggung jawab melakukan kalibrasi dan validasi fisik di lapangan untuk keperluan audit trail / riwayat pemeliharaan.',
-      example: 'Contoh: Teknisi AWLR / Tim Hidrologi Pos B'
-    },
-    notes: {
-      title: 'Catatan Perubahan',
-      desc: 'Keterangan alasan pembaruan kalibrasi (misal: perawatan rutin, penggantian bracket sensor, atau penyesuaian peil pasca banjir).',
-      example: 'Contoh: Penyesuaian pasca perbaikan bracket tiang penyangga.'
+      example: 'Rumus: Jarak Terkoreksi = Jarak Sensor × Slope. Nilai default adalah 1.0000. Biarkan default kecuali pengujian kalibrasi multi-titik membuktikan adanya deviasi skala yang meregang.'
     }
   };
 
@@ -104,27 +90,10 @@ export default function DeviceTab({
         offset_cm: Number(device.calibrated_offset) || 0.0,
         slope: Number(device.calibrated_slope) || 1.0
       }));
-      if (isAdmin) {
-        fetchCalibrationHistory();
-      }
       fetchAlerts();
       fetchDiagnostics();
     }
   }, [device, isAdmin]);
-
-  const fetchCalibrationHistory = async () => {
-    if (!device?.device_id) return;
-    try {
-      const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
-      const res = await fetch(`/api/calibration/${device.device_id}/history`, { headers });
-      const json = await res.json();
-      if (json.success) {
-        setCalibHistory(json.data);
-      }
-    } catch (e) {
-      console.error('Error fetching calibration history:', e);
-    }
-  };
 
   const fetchAlerts = async () => {
     if (!device?.device_id) return;
@@ -184,8 +153,7 @@ export default function DeviceTab({
       const json = await res.json();
 
       if (json.success) {
-        setCalibFeedback({ type: 'success', text: 'Kalibrasi berhasil disimpan dan disinkronkan ke stasiun AWLR.' });
-        fetchCalibrationHistory();
+        setCalibFeedback({ type: 'success', text: 'Parameter konfigurasi sensor berhasil disimpan di server.' });
         if (onCalibrationUpdated) onCalibrationUpdated();
       } else {
         setCalibFeedback({ type: 'error', text: json.error || 'Gagal menyimpan kalibrasi' });
@@ -256,8 +224,8 @@ export default function DeviceTab({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{
-                width: '40px',
-                height: '40px',
+                width: '42px',
+                height: '42px',
                 borderRadius: '10px',
                 background: '#edf2fc',
                 display: 'flex',
@@ -267,13 +235,15 @@ export default function DeviceTab({
               }}>
                 <Sliders size={22} />
               </div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                Konfigurasi &amp; Kalibrasi Sensor
-              </h2>
+              <div>
+                <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Konfigurasi Parameter Sensor &amp; Hidrometri
+                </h2>
+                <p style={{ fontSize: '0.84rem', color: '#64748b', marginTop: '3px', marginBottom: 0 }}>
+                  Penetapan tinggi acuan fisik tiang sensor ke dasar sungai sebagai basis kalkulasi Tinggi Muka Air (TMA)
+                </p>
+              </div>
             </div>
-            <p style={{ fontSize: '0.88rem', color: '#64748b', marginTop: '4px', marginBottom: 0 }}>
-              Sesuaikan tinggi referensi, offset elevasi, dan faktor pengali slope secara jarak jauh via MQTT
-            </p>
           </div>
 
           <div style={{
@@ -289,7 +259,7 @@ export default function DeviceTab({
             fontWeight: 700
           }}>
             <ShieldCheck size={16} />
-            <span>KALIBRASI TERVALIDASI</span>
+            <span>ATURAN SERVER AKTIF</span>
           </div>
         </div>
 
@@ -313,210 +283,358 @@ export default function DeviceTab({
           </div>
         )}
 
-        {/* Calibration Active Values & Live Preview Grid */}
+
+        {/* Calibration Inputs & Real-time Live Simulator Grid */}
         <div style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', 
           gap: '24px', 
           marginTop: '24px' 
         }}>
           
           {/* Left: Calibration Form */}
           <form onSubmit={handleCalibrationSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                  TINGGI SENSOR DARI DASAR REFERENSI (CM)
+            
+            {/* Input 1: Tinggi Acuan Sensor ke Dasar Sungai */}
+            <div style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '18px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Tinggi Sensor ke Dasar Sungai (Tinggi Acuan H)
                 </label>
                 <button
                   type="button"
                   onClick={() => setActiveInfoField('sensor_height')}
-                  title="Klik untuk melihat penjelasan detail"
-                  style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                  title="Klik untuk melihat panduan pengukuran"
+                  style={{
+                    background: '#e0f2fe',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#0284c7',
+                    cursor: 'pointer',
+                    padding: '3px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700
+                  }}
                 >
-                  <HelpCircle size={15} />
+                  <HelpCircle size={13} />
+                  <span>Panduan</span>
                 </button>
               </div>
-              <input
-                type="number"
-                step="0.1"
-                min="50"
-                max="2000"
-                className="corporate-input"
-                value={formData.sensor_height_cm}
-                onChange={(e) => setFormData({ ...formData, sensor_height_cm: e.target.value })}
-                required
-              />
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                    OFFSET ELEVASI (CM)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setActiveInfoField('offset')}
-                    title="Klik untuk melihat penjelasan detail"
-                    style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
-                  >
-                    <HelpCircle size={15} />
-                  </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="10"
+                    max="3000"
+                    className="corporate-input"
+                    style={{ paddingRight: '48px', fontSize: '1.15rem', fontWeight: 800, color: '#003882' }}
+                    value={formData.sensor_height_cm}
+                    onChange={(e) => setFormData({ ...formData, sensor_height_cm: e.target.value })}
+                    required
+                  />
+                  <span style={{
+                    position: 'absolute',
+                    right: '14px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    color: '#64748b'
+                  }}>
+                    cm
+                  </span>
                 </div>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="-100"
-                  max="100"
-                  className="corporate-input"
-                  value={formData.offset_cm}
-                  onChange={(e) => setFormData({ ...formData, offset_cm: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                    FAKTOR PENGALI (SLOPE)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setActiveInfoField('slope')}
-                    title="Klik untuk melihat penjelasan detail"
-                    style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
-                  >
-                    <HelpCircle size={15} />
-                  </button>
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '9px 12px',
+                  whiteSpace: 'nowrap',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: '#003882'
+                }}>
+                  = {((Number(formData.sensor_height_cm) || 0) / 100).toFixed(2)} m
                 </div>
-                <input
-                  type="number"
-                  step="0.0001"
-                  min="0.8"
-                  max="1.2"
-                  className="corporate-input"
-                  value={formData.slope}
-                  onChange={(e) => setFormData({ ...formData, slope: e.target.value })}
-                  required
-                />
+              </div>
+
+              <div style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.45, marginTop: '8px' }}>
+                Ukur jarak tegak lurus dengan meteran dari bibir bawah sensor ultrasonik A16 ke dasar sungai atau datum nol meter peil schaal saat tiang terpasang.
               </div>
             </div>
 
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                  NAMA PETUGAS / TEKNISI
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setActiveInfoField('applied_by')}
-                  title="Klik untuk melihat penjelasan detail"
-                  style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
-                >
-                  <HelpCircle size={15} />
-                </button>
+            {/* Input 2 & 3: Offset & Slope */}
+            <div style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '18px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Penyesuaian Tambahan (Opsional)
               </div>
-              <input
-                type="text"
-                className="corporate-input"
-                value={formData.applied_by}
-                onChange={(e) => setFormData({ ...formData, applied_by: e.target.value })}
-              />
-            </div>
 
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                  CATATAN PERUBAHAN
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setActiveInfoField('notes')}
-                  title="Klik untuk melihat penjelasan detail"
-                  style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
-                >
-                  <HelpCircle size={15} />
-                </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                      Offset Elevasi (cm)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setActiveInfoField('offset')}
+                      style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px' }}
+                    >
+                      <HelpCircle size={14} />
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="-100"
+                    max="100"
+                    className="corporate-input"
+                    value={formData.offset_cm}
+                    onChange={(e) => setFormData({ ...formData, offset_cm: e.target.value })}
+                    required
+                  />
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
+                    Koreksi mistar (default: 0.0)
+                  </span>
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                      Faktor Pengali (Slope)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setActiveInfoField('slope')}
+                      style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', padding: '2px' }}
+                    >
+                      <HelpCircle size={14} />
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0.8"
+                    max="1.2"
+                    className="corporate-input"
+                    value={formData.slope}
+                    onChange={(e) => setFormData({ ...formData, slope: e.target.value })}
+                    required
+                  />
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
+                    Faktor skala (default: 1.0000)
+                  </span>
+                </div>
               </div>
-              <input
-                type="text"
-                className="corporate-input"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              />
             </div>
 
             <button 
               type="submit" 
               disabled={loadingCalib} 
               className="btn btn-primary"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '8px' }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                marginTop: '4px',
+                padding: '12px 24px',
+                fontWeight: 700,
+                fontSize: '0.9rem'
+              }}
             >
-              <Send size={16} />
-              <span>{loadingCalib ? 'Menyimpan & Mengirim...' : 'Terapkan Kalibrasi ke Perangkat'}</span>
+              <Save size={16} />
+              <span>{loadingCalib ? 'Menyimpan Parameter ke Server...' : 'Simpan Konfigurasi Sensor'}</span>
             </button>
           </form>
 
-          {/* Right: Live Calculation Simulation Panel */}
-          <div className="subtle-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#003882' }}>
-              <Calculator size={18} />
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, textTransform: 'uppercase' }}>
-                SIMULATOR HASIL KALIBRASI REAL-TIME
+          {/* Right: Live Calculation Simulation Panel with Dynamic Diagram */}
+          <div className="subtle-panel" style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#003882' }}>
+                <Calculator size={18} />
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Simulasi Hidrometri Real-Time
+                </span>
+              </div>
+              <span style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                background: '#e0f2fe',
+                color: '#0284c7',
+                padding: '3px 8px',
+                borderRadius: '6px'
+              }}>
+                LIVE PREVIEW
               </span>
             </div>
 
-            <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
-              Jarak mentah sensor saat ini: <strong>{rawDist.toFixed(1)} cm</strong>
-            </div>
+            {/* Interactive SVG Diagram */}
+            {(() => {
+              const clampedLevel = Math.max(0, Math.min(simHeight, simCalcLevel));
+              const waterRatio = simHeight > 0 ? (clampedLevel / simHeight) : 0.3;
+              const waterSvgY = Math.round(180 - (waterRatio * 140));
 
-            <div style={{
-              background: '#ffffff',
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-              padding: '16px'
-            }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                ELEVASI DENGAN KALIBRASI AKTIF SAAT INI
-              </div>
-              <div className="mono-text" style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                {currentCalcLevel.toFixed(1)} <span style={{ fontSize: '0.9rem', color: '#003882' }}>cm</span>
-                <span style={{ fontSize: '0.85rem', color: '#94a3b8', marginLeft: '8px' }}>
-                  ({(currentCalcLevel / 100).toFixed(2)} m)
-                </span>
-              </div>
-            </div>
+              return (
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}>
+                  <svg viewBox="0 0 260 210" style={{ width: '100%', maxWidth: '280px', height: '170px' }}>
+                    {/* Riverbed / Dasar Sungai */}
+                    <rect x="20" y="180" width="220" height="24" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="1" rx="4" />
+                    <text x="130" y="196" textAnchor="middle" fontSize="9" fontWeight="800" fill="#64748b">
+                      DASAR SUNGAI (DATUM 0 CM)
+                    </text>
 
+                    {/* Pole Tiang */}
+                    <line x1="42" y1="20" x2="42" y2="180" stroke="#64748b" strokeWidth="4" strokeLinecap="round" />
+                    <line x1="42" y1="28" x2="75" y2="28" stroke="#64748b" strokeWidth="3" />
+
+                    {/* Sensor Head A16 */}
+                    <rect x="62" y="22" width="26" height="15" rx="3" fill="#0f172a" stroke="#1e293b" strokeWidth="1" />
+                    <text x="75" y="16" textAnchor="middle" fontSize="8" fontWeight="800" fill="#475569">
+                      SENSOR A16
+                    </text>
+
+                    {/* Water Body */}
+                    <rect 
+                      x="26" 
+                      y={waterSvgY} 
+                      width="208" 
+                      height={Math.max(0, 180 - waterSvgY)} 
+                      fill="rgba(14, 165, 233, 0.22)" 
+                      stroke="#0284c7" 
+                      strokeWidth="1.5" 
+                      rx="2" 
+                    />
+                    <text 
+                      x="130" 
+                      y={Math.min(172, Math.max(waterSvgY + 16, 150))} 
+                      textAnchor="middle" 
+                      fontSize="10" 
+                      fontWeight="800" 
+                      fill="#0369a1"
+                    >
+                      Ketinggian Air: {simCalcLevel.toFixed(1)} cm ({(simCalcLevel / 100).toFixed(2)} m)
+                    </text>
+
+                    {/* Ultrasonic Beam (D) */}
+                    <line x1="75" y1="37" x2="75" y2={waterSvgY} stroke="#0284c7" strokeWidth="1.5" strokeDasharray="3,3" />
+                    <text x="82" y={Math.max(48, Math.round((37 + waterSvgY) / 2))} fontSize="9" fontWeight="700" fill="#0284c7">
+                      D = {rawDist.toFixed(1)} cm
+                    </text>
+
+                    {/* Total Reference Height Line (H) */}
+                    <line x1="228" y1="28" x2="228" y2="180" stroke="#003882" strokeWidth="1.5" />
+                    <line x1="223" y1="28" x2="233" y2="28" stroke="#003882" strokeWidth="1.5" />
+                    <line x1="223" y1="180" x2="233" y2="180" stroke="#003882" strokeWidth="1.5" />
+                    <text 
+                      x="222" 
+                      y="105" 
+                      textAnchor="end" 
+                      fontSize="9" 
+                      fontWeight="800" 
+                      fill="#003882"
+                    >
+                      H = {simHeight.toFixed(0)} cm
+                    </text>
+                  </svg>
+                </div>
+              );
+            })()}
+
+            {/* Arithmetic Breakdown */}
             <div style={{
               background: '#eff6ff',
               borderRadius: '10px',
               border: '1px solid #bfdbfe',
-              padding: '16px'
+              padding: '14px 16px'
             }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#003882', textTransform: 'uppercase' }}>
-                ELEVASI HASIL PENYESUAIAN BARU (SIMULASI)
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#003882', textTransform: 'uppercase' }}>
+                  HASIL SIMULASI TINGGI MUKA AIR (TMA)
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                  Raw Distance: <strong>{rawDist.toFixed(1)} cm</strong>
+                </span>
               </div>
-              <div className="mono-text" style={{ fontSize: '1.5rem', fontWeight: 800, color: '#003882', marginTop: '4px' }}>
-                {simCalcLevel.toFixed(1)} <span style={{ fontSize: '0.9rem', color: '#003882' }}>cm</span>
-                <span style={{ fontSize: '0.85rem', color: '#0369a1', marginLeft: '8px' }}>
+
+              <div className="mono-text" style={{ fontSize: '1.6rem', fontWeight: 800, color: '#003882', marginTop: '6px' }}>
+                {simCalcLevel.toFixed(1)} <span style={{ fontSize: '0.95rem', color: '#003882' }}>cm</span>
+                <span style={{ fontSize: '0.9rem', color: '#0284c7', marginLeft: '8px' }}>
                   ({(simCalcLevel / 100).toFixed(2)} m)
                 </span>
               </div>
-              <div style={{ 
-                fontSize: '0.78rem', 
-                fontWeight: 700, 
-                color: deltaLevel > 0 ? '#059669' : deltaLevel < 0 ? '#d97706' : '#64748b',
-                marginTop: '6px'
+
+              <div style={{
+                fontSize: '0.76rem',
+                color: '#334155',
+                marginTop: '8px',
+                paddingTop: '8px',
+                borderTop: '1px dashed #bfdbfe'
               }}>
-                Selisih dari nilai saat ini: {deltaLevel > 0 ? `+${deltaLevel}` : deltaLevel} cm
+                Rincian: {simHeight.toFixed(1)} cm &minus; ({rawDist.toFixed(1)} &times; {simSlope} + {simOffset}) = <strong>{simCalcLevel.toFixed(1)} cm</strong>
               </div>
             </div>
 
-            <div style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1.5 }}>
-              Formula hidrometri: <em>Elevasi = Tinggi Sensor - (Jarak Sensor &times; Slope + Offset)</em>.
-              Data akan otomatis dienkode ke memori non-volatil stasiun.
+            {/* Comparison with Active Config */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              fontSize: '0.78rem'
+            }}>
+              <div>
+                <span style={{ color: '#64748b' }}>Nilai Aktif Server Saat Ini: </span>
+                <strong style={{ color: '#0f172a' }}>{currentCalcLevel.toFixed(1)} cm ({(currentCalcLevel / 100).toFixed(2)} m)</strong>
+              </div>
+              <div style={{ 
+                fontWeight: 700, 
+                color: deltaLevel > 0 ? '#059669' : deltaLevel < 0 ? '#d97706' : '#64748b' 
+              }}>
+                Selisih: {deltaLevel > 0 ? `+${deltaLevel}` : deltaLevel} cm
+              </div>
             </div>
+
           </div>
 
         </div>
@@ -627,64 +745,22 @@ export default function DeviceTab({
           </div>
         )}
 
-        {/* Calibration Audit History Table */}
-        <div style={{ marginTop: '28px', paddingTop: '20px', borderTop: '1px solid #f1f5f9' }}>
-          <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', marginBottom: '12px' }}>
-            Riwayat Log Kalibrasi Sensor
+        {/* Keterangan Parameter Aktif */}
+        {device?.updated_at && (
+          <div style={{
+            marginTop: '20px',
+            paddingTop: '14px',
+            borderTop: '1px solid #f1f5f9',
+            fontSize: '0.78rem',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            <Info size={14} color="#003882" />
+            <span>Konfigurasi Aktif di Server &bull; Terakhir diperbarui: <strong>{new Date(device.updated_at).toLocaleString('id-ID')} WIB</strong></span>
           </div>
-
-          <div className="table-responsive">
-            <table className="corporate-table" style={{ width: '100%' }}>
-              <thead>
-                <tr>
-                  <th>Waktu Penerapan</th>
-                  <th>Tinggi Sensor</th>
-                  <th>Offset</th>
-                  <th>Slope</th>
-                  <th>Petugas</th>
-                  <th>Catatan</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calibHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
-                      Belum ada riwayat kalibrasi tercatat
-                    </td>
-                  </tr>
-                ) : (
-                  calibHistory.slice(0, 5).map((row, idx) => (
-                    <tr key={idx}>
-                      <td className="mono-text" style={{ fontSize: '0.8rem' }}>
-                        {new Date(row.applied_at).toLocaleString('id-ID')}
-                      </td>
-                      <td className="mono-text" style={{ fontWeight: 700 }}>
-                        {row.sensor_height_cm} cm
-                      </td>
-                      <td className="mono-text">{row.offset_cm} cm</td>
-                      <td className="mono-text">{Number(row.slope).toFixed(6)}</td>
-                      <td>{row.applied_by || '-'}</td>
-                      <td>{row.notes || '-'}</td>
-                      <td>
-                        <span style={{
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          background: row.is_active ? '#ecfdf5' : '#f1f5f9',
-                          color: row.is_active ? '#059669' : '#64748b'
-                        }}>
-                          {row.is_active ? 'Aktif' : 'Arsip'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        )}
 
       </div>
       )}

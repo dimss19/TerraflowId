@@ -301,29 +301,44 @@ export default function DeviceOverview({
                     </div>
                   </div>
 
-                  {/* Online / Offline status badge */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '4px 10px',
-                    borderRadius: '16px',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    background: online ? '#ecfdf5' : '#f8fafc',
-                    color: online ? '#059669' : '#94a3b8',
-                    border: `1px solid ${online ? '#a7f3d0' : '#e2e8f0'}`
-                  }}>
-                    <span 
-                      className={online ? 'pulse-dot' : ''} 
-                      style={{ 
-                        width: '7px', 
-                        height: '7px', 
-                        borderRadius: '50%', 
-                        background: online ? '#10b981' : '#cbd5e1' 
-                      }} 
-                    />
-                    <span>{online ? 'ONLINE' : 'OFFLINE'}</span>
+                  {/* Online / Offline status badge & Operational status badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {!dev.is_active && (
+                      <div style={{
+                        padding: '4px 8px',
+                        borderRadius: '16px',
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        background: '#fef2f2',
+                        color: '#dc2626',
+                        border: '1px solid #fecaca'
+                      }}>
+                        NONAKTIF
+                      </div>
+                    )}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 10px',
+                      borderRadius: '16px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      background: online ? '#ecfdf5' : '#f8fafc',
+                      color: online ? '#059669' : '#94a3b8',
+                      border: `1px solid ${online ? '#a7f3d0' : '#e2e8f0'}`
+                    }}>
+                      <span 
+                        className={online ? 'pulse-dot' : ''} 
+                        style={{ 
+                          width: '7px', 
+                          height: '7px', 
+                          borderRadius: '50%', 
+                          background: online ? '#10b981' : '#cbd5e1' 
+                        }} 
+                      />
+                      <span>{online ? 'ONLINE' : 'OFFLINE'}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -405,10 +420,10 @@ export default function DeviceOverview({
                   padding: '14px',
                   marginBottom: '16px'
                 }}>
-                  {/* Water Level */}
+                  {/* Water Level (M) */}
                   <div>
                     <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                      MUKA AIR
+                      TMA (METER)
                     </div>
                     <div className="mono-text" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#003882', marginTop: '2px' }}>
                       {latest?.water_level_cm != null 
@@ -417,14 +432,14 @@ export default function DeviceOverview({
                     </div>
                   </div>
 
-                  {/* Raw Distance */}
+                  {/* Water Level (CM) */}
                   <div>
                     <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                      JARAK SENSOR
+                      TMA (CM)
                     </div>
-                    <div className="mono-text" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#334155', marginTop: '2px' }}>
-                      {latest?.raw_distance_cm != null 
-                        ? `${Number(latest.raw_distance_cm).toFixed(1)} cm` 
+                    <div className="mono-text" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#003882', marginTop: '2px' }}>
+                      {latest?.water_level_cm != null 
+                        ? `${Number(latest.water_level_cm).toFixed(1)} cm` 
                         : '--'}
                     </div>
                   </div>

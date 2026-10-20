@@ -101,20 +101,6 @@ async function bootstrap() {
   // Initialize MQTT Subscriber
   initSubscriber();
 
-  // Only start AWLR Simulator if explicitly enabled in environment (for headless demo mode)
-  if (process.env.ENABLE_SIMULATOR === 'true') {
-    setTimeout(() => {
-      try {
-        require('./simulator/awlr_simulator');
-        console.log('[AWLR Simulator] Explicitly started background telemetry simulator.');
-      } catch (simErr) {
-        console.error('[AWLR Simulator Auto-start Failed]', simErr.message);
-      }
-    }, 1500);
-  } else {
-    console.log('[AWLR Simulator] Disabled. System is waiting for real hardware telemetry via MQTT.');
-  }
-
   // Start HTTP & WebSocket Server
   server.listen(config.port, config.host, () => {
     console.log(`[HTTP Server] REST API & Socket.IO running on http://${config.host}:${config.port}`);

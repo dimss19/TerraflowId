@@ -495,56 +495,6 @@ router.get('/export/:device_id', async (req, res) => {
 });
 
 // ==========================================
-// 7. SIMULATOR TRIGGERS (FOR DEMO & TESTING)
-// ==========================================
-
-router.post('/simulator/trigger-wdt', async (req, res) => {
-  const { device_id = 'AWLR-001' } = req.body;
-  try {
-    const { getMqttClient } = require('../mqtt/subscriber');
-    const client = getMqttClient();
-    if (client && client.connected) {
-      client.publish(`terraflow/${device_id}/alert`, JSON.stringify({
-        device_id,
-        timestamp: Math.floor(Date.now() / 1000),
-        alert_code: 'WDT_RESET',
-        severity: 'CRITICAL',
-        message: 'Watchdog reset detected. Task sensorRead did not respond within 30s.',
-        details: { watchdog_count: 1, trigger: 'Manual test injection' }
-      }));
-      res.json({ success: true, message: 'WDT Reset alert injected via MQTT' });
-    } else {
-      res.status(503).json({ success: false, error: 'MQTT client not connected' });
-    }
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-router.post('/simulator/trigger-sensor-fail', async (req, res) => {
-  const { device_id = 'AWLR-001' } = req.body;
-  try {
-    const { getMqttClient } = require('../mqtt/subscriber');
-    const client = getMqttClient();
-    if (client && client.connected) {
-      client.publish(`terraflow/${device_id}/alert`, JSON.stringify({
-        device_id,
-        timestamp: Math.floor(Date.now() / 1000),
-        alert_code: 'SENSOR_FAIL',
-        severity: 'CRITICAL',
-        message: 'Sensor ultrasonik tidak merespons setelah 5 kali percobaan pembacaan.',
-        details: { consecutive_fails: 5, trigger: 'Manual test injection' }
-      }));
-      res.json({ success: true, message: 'Sensor Failure alert injected via MQTT' });
-    } else {
-      res.status(503).json({ success: false, error: 'MQTT client not connected' });
-    }
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ==========================================
 // 6. KONVERSI & SINKRONISASI DATA OFFLINE
 // ==========================================
 

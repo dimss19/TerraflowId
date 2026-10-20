@@ -7,8 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "migrate": "node src/db/migrate.js",
-    "seed": "node src/db/seed.js",
-    "simulate": "node src/simulator/awlr_simulator.js"
+    "seed": "node src/db/seed.js"
   },
   "dependencies": {
     "aedes": "^0.51.2",

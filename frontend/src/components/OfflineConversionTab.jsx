@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Upload, 
   Download, 
@@ -37,6 +37,19 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
   const pageSize = 12;
 
   const fileInputRef = useRef(null);
+  const dragCounterRef = useRef(0);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // Mencegah browser membuka file di tab baru jika user melepas drop di luar kotak
+  useEffect(() => {
+    const preventDefault = (e) => e.preventDefault();
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', preventDefault);
+    return () => {
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', preventDefault);
+    };
+  }, []);
 
   // Helper konversi format tanggal ISO / waktu lokal
   const extractDateParts = (timestampMsOrEpoch) => {
@@ -185,9 +198,8 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
     }
   };
 
-  // Handler Upload Berkas
-  const handleFileUpload = (e) => {
-    const file = e.target.files?.[0];
+  // Helper proses berkas
+  const processFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -197,6 +209,53 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
       }
     };
     reader.readAsText(file);
+  };
+
+  // Handler Upload Berkas via Input
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  };
+
+  // Handler Drag and Drop
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    if (!isDragOver) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      processFile(files[0]);
+    }
   };
 
   // Handler Reset Berkas
@@ -378,48 +437,61 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
         {parsedRows.length === 0 ? (
           <div
             onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             style={{
-              border: '2px dashed #93c5fd',
+              border: `2px dashed ${isDragOver ? '#0284c7' : '#93c5fd'}`,
               borderRadius: '14px',
-              background: '#f8fafc',
+              background: isDragOver ? '#f0f9ff' : '#f8fafc',
               padding: '46px 20px',
               textAlign: 'center',
               cursor: 'pointer',
-              transition: 'all 0.2s',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '12px'
+              gap: '12px',
+              transform: isDragOver ? 'scale(1.01)' : 'scale(1)',
+              boxShadow: isDragOver ? '0 10px 25px -5px rgba(2, 132, 199, 0.2)' : 'none'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+            onMouseEnter={(e) => {
+              if (!isDragOver) e.currentTarget.style.background = '#f0f9ff';
+            }}
+            onMouseLeave={(e) => {
+              if (!isDragOver) e.currentTarget.style.background = '#f8fafc';
+            }}
           >
             <div style={{
               width: '56px',
               height: '56px',
               borderRadius: '14px',
-              background: '#edf2fc',
-              color: '#003882',
+              background: isDragOver ? '#0284c7' : '#edf2fc',
+              color: isDragOver ? '#ffffff' : '#003882',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              transform: isDragOver ? 'scale(1.15) translateY(-2px)' : 'scale(1)',
+              pointerEvents: 'none'
             }}>
               <Upload size={28} />
             </div>
 
-            <div>
+            <div style={{ pointerEvents: 'none' }}>
               <h3 style={{ fontSize: '1.08rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>
-                Klik atau Seret Berkas Log SD Card ke Sini
+                {isDragOver ? 'Lepaskan Berkas Log SD Card di Sini' : 'Klik atau Seret Berkas Log SD Card ke Sini'}
               </h3>
-              <p style={{ fontSize: '0.82rem', color: '#64748b', margin: 0 }}>
-                Mendukung berkas rekaman harian dari MicroSD (*.csv, *.txt, *.dat)
+              <p style={{ fontSize: '0.82rem', color: isDragOver ? '#0284c7' : '#64748b', fontWeight: isDragOver ? 700 : 400, margin: 0 }}>
+                {isDragOver ? 'Berkas akan langsung dibaca dan dikonversi otomatis' : 'Mendukung berkas rekaman harian dari MicroSD (*.csv, *.txt, *.dat)'}
               </p>
             </div>
 
             <button
               type="button"
               className="btn btn-primary"
-              style={{ marginTop: '8px', padding: '8px 20px', fontSize: '0.82rem' }}
+              style={{ marginTop: '8px', padding: '8px 20px', fontSize: '0.82rem', pointerEvents: 'none' }}
             >
               Pilih Berkas dari Kartu SD
             </button>

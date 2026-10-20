@@ -23,8 +23,6 @@ struct DeviceSettings {
   float offsetCm;
   float slope;
   uint32_t samplingIntervalSec;
-  bool realSensorEnabled;    // Mode 1: Real sensor A16 ON/OFF
-  bool dummySensorEnabled;   // Mode 2: Dummy simulation ON/OFF
   char passHash[65];
 };
 
@@ -34,15 +32,13 @@ struct TelemetrySnapshot {
   float rawDistanceCm;
   float filteredDistanceCm;
   float temperatureC;
-  float batteryVoltage;
-  int batteryPercent;
   int signalRssi;
   bool sdCardOk;
   int pendingLogs;
   int readingCount;
   bool wifiConnected;
   bool mqttConnected;
-  char dataSource[16]; // "live", "dummy", "paused"
+  char dataSource[16]; // "live", "paused"
   char lastSampleTime[32];
 };
 
@@ -56,12 +52,8 @@ public:
   void updateTelemetry(const TelemetrySnapshot &snapshot);
   TelemetrySnapshot getTelemetry();
 
-  // Settings & Operational Mode accessors
+  // Settings & Calibration accessors
   DeviceSettings& getSettings() { return settings; }
-  bool isRealSensorEnabled() const { return settings.realSensorEnabled; }
-  bool isDummySensorEnabled() const { return settings.dummySensorEnabled; }
-  void setRealSensorEnabled(bool en);
-  void setDummySensorEnabled(bool en);
   void updateCalibration(float height, float offset, float slope);
 
   void loadSettings();

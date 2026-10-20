@@ -22,22 +22,32 @@
 // ==========================================
 // 2. HARDWARE PIN DEFINITIONS
 // ==========================================
-// MicroSD Card SPI Interface
+// MicroSD Card SPI Interface (KhursLabs ESP32-S3 IoT Logger)
 #define PIN_SD_CS             10
 #define PIN_SD_MOSI           11
-#define PIN_SD_MISO           12
-#define PIN_SD_SCK            13
+#define PIN_SD_MISO           13  // MISO pada GPIO 13 (Sebelumnya terbalik dengan SCK)
+#define PIN_SD_SCK            12  // SCK pada GPIO 12
 
-// Serial2 (UART / RS485) Interface to A16 Ultrasonic Sensor
-#define PIN_RS485_TX          15  // ESP32 TX2 (GPIO 15) -> Connect to A16 RX (Kaki 3 / Kuning) / MAX485 DI
-#define PIN_RS485_RX          16  // ESP32 RX2 (GPIO 16) -> Connect to A16 TX (Kaki 4 / Putih) / MAX485 RO
-#define PIN_RS485_DE_RE       -1  // Set pin if hardware auto-direction is not used
+// Onboard Real-Time Clock (DS3231 / DS1307 at 0x68)
+// Terhubung secara internal pada board ke bus I2C (SDA GPIO 8 & SCL GPIO 9)
+#define PIN_RTC_SDA           8
+#define PIN_RTC_SCL           9
+#define RTC_I2C_ADDR          0x68
 
-// Battery Voltage ADC Monitor (-1: tidak ada modul hardware pembagi tegangan aki)
-#define PIN_BATT_ADC          -1
+// Serial2 (UART TTL) Interface to A16 Ultrasonic Sensor
+// Terhubung ke Terminal Bawah Board KhursLabs (Pin 1 & Pin 2):
+// - Pin 1 (SDA / GPIO 8) : ESP32 RX2 <- Sensor TX (Kabel Putih)
+// - Pin 2 (SCL / GPIO 9) : ESP32 TX2 -> Sensor RX (Kabel Kuning)
+// - Pin 3 (5V)           : Power VCC -> Sensor VCC (Kabel Merah)
+// - Pin 4 (GND)          : Ground    -> Sensor GND (Kabel Hitam)
+// CATATAN: Bus GPIO 8 & 9 digunakan secara dinamis (Time-Multiplexed)
+// antara RTC I2C (0x68) dan pembacaan Sensor UART DYP-A16.
+#define PIN_RS485_TX          9   // ESP32 TX2 (GPIO 9 / Terminal SCL) -> A16 RX (Kuning)
+#define PIN_RS485_RX          8   // ESP32 RX2 (GPIO 8 / Terminal SDA) -> A16 TX (Putih)
+#define PIN_RS485_DE_RE       -1  // Direct UART TTL (tidak memerlukan pin direction)
 
-// Sensor Power Relay / MOSFET Gate (for power cycling hung sensor)
-#define PIN_SENSOR_PWR        5
+// Sensor Power Relay / MOSFET Gate (-1: sensor ditenagai langsung dari power rail)
+#define PIN_SENSOR_PWR        -1
 
 // Status Indicators
 #define PIN_STATUS_LED        2
@@ -55,13 +65,13 @@
 // ==========================================
 // 4. NETWORK & MQTT SETTINGS
 // ==========================================
-#define WIFI_SSID             "passwordnyarahasia"
-#define WIFI_PASSWORD         "qwertyuiop"
+#define WIFI_SSID             "RUANGAN_BAWAH"
+#define WIFI_PASSWORD         "tanyahabib!!"
 
-#define MQTT_BROKER           "192.168.110.29"
+#define MQTT_BROKER           "broker.emqx.io"
 #define MQTT_PORT             1883
-#define MQTT_USER             "awlr_device"
-#define MQTT_PASS             "terraflow_secure_token"
+#define MQTT_USER             ""
+#define MQTT_PASS             ""
 
 // MQTT Topic Templates
 #define TOPIC_DATA            "terraflow/" DEVICE_ID "/data"

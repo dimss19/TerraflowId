@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Activity, Clock, Zap } from 'lucide-react';
 
 /**
@@ -39,7 +39,9 @@ function createSmoothPath(pts) {
 }
 
 export default function RealtimeChart({ readings = [] }) {
-  const [hoveredPoint, setHoveredPoint] = useState(null);
+  const [sliderIndex, setSliderIndex] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const svgRef = useRef(null);
 
   // Ambil hanya data yang memiliki timestamp dan water_level_cm yang valid
   const validReadings = (readings || []).filter(d => {
@@ -131,9 +133,10 @@ export default function RealtimeChart({ readings = [] }) {
   // SVG Canvas dimensions
   const svgWidth = 600;
   const svgHeight = 220;
-  const paddingX = 24;
+  const paddingLeft = 52;
+  const paddingRight = 24;
   const paddingY = 28;
-  const usableWidth = svgWidth - paddingX * 2;
+  const usableWidth = svgWidth - paddingLeft - paddingRight;
   const usableHeight = svgHeight - paddingY * 2;
 
   // Pemetaan titik (X & Y)
@@ -141,8 +144,8 @@ export default function RealtimeChart({ readings = [] }) {
   // Semakin banyak data (totalCount bertambah), jarak antar titik (usableWidth / (totalCount - 1)) semakin kecil.
   const points = displayData.map((d, idx) => {
     const x = totalCount === 1 
-      ? svgWidth / 2 
-      : paddingX + (idx / (totalCount - 1)) * usableWidth;
+      ? paddingLeft + usableWidth / 2 
+      : paddingLeft + (idx / (totalCount - 1)) * usableWidth;
     
     const yVal = Number(d.water_level_cm) || 0;
     const y = svgHeight - paddingY - ((yVal - minVal) / range) * usableHeight;
@@ -164,13 +167,12 @@ export default function RealtimeChart({ readings = [] }) {
     if (isNaN(d.getTime())) return '--:--';
     const hours = String(d.getHours()).padStart(2, '0');
     const mins = String(d.getMinutes()).padStart(2, '0');
-    const secs = String(d.getSeconds()).padStart(2, '0');
     if (includeDate) {
       const day = String(d.getDate()).padStart(2, '0');
       const month = String(d.getMonth() + 1).padStart(2, '0');
-      return `${day}/${month} ${hours}:${mins}:${secs}`;
+      return `${day}/${month} ${hours}:${mins}`;
     }
-    return `${hours}:${mins}:${secs}`;
+    return `${hours}:${mins}`;
   };
 
   // Cek apakah rentang data melewati pergantian hari
@@ -188,11 +190,43 @@ export default function RealtimeChart({ readings = [] }) {
     return `${(timeSpanMs / 3600000).toFixed(1)} jam (${totalCount} sampel)`;
   };
 
-  // Posisi Tooltip
-  const tooltipXPercent = hoveredPoint ? (hoveredPoint.x / svgWidth) * 100 : 0;
-  const tooltipYPercent = hoveredPoint ? (hoveredPoint.y / svgHeight) * 100 : 0;
-  const translateX = tooltipXPercent > 82 ? '-90%' : tooltipXPercent < 18 ? '-10%' : '-50%';
-  const translateY = tooltipYPercent < 28 ? '15%' : '-115%';
+  // Interaksi Scrubbing / Geser Kursor (persis seperti Gambar 2)
+  const handlePointerMove = (e) => {
+    if (!svgRef.current || points.length === 0) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const offsetX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const svgX = (offsetX / rect.width) * svgWidth;
+
+    let closestIdx = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const dist = Math.abs(points[i].x - svgX);
+      if (dist < minDist) {
+        minDist = dist;
+        closestIdx = i;
+      }
+    }
+    setSliderIndex(closestIdx);
+  };
+
+  const handlePointerDown = (e) => {
+    setIsDragging(true);
+    handlePointerMove(e);
+  };
+
+  const handlePointerUp = () => {
+    setIsDragging(false);
+  };
+
+  const handlePointerLeave = () => {
+    setIsDragging(false);
+  };
+
+  const activePointIndex = sliderIndex !== null 
+    ? Math.min(Math.max(0, sliderIndex), Math.max(0, points.length - 1))
+    : (points.length > 0 ? points.length - 1 : null);
+  const activePoint = activePointIndex !== null ? points[activePointIndex] : null;
 
   return (
     <div className="corporate-card" style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -231,24 +265,74 @@ export default function RealtimeChart({ readings = [] }) {
         </div>
       </div>
 
-      {/* SVG Chart Area */}
-      <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: '200px' }}>
+      {/* SVG Chart Area dengan Fitur Geser / Crosshair Slider */}
+      <div 
+        style={{ 
+          position: 'relative', 
+          width: '100%', 
+          flex: 1, 
+          minHeight: '200px',
+          cursor: 'ew-resize',
+          userSelect: 'none',
+          touchAction: 'none'
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
+        onMouseDown={handlePointerDown}
+        onMouseMove={handlePointerMove}
+        onMouseUp={handlePointerUp}
+        onMouseLeave={handlePointerLeave}
+        onTouchStart={handlePointerDown}
+        onTouchMove={handlePointerMove}
+        onTouchEnd={handlePointerUp}
+      >
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
           preserveAspectRatio="none"
-          style={{ width: '100%', height: '100%', overflow: 'visible' }}
+          style={{ width: '100%', height: '100%', overflow: 'visible', display: 'block' }}
         >
           <defs>
             <linearGradient id="realtimeAreaGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#003882" stopOpacity="0.18" />
               <stop offset="100%" stopColor="#003882" stopOpacity="0.0" />
             </linearGradient>
+            <filter id="realtimeBadgeShadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.2" />
+            </filter>
           </defs>
 
-          {/* Grid lines */}
-          <line x1={paddingX} y1={paddingY} x2={svgWidth - paddingX} y2={paddingY} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1.5" />
-          <line x1={paddingX} y1={svgHeight / 2} x2={svgWidth - paddingX} y2={svgHeight / 2} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1.5" />
-          <line x1={paddingX} y1={svgHeight - paddingY} x2={svgWidth - paddingX} y2={svgHeight - paddingY} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1.5" />
+          {/* Horizontal Guide Lines & Elevation Indicators (Penunjuk Sumbu Y - Persis Gambar No 2) */}
+          {[0.25, 0.5, 0.75].map((pct, idx) => {
+            const y = paddingY + pct * usableHeight;
+            const valCm = maxVal - pct * range;
+            const formattedVal = `${(valCm / 100).toFixed(2)}m`;
+            return (
+              <g key={idx}>
+                <line 
+                  x1={paddingLeft} 
+                  y1={y} 
+                  x2={svgWidth - paddingRight} 
+                  y2={y} 
+                  stroke="#f1f5f9" 
+                  strokeDasharray="4 4" 
+                  strokeWidth="1.5" 
+                />
+                <text 
+                  x={paddingLeft - 8} 
+                  y={y + 3.5} 
+                  fill="#94a3b8" 
+                  fontSize="9.5" 
+                  textAnchor="end" 
+                  fontFamily="monospace"
+                >
+                  {formattedVal}
+                </text>
+              </g>
+            );
+          })}
 
           {/* Area Fill */}
           {areaD && (
@@ -269,7 +353,7 @@ export default function RealtimeChart({ readings = [] }) {
           )}
 
           {/* Live Telemetry Beacon Ping on Latest Reading */}
-          {points.length > 0 && isLatestFresh && (
+          {points.length > 0 && isLatestFresh && !activePoint && (
             <circle
               cx={points[points.length - 1].x}
               cy={points[points.length - 1].y}
@@ -282,67 +366,103 @@ export default function RealtimeChart({ readings = [] }) {
             />
           )}
 
-          {/* Data Points on Hover / End */}
+          {/* Data Points on Curve (Aestetika Gambar 1) */}
           {points.map((p, idx) => {
             const isLast = idx === points.length - 1;
-            const isHovered = hoveredPoint?.data === p.data;
-            const radius = isHovered ? 6.5 : (isLast ? Math.max(4.5, baseDotRadius * 1.4) : baseDotRadius);
+            const isActive = activePoint?.index === idx;
+            const radius = isLast ? Math.max(4.5, baseDotRadius * 1.4) : baseDotRadius;
 
             return (
               <circle
                 key={idx}
                 cx={p.x}
                 cy={p.y}
-                r={radius}
-                fill={isLast ? "#003882" : (isHovered ? "#0284c7" : "#38bdf8")}
+                r={isActive ? 6 : radius}
+                fill={isLast ? "#003882" : (isActive ? "#0284c7" : "#38bdf8")}
                 stroke="#ffffff"
-                strokeWidth={isLast ? 2.5 : (isHovered ? 2 : 1)}
-                style={{ cursor: 'pointer', transition: 'r 0.15s ease, fill 0.15s ease' }}
-                onMouseEnter={() => setHoveredPoint(p)}
-                onMouseLeave={() => setHoveredPoint(null)}
+                strokeWidth={isLast ? 2.5 : (isActive ? 2 : 1)}
+                opacity={activePoint && !isActive ? 0.5 : 1}
+                style={{ pointerEvents: 'none', transition: 'opacity 0.15s ease, r 0.15s ease' }}
               />
             );
           })}
-        </svg>
 
-        {/* Hover Tooltip */}
-        {hoveredPoint && (
-          <div style={{
-            position: 'absolute',
-            left: `${tooltipXPercent}%`,
-            top: `${tooltipYPercent}%`,
-            transform: `translate(${translateX}, ${translateY})`,
-            background: '#ffffff',
-            border: '1px solid #d0deee',
-            padding: '8px 12px',
-            borderRadius: '8px',
-            boxShadow: '0 6px 20px rgba(0, 56, 130, 0.14)',
-            pointerEvents: 'none',
-            zIndex: 20,
-            whiteSpace: 'nowrap',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '3px'
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              color: '#003882'
-            }}>
-              <Clock size={11} strokeWidth={2.5} />
-              <span>{formatTimeStr(hoveredPoint.data.timestamp, isMultiDay)}</span>
-            </div>
-            <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
-              {Number(hoveredPoint.data.water_level_cm).toFixed(1)} <span style={{ fontSize: '0.74rem', color: '#003882', fontWeight: 700 }}>cm</span>
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-              TMA: {(Number(hoveredPoint.data.water_level_cm) / 100).toFixed(2)} m
-            </div>
-          </div>
-        )}
+          {/* ======================================================== */}
+          {/* SLIDING CROSSHAIR, INTERSECTION POINT & DARK TOOLTIP */}
+          {/* (Interaksi geser horizontal persis seperti Gambar 2)      */}
+          {/* ======================================================== */}
+          {activePoint && (
+            <g style={{ pointerEvents: 'none' }}>
+              {/* Garis Vertikal Putus-putus Biru */}
+              <line 
+                x1={activePoint.x} 
+                y1={paddingY - 8} 
+                x2={activePoint.x} 
+                y2={svgHeight - paddingY + 8} 
+                stroke="#0284c7" 
+                strokeWidth="1.8" 
+                strokeDasharray="4 3"
+              />
+
+              {/* Titik Temu Lingkaran Putih-Biru */}
+              <circle 
+                cx={activePoint.x} 
+                cy={activePoint.y} 
+                r="6.5" 
+                fill="#0284c7" 
+                stroke="#ffffff" 
+                strokeWidth="2.5" 
+                filter="url(#realtimeBadgeShadow)"
+              />
+
+              {/* Floating Dark Tooltip Box */}
+              {(() => {
+                const tooltipWidth = 126;
+                const halfWidth = tooltipWidth / 2;
+                const clampedX = Math.min(Math.max(activePoint.x, paddingLeft + halfWidth), svgWidth - paddingRight - halfWidth);
+                const isTop = activePoint.y < 58;
+                const tooltipY = isTop ? activePoint.y + 36 : activePoint.y - 28;
+
+                return (
+                  <g 
+                    transform={`translate(${clampedX}, ${tooltipY})`}
+                    filter="url(#realtimeBadgeShadow)"
+                  >
+                    <rect 
+                      x={-halfWidth} 
+                      y="-22" 
+                      width={tooltipWidth} 
+                      height="32" 
+                      rx="6" 
+                      fill="#0f172a" 
+                    />
+                    {isTop ? (
+                      <polygon points="-5,-22 5,-22 0,-26" fill="#0f172a" />
+                    ) : (
+                      <polygon points="-5,10 5,10 0,14" fill="#0f172a" />
+                    )}
+                    <text x="0" y="-8" fill="#94a3b8" fontSize="9" fontWeight="600" textAnchor="middle">
+                      {formatTimeStr(activePoint.data.timestamp, isMultiDay)}
+                    </text>
+                    <text x="0" y="6" fill="#ffffff" fontSize="11" fontWeight="800" fontFamily="monospace" textAnchor="middle">
+                      {Number(activePoint.data.water_level_cm).toFixed(1)} cm ({(Number(activePoint.data.water_level_cm) / 100).toFixed(2)} m)
+                    </text>
+                  </g>
+                );
+              })()}
+
+              {/* Pill Badge Waktu di Bawah Sumbu X */}
+              {activePoint.data?.timestamp && (
+                <g transform={`translate(${Math.min(Math.max(activePoint.x, paddingLeft + 42), svgWidth - paddingRight - 42)}, ${svgHeight - paddingY + 22})`}>
+                  <rect x="-38" y="-9" width="76" height="18" rx="4" fill="#e2e8f0" />
+                  <text x="0" y="3.5" fill="#334155" fontSize="10" fontWeight="700" textAnchor="middle">
+                    {formatTimeStr(activePoint.data.timestamp, false)}
+                  </text>
+                </g>
+              )}
+            </g>
+          )}
+        </svg>
       </div>
 
       {/* Time axis footer */}

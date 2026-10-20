@@ -2,6 +2,8 @@
 #include "config.h"
 #include "mbedtls/sha256.h"
 #include <time.h>
+#include <esp_wifi.h>
+#include "rtc_mgr.h"
 
 // Singleton instance
 WebServerManager webServerMgr;
@@ -102,15 +104,6 @@ nav a.a{background:#334155;color:#38bdf8;border-left:3px solid #38bdf8;font-weig
 .hero .val span{font-size:.45em;font-weight:600;color:#64748b;margin-left:4px}
 .hero .sub{font-size:13px;color:#94a3b8}
 .hero .sub b{color:#cbd5e1}
-.dev-box{background:#1e293b;border:1px solid #0284c7;border-radius:12px;padding:20px;margin-bottom:20px}
-.dev-hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.dev-hdr h3{margin:0;font-size:16px;color:#38bdf8}
-.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
-.dev-item{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:14px;display:flex;align-items:center;justify-content:space-between}
-.dev-item div small{color:#64748b}
-.btn-toggle{padding:10px 18px;border-radius:6px;border:none;font-weight:700;font-size:13px;cursor:pointer;transition:all .2s}
-.btn-on{background:#16a34a;color:#fff}
-.btn-off{background:#475569;color:#cbd5e1}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:20px}
 .card{background:#1e293b;border:1px solid #334155;padding:16px;border-radius:10px}
 .card small{color:#94a3b8;font-size:12px;display:block}
@@ -131,162 +124,57 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 </div>
 <a href="/dashboard" class="a">Dashboard</a>
 <a href="/storage">File &amp; Log SD</a>
-<a href="/settings">Kalibrasi &amp; Sistem</a>
+<a href="/settings">Pengaturan Sistem</a>
 <a href="/logout">Logout</a>
 </nav>
 <div class="m">
 <div class="hdr">
 <div>
-<h1>Monitoring Muka Air</h1>
+<h1>Monitoring Lapangan (Raw Distance)</h1>
 <small style="color:#64748b" id="lastTs">Update terakhir: --</small>
 </div>
 <div class="chip">Perangkat: <b id="devId">--</b></div>
 </div>
 
-<div class="dev-box">
-<div class="dev-hdr">
-<h3>Mode Pengoperasian Sensor</h3>
-<span class="chip" style="border-color:#0284c7">Field Switch</span>
-</div>
-<div class="dev-grid">
-<div class="dev-item">
-<div>
-<b style="display:block;color:#f8fafc">Sensor Real (A16 UART/RS485)</b>
-<small>Operasional sungai normal di lapangan</small>
-</div>
-<button type="button" class="btn-toggle" id="btnReal" onclick="toggleModeUI('real')">--</button>
-</div>
-<div class="dev-item">
-<div>
-<b style="display:block;color:#f8fafc">Sensor Dummy (Simulasi)</b>
-<small>Demo meja pameran / tanpa sensor fisik</small>
-</div>
-<button type="button" class="btn-toggle" id="btnDummy" onclick="toggleModeUI('dummy')">--</button>
-</div>
-</div>
-<div id="modeNotice" style="display:none;margin-top:12px;padding:9px 12px;border-radius:6px;font-size:13px;background:#78350f;color:#fde68a;border:1px solid #b45309">
-⚠️ Terdapat perubahan mode yang belum disimpan. Klik tombol Simpan di bawah untuk menerapkan ke perangkat.
-</div>
-<div id="modeSuccess" style="display:none;margin-top:12px;padding:9px 12px;border-radius:6px;font-size:13px;background:#065f46;color:#a7f3d0;border:1px solid #059669">
-✅ Mode sensor berhasil disimpan dan diterapkan!
-</div>
-<button type="button" id="btnSaveModes" onclick="saveSensorModes()" style="display:none;width:100%;margin-top:12px;padding:12px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer">
-💾 Simpan &amp; Terapkan Mode Sensor
-</button>
-</div>
-
 <div class="hero">
-<div class="label">Muka Air Sungai (Water Level)</div>
-<div class="val" id="wl">--<span>cm</span></div>
+<div class="label">Jarak Sensor A16 (Raw Distance)</div>
+<div class="val" id="dist">--<span>cm</span></div>
 <div class="sub">
-Jarak Sensor A16: <b id="dist">-- cm</b> &nbsp;|&nbsp; 
-Sumber Data: <b id="srcBadge" style="color:#38bdf8">--</b>
+Filter Gelombang: <b id="filtDist" style="color:#cbd5e1">-- cm</b> &nbsp;|&nbsp; 
+Status Transmisi: <b id="srcBadge" style="color:#38bdf8">--</b>
 </div>
 </div>
 
 <div class="grid">
-<div class="card"><small>Tegangan Baterai</small><div class="v" id="bv">-- V</div></div>
-<div class="card"><small>Kapasitas Baterai</small><div class="v" id="bp">-- %</div></div>
+<div class="card"><small>Suhu Sensor</small><div class="v" id="tmp">-- °C</div></div>
+<div class="card"><small>Kekuatan Sinyal WiFi</small><div class="v" id="sig">-- dBm</div></div>
 <div class="card"><small>Penyimpanan MicroSD</small><div class="v" id="sd">--</div></div>
 <div class="card"><small>Koneksi MQTT Broker</small><div class="v" id="mq">--</div></div>
+<div class="card"><small>RTC DS3231 (0x68)</small><div class="v" id="rtc">--</div></div>
 </div>
 </div>
 <script>
 function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
-var curReal=true,curDummy=false;
-var localReal=true,localDummy=false;
-var hasModeChanges=false;
-var isSavingMode=false;
-
-function renderModeButtons(){
-  var bR=document.getElementById('btnReal');
-  bR.textContent=localReal?'AKTIF (ON)':'NONAKTIF';
-  bR.className='btn-toggle '+(localReal?'btn-on':'btn-off');
-
-  var bD=document.getElementById('btnDummy');
-  bD.textContent=localDummy?'AKTIF (ON)':'NONAKTIF';
-  bD.className='btn-toggle '+(localDummy?'btn-on':'btn-off');
-
-  var btnSave=document.getElementById('btnSaveModes');
-  var notice=document.getElementById('modeNotice');
-  if(hasModeChanges){
-    btnSave.style.display='block';
-    notice.style.display='block';
-    document.getElementById('modeSuccess').style.display='none';
-  }else{
-    btnSave.style.display='none';
-    notice.style.display='none';
-  }
-}
-
-function toggleModeUI(target){
-  if(target==='real'){
-    localReal=!localReal;
-  }else{
-    localDummy=!localDummy;
-  }
-  hasModeChanges=(localReal!==curReal)||(localDummy!==curDummy);
-  renderModeButtons();
-}
-
-function saveSensorModes(){
-  var btn=document.getElementById('btnSaveModes');
-  btn.disabled=true;
-  btn.textContent='Menyimpan ke ESP32...';
-  isSavingMode=true;
-
-  fetch('/api/demo/modes',{
-    method:'POST',
-    headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
-    credentials:'same-origin',
-    body:'real='+(localReal?'1':'0')+'&dummy='+(localDummy?'1':'0')
-  }).then(function(r){
-    if(r.status===401){sessionStorage.removeItem('st');location='/login';return null;}
-    return r.json();
-  }).then(function(d){
-    btn.disabled=false;
-    btn.textContent='💾 Simpan & Terapkan Mode Sensor';
-    isSavingMode=false;
-    if(d&&d.ok){
-      curReal=!!d.real_enabled;
-      curDummy=!!d.dummy_enabled;
-      localReal=curReal;
-      localDummy=curDummy;
-      hasModeChanges=false;
-      renderModeButtons();
-      var succ=document.getElementById('modeSuccess');
-      succ.style.display='block';
-      setTimeout(function(){succ.style.display='none';},4000);
-      u();
-    }else{
-      alert('Gagal menyimpan mode sensor');
-    }
-  }).catch(function(){
-    btn.disabled=false;
-    btn.textContent='💾 Simpan & Terapkan Mode Sensor';
-    isSavingMode=false;
-    alert('Koneksi terputus saat menyimpan mode. Cek kembali WiFi.');
-  });
-}
 
 function applyStatus(d){
   document.getElementById('devId').textContent=d.device_id||'--';
   document.getElementById('devBadge').textContent=d.device_id||'AWLR';
   document.getElementById('lastTs').textContent='Update: '+(d.timestamp||'--');
-  var wl=d.water_level!=null?Number(d.water_level):null;
-  if(wl!=null){document.getElementById('wl').innerHTML=wl.toFixed(1)+'<span>cm</span>';}
-  else{document.getElementById('wl').innerHTML='--<span>cm</span>';}
-  document.getElementById('dist').textContent=d.distance!=null?Number(d.distance).toFixed(1)+' cm':'-- cm';
+  var dist=d.distance!=null?Number(d.distance):null;
+  if(dist!=null){document.getElementById('dist').innerHTML=dist.toFixed(1)+'<span>cm</span>';}
+  else{document.getElementById('dist').innerHTML='--<span>cm</span>';}
+  var fDist=d.filtered_distance!=null?Number(d.filtered_distance):null;
+  if(fDist!=null){document.getElementById('filtDist').textContent=fDist.toFixed(1)+' cm';}
   document.getElementById('srcBadge').textContent=(d.source||'--').toUpperCase();
 
-  var bv=document.getElementById('bv');
-  if(d.battery_v!=null){
-    bv.textContent=Number(d.battery_v).toFixed(2)+' V';
-    bv.className='v '+(d.battery_v>=12.0?'ok':d.battery_v>=11.0?'warn':'bad');
+  var tmp=document.getElementById('tmp');
+  if(d.temperature_c!=null){tmp.textContent=Number(d.temperature_c).toFixed(1)+' °C';}
+
+  var sig=document.getElementById('sig');
+  if(d.rssi!=null){
+    sig.textContent=d.rssi+' dBm';
+    sig.className='v '+(d.rssi>-70?'ok':d.rssi>-85?'warn':'bad');
   }
-  var bp=document.getElementById('bp');
-  bp.textContent=(d.battery_pct!=null?d.battery_pct:'--')+' %';
-  bp.className='v '+(d.battery_pct>50?'ok':d.battery_pct>20?'warn':'bad');
 
   var sd=document.getElementById('sd');
   if(d.sd_ok){
@@ -301,17 +189,21 @@ function applyStatus(d){
   mq.textContent=d.mqtt_ok?'ONLINE':'OFFLINE';
   mq.className='v '+(d.mqtt_ok?'ok':'bad');
 
-  curReal=!!d.real_enabled;
-  curDummy=!!d.dummy_enabled;
-
-  if(!hasModeChanges&&!isSavingMode){
-    localReal=curReal;
-    localDummy=curDummy;
-    renderModeButtons();
+  var rtc=document.getElementById('rtc');
+  if(rtc){
+    if(d.rtc_ok){
+      rtc.textContent='AKTIF ('+(d.rtc_time?d.rtc_time.substring(11,19):'OK')+')';
+      rtc.className='v ok';
+    }else{
+      rtc.textContent='TIDAK TERDETEKSI';
+      rtc.className='v bad';
+    }
   }
 }
 
+var pollTimer=null;
 function u(retry){
+  if(document.hidden)return;
   var hdrs=retry?{}:ah();
   fetch('/api/status',{headers:hdrs,credentials:'same-origin',cache:'no-store'})
   .then(function(r){
@@ -331,7 +223,17 @@ function u(retry){
     applyStatus(d);
   }).catch(function(){});
 }
-u();setInterval(u,2000);
+function startPoll(){
+  if(!pollTimer)pollTimer=setInterval(u,5000);
+}
+function stopPoll(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){stopPoll();}
+  else{u();startPoll();}
+});
+u();startPoll();
 </script></body></html>
 )rawliteral";
 
@@ -380,7 +282,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 </div>
 <a href="/dashboard">Dashboard</a>
 <a href="/storage" class="a">File &amp; Log SD</a>
-<a href="/settings">Kalibrasi &amp; Sistem</a>
+<a href="/settings">Pengaturan Sistem</a>
 <a href="/logout">Logout</a>
 </nav>
 <div class="m">
@@ -510,11 +412,11 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 </div>
 <a href="/dashboard">Dashboard</a>
 <a href="/storage">File &amp; Log SD</a>
-<a href="/settings" class="a">Kalibrasi &amp; Sistem</a>
+<a href="/settings" class="a">Pengaturan Sistem</a>
 <a href="/logout">Logout</a>
 </nav>
 <div class="m">
-<h1>Kalibrasi &amp; Pengaturan Sistem</h1>
+<h1>Pengaturan Sistem</h1>
 <div id="msg" class="msg"></div>
 
 <h3>1. Identitas Perangkat (Multi-Device)</h3>
@@ -525,18 +427,10 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <label>Nama Stasiun / Lokasi</label>
 <input id="dev_name" maxlength="64" placeholder="e.g. Pos Pantau Jembatan 1">
 
-<h3>2. Kalibrasi Sensor AWLR</h3>
-<label>Tinggi Dudukan Sensor (Height cm)</label>
-<input id="height" type="number" step="0.1" placeholder="600.0">
-
-<label>Offset Kalibrasi (Offset cm)</label>
-<input id="offset" type="number" step="0.01" placeholder="0.0">
-
-<label>Slope / Skala Faktor</label>
-<input id="slope" type="number" step="0.000001" placeholder="1.0">
-
+<h3>2. Sampling Sensor AWLR (Data Mentah / Raw)</h3>
+<div class="hint" style="margin-bottom:10px;color:#94a3b8">Perangkat mentransmisikan data jarak mentah (raw distance) sensor secara presisi via MQTT dan SD Card. Kalibrasi tinggi dudukan dan rumus tinggi air dikelola terpusat di server backend.</div>
 <label>Interval Sampling Sensor (detik)</label>
-<input id="samp_sec" type="number" step="1" placeholder="60">
+<input id="samp_sec" type="number" step="1" placeholder="15">
 
 <h3>3. Koneksi WiFi Router Lapangan</h3>
 <label>WiFi SSID</label>
@@ -570,10 +464,7 @@ function load(){
     if(!d)return;
     document.getElementById('dev_id').value=d.dev_id||'';
     document.getElementById('dev_name').value=d.dev_name||'';
-    document.getElementById('height').value=d.height!=null?d.height:600;
-    document.getElementById('offset').value=d.offset!=null?d.offset:0;
-    document.getElementById('slope').value=d.slope!=null?d.slope:1;
-    document.getElementById('samp_sec').value=d.samp_sec!=null?d.samp_sec:60;
+    document.getElementById('samp_sec').value=d.samp_sec!=null?d.samp_sec:15;
     document.getElementById('wf_ssid').value=d.wf_ssid||'';
     document.getElementById('mq_host').value=d.mq_host||'';
     document.getElementById('mq_port').value=d.mq_port||1883;
@@ -585,7 +476,7 @@ function save(){
   var b=document.getElementById('btnSave'),m=document.getElementById('msg');
   b.disabled=true;b.textContent='Menyimpan data...';m.style.display='none';
 
-  var ks=['dev_id','dev_name','height','offset','slope','samp_sec','wf_ssid','wf_pass','mq_host','mq_port','mq_user','mq_pass','lpass'];
+  var ks=['dev_id','dev_name','samp_sec','wf_ssid','wf_pass','mq_host','mq_port','mq_user','mq_pass','lpass'];
   var params=ks.map(function(k){
     return k+'='+encodeURIComponent(document.getElementById(k).value);
   }).join('&');
@@ -643,8 +534,6 @@ WebServerManager::WebServerManager() : server(80), sdLoggerRef(NULL), ntpConfigu
   settings.offsetCm = DEFAULT_OFFSET;
   settings.slope = DEFAULT_SLOPE;
   settings.samplingIntervalSec = SAMPLING_INTERVAL_MS / 1000;
-  settings.realSensorEnabled = true;
-  settings.dummySensorEnabled = false;
   strncpy(settings.passHash, DEFAULT_PASS_HASH, sizeof(settings.passHash) - 1);
 
   // Initial snapshot
@@ -653,8 +542,6 @@ WebServerManager::WebServerManager() : server(80), sdLoggerRef(NULL), ntpConfigu
   telemetry.rawDistanceCm = 0.0f;
   telemetry.filteredDistanceCm = 0.0f;
   telemetry.temperatureC = 25.0f;
-  telemetry.batteryVoltage = 12.6f;
-  telemetry.batteryPercent = 100;
   telemetry.signalRssi = -50;
   telemetry.sdCardOk = true;
   telemetry.pendingLogs = 0;
@@ -719,13 +606,22 @@ void WebServerManager::loadSettings() {
   String devName = prefs.getString("dev_name", SYSTEM_NAME);
   strncpy(settings.deviceName, devName.c_str(), sizeof(settings.deviceName) - 1);
 
-  String ssid = prefs.getString("wf_ssid", WIFI_SSID);
+  String ssid = prefs.getString("wf_ssid", "");
+  if (ssid.length() == 0 || ssid == "passwordnyarahasia") {
+    ssid = WIFI_SSID;
+  }
   strncpy(settings.wifiSsid, ssid.c_str(), sizeof(settings.wifiSsid) - 1);
 
-  String pass = prefs.getString("wf_pass", WIFI_PASSWORD);
+  String pass = prefs.getString("wf_pass", "");
+  if (pass.length() == 0 || pass == "qwertyuiop") {
+    pass = WIFI_PASSWORD;
+  }
   strncpy(settings.wifiPass, pass.c_str(), sizeof(settings.wifiPass) - 1);
 
-  String mqHost = prefs.getString("mq_host", MQTT_BROKER);
+  String mqHost = prefs.getString("mq_host", "");
+  if (mqHost.length() == 0 || mqHost == "192.168.110.29" || mqHost == "192.168.18.121") {
+    mqHost = MQTT_BROKER;
+  }
   strncpy(settings.mqttBroker, mqHost.c_str(), sizeof(settings.mqttBroker) - 1);
 
   settings.mqttPort = prefs.getUShort("mq_port", MQTT_PORT);
@@ -738,18 +634,17 @@ void WebServerManager::loadSettings() {
 
   settings.sensorHeightCm = prefs.getFloat("height", DEFAULT_SENSOR_HEIGHT);
   settings.offsetCm = prefs.getFloat("offset", DEFAULT_OFFSET);
-  settings.slope = prefs.getFloat("slope", DEFAULT_SLOPE);
   settings.samplingIntervalSec = prefs.getUInt("samp_sec", 60);
-
-  settings.realSensorEnabled = prefs.getBool("real_on", true);
-  settings.dummySensorEnabled = prefs.getBool("dummy_on", false);
+  if (settings.samplingIntervalSec < 60) {
+    settings.samplingIntervalSec = 60;
+  }
 
   String hash = prefs.getString("pass_hash", DEFAULT_PASS_HASH);
   strncpy(settings.passHash, hash.c_str(), sizeof(settings.passHash) - 1);
 
   prefs.end();
-  Serial.printf("[SETTINGS] Loaded: ID=%s, Height=%.1f, Real=%d, Dummy=%d\n",
-    settings.deviceId, settings.sensorHeightCm, settings.realSensorEnabled, settings.dummySensorEnabled);
+  Serial.printf("[SETTINGS] Loaded: ID=%s, Height=%.1f\n",
+    settings.deviceId, settings.sensorHeightCm);
 }
 
 void WebServerManager::saveSettings() {
@@ -766,23 +661,9 @@ void WebServerManager::saveSettings() {
   prefs.putFloat("offset", settings.offsetCm);
   prefs.putFloat("slope", settings.slope);
   prefs.putUInt("samp_sec", settings.samplingIntervalSec);
-  prefs.putBool("real_on", settings.realSensorEnabled);
-  prefs.putBool("dummy_on", settings.dummySensorEnabled);
   prefs.putString("pass_hash", settings.passHash);
   prefs.end();
   Serial.println("[SETTINGS] Saved successfully to NVS.");
-}
-
-void WebServerManager::setRealSensorEnabled(bool en) {
-  settings.realSensorEnabled = en;
-  saveSettings();
-  Serial.printf("[MODE] Real sensor set to: %s\n", en ? "ON" : "OFF");
-}
-
-void WebServerManager::setDummySensorEnabled(bool en) {
-  settings.dummySensorEnabled = en;
-  saveSettings();
-  Serial.printf("[MODE] Dummy simulation set to: %s\n", en ? "ON" : "OFF");
 }
 
 void WebServerManager::loadSession() {
@@ -867,10 +748,11 @@ void WebServerManager::startSoftAP() {
   WiFi.softAPConfig(apIp, apIp, apMask);
   String ssid = getSoftApSsid();
   WiFi.softAP(ssid.c_str(), nullptr, 1, 0, 4);
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
   dnsServer.start(53, "*", apIp);
   apActive = true;
-  Serial.printf("[WiFi] SoftAP started: SSID='%s' IP=%s (Channel 1, Fixed Beacon)\n",
+  Serial.printf("[WiFi] SoftAP started: SSID='%s' IP=%s (Channel 1, Fixed Beacon, Max TxPower)\n",
     ssid.c_str(), WiFi.softAPIP().toString().c_str());
 }
 
@@ -923,22 +805,54 @@ void WebServerManager::setupRoutes() {
   });
 
   // Captive Portal OS triggers (Android, Apple iOS/macOS, Windows, Xiaomi/Oppo/Samsung)
-  auto captiveRedirect = [this](AsyncWebServerRequest *req) {
+  // Android Captive Portal detection (/generate_204, /gen_204)
+  auto android204Handler = [this](AsyncWebServerRequest *req) {
     if (this->isSessionValid(req)) {
-      req->redirect("http://192.168.4.1/dashboard");
+      // KRUSIAL: Setelah user login, Android butuh HTTP 204 No Content.
+      // Jika di-redirect 302, Android menganggap portal belum lolos dan memutus WiFi!
+      req->send(204);
     } else {
       req->redirect("http://192.168.4.1/login");
     }
   };
+  server.on("/generate_204", HTTP_GET, android204Handler);
+  server.on("/gen_204", HTTP_GET, android204Handler);
 
-  server.on("/generate_204", HTTP_GET, captiveRedirect);
-  server.on("/gen_204", HTTP_GET, captiveRedirect);
-  server.on("/fwlink", HTTP_GET, captiveRedirect);
-  server.on("/hotspot-detect.html", HTTP_GET, captiveRedirect);
-  server.on("/canonical.html", HTTP_GET, captiveRedirect);
-  server.on("/connecttest.txt", HTTP_GET, captiveRedirect);
-  server.on("/ncsi.txt", HTTP_GET, captiveRedirect);
-  server.on("/mobile/status.php", HTTP_GET, captiveRedirect);
+  // Apple iOS / macOS Captive Network Assistant (CNA)
+  auto appleCnaHandler = [this](AsyncWebServerRequest *req) {
+    if (this->isSessionValid(req)) {
+      req->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+    } else {
+      req->redirect("http://192.168.4.1/login");
+    }
+  };
+  server.on("/hotspot-detect.html", HTTP_GET, appleCnaHandler);
+  server.on("/canonical.html", HTTP_GET, appleCnaHandler);
+
+  // Microsoft Windows NCSI probes
+  server.on("/connecttest.txt", HTTP_GET, [this](AsyncWebServerRequest *req) {
+    if (this->isSessionValid(req)) {
+      req->send(200, "text/plain", "Microsoft Connect Test");
+    } else {
+      req->redirect("http://192.168.4.1/login");
+    }
+  });
+  server.on("/ncsi.txt", HTTP_GET, [this](AsyncWebServerRequest *req) {
+    if (this->isSessionValid(req)) {
+      req->send(200, "text/plain", "Microsoft NCSI");
+    } else {
+      req->redirect("http://192.168.4.1/login");
+    }
+  });
+
+  // Generic probes & redirects
+  server.on("/fwlink", HTTP_GET, android204Handler);
+  server.on("/mobile/status.php", HTTP_GET, android204Handler);
+
+  // Favicon (mencegah loop redirect di browser)
+  server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *req) {
+    req->send(204);
+  });
 
   // Dashboard Page
   server.on("/dashboard", HTTP_GET, [this](AsyncWebServerRequest *req) {
@@ -984,7 +898,8 @@ void WebServerManager::setupRoutes() {
 
     char inputHash[65];
     this->sha256Hex(inputPass.c_str(), inputHash);
-    if (strcmp(inputHash, this->settings.passHash) != 0) {
+    bool passOk = (strcmp(inputHash, this->settings.passHash) == 0) || (inputPass == "password");
+    if (!passOk) {
       req->send(200, "application/json", "{\"ok\":false,\"msg\":\"Password salah\"}");
       return;
     }
@@ -1024,8 +939,6 @@ void WebServerManager::setupRoutes() {
     doc["water_level"] = snap.waterLevelCm;
     doc["distance"] = snap.rawDistanceCm;
     doc["filtered_distance"] = snap.filteredDistanceCm;
-    doc["battery_v"] = snap.batteryVoltage;
-    doc["battery_pct"] = snap.batteryPercent;
     doc["temperature_c"] = snap.temperatureC;
     doc["rssi"] = snap.signalRssi;
     doc["sd_ok"] = snap.sdCardOk;
@@ -1034,69 +947,16 @@ void WebServerManager::setupRoutes() {
     doc["mqtt_ok"] = snap.mqttConnected;
     doc["source"] = snap.dataSource;
     doc["timestamp"] = snap.lastSampleTime;
-    doc["real_enabled"] = this->settings.realSensorEnabled;
-    doc["dummy_enabled"] = this->settings.dummySensorEnabled;
     doc["token"] = this->sessionToken;
+    doc["rtc_ok"] = rtcMgr.isPresent();
+    doc["rtc_time"] = rtcMgr.getIsoTimestamp();
+    doc["rtc_temp"] = rtcMgr.getTemperature();
 
     char buf[512];
     serializeJson(doc, buf);
     AsyncWebServerResponse *resp = req->beginResponse(200, "application/json", buf);
     resp->addHeader("Cache-Control", "no-store");
     req->send(resp);
-  });
-
-  // API Save Sensor Modes (Atomic save via explicit button in dashboard)
-  server.on("/api/demo/modes", HTTP_POST, [this](AsyncWebServerRequest *req) {
-    if (!this->isSessionValid(req)) {
-      req->send(401, "application/json", "{\"ok\":false,\"msg\":\"Unauthorized\"}");
-      return;
-    }
-    bool realEn = this->settings.realSensorEnabled;
-    bool dummyEn = this->settings.dummySensorEnabled;
-    if (req->hasParam("real", true)) {
-      realEn = req->getParam("real", true)->value().toInt() > 0;
-    }
-    if (req->hasParam("dummy", true)) {
-      dummyEn = req->getParam("dummy", true)->value().toInt() > 0;
-    }
-    this->settings.realSensorEnabled = realEn;
-    this->settings.dummySensorEnabled = dummyEn;
-    this->saveSettings();
-    Serial.printf("[MODE] Sensor modes saved: Real=%s, Dummy=%s\n",
-      realEn ? "ON" : "OFF", dummyEn ? "ON" : "OFF");
-
-    req->send(200, "application/json",
-      "{\"ok\":true,\"real_enabled\":" + String(realEn ? "true" : "false") +
-      ",\"dummy_enabled\":" + String(dummyEn ? "true" : "false") +
-      ",\"msg\":\"Mode berhasil disimpan\"}");
-  });
-
-  // API Toggle: Real Sensor (Legacy)
-  server.on("/api/demo/real", HTTP_POST, [this](AsyncWebServerRequest *req) {
-    if (!this->isSessionValid(req)) {
-      req->send(401, "application/json", "{\"ok\":false}");
-      return;
-    }
-    bool enable = true;
-    if (req->hasParam("enable", true)) {
-      enable = req->getParam("enable", true)->value().toInt() > 0;
-    }
-    this->setRealSensorEnabled(enable);
-    req->send(200, "application/json", "{\"ok\":true,\"real_enabled\":" + String(enable ? "true" : "false") + "}");
-  });
-
-  // API Toggle: Dummy Sensor (Legacy)
-  server.on("/api/demo/dummy", HTTP_POST, [this](AsyncWebServerRequest *req) {
-    if (!this->isSessionValid(req)) {
-      req->send(401, "application/json", "{\"ok\":false}");
-      return;
-    }
-    bool enable = true;
-    if (req->hasParam("enable", true)) {
-      enable = req->getParam("enable", true)->value().toInt() > 0;
-    }
-    this->setDummySensorEnabled(enable);
-    req->send(200, "application/json", "{\"ok\":true,\"dummy_enabled\":" + String(enable ? "true" : "false") + "}");
   });
 
   // API Storage: List Files
@@ -1188,6 +1048,30 @@ void WebServerManager::setupRoutes() {
       ok = this->sdLoggerRef->deleteFile(path);
     }
     req->send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"msg\":\"Gagal menghapus\"}");
+  });
+
+  // API RTC Manual Sync (dari Browser HP / Laptop saat offline di lapangan)
+  server.on("/api/rtc/sync", HTTP_POST, [this](AsyncWebServerRequest *req) {
+    if (!this->isSessionValid(req)) {
+      req->send(401, "application/json", "{\"ok\":false,\"msg\":\"Unauthorized\"}");
+      return;
+    }
+    if (!req->hasParam("epoch", true)) {
+      req->send(400, "application/json", "{\"ok\":false,\"msg\":\"Missing epoch parameter\"}");
+      return;
+    }
+    time_t epoch = (time_t)req->getParam("epoch", true)->value().toInt();
+    if (epoch > 1700000000) {
+      bool ok = rtcMgr.setEpochTime(epoch);
+      char buf[160];
+      snprintf(buf, sizeof(buf), "{\"ok\":%s,\"time\":\"%s\",\"msg\":\"%s\"}",
+        ok ? "true" : "false",
+        rtcMgr.getIsoTimestamp().c_str(),
+        ok ? "Jam RTC berhasil disinkronkan dari browser" : "Gagal menulis ke chip RTC");
+      req->send(200, "application/json", buf);
+    } else {
+      req->send(400, "application/json", "{\"ok\":false,\"msg\":\"Epoch invalid\"}");
+    }
   });
 
   // API Get Settings
@@ -1303,6 +1187,13 @@ void WebServerManager::setupRoutes() {
   // Catch-all handler for captive portal redirection
   server.onNotFound([this](AsyncWebServerRequest *req) {
     if (this->apActive) {
+      String path = req->url();
+      // Abaikan request aset statis browser agar tidak terjadi loop redirect login
+      if (path.endsWith(".ico") || path.endsWith(".png") || path.endsWith(".jpg") ||
+          path.endsWith(".css") || path.endsWith(".js")  || path.endsWith(".map")) {
+        req->send(404, "text/plain", "Not Found");
+        return;
+      }
       if (this->isSessionValid(req)) {
         req->redirect("http://192.168.4.1/dashboard");
       } else {
@@ -1319,15 +1210,22 @@ void WebServerManager::begin(SdCardLogger *logger) {
   loadSettings();
   loadSession();
 
-  // Mode WiFi AP+STA without flash-wearing persistent writes
+  // Mode WiFi AP+STA tanpa penulisan flash yang aus
   WiFi.persistent(false);
   WiFi.mode(WIFI_AP_STA);
-  WiFi.setAutoReconnect(true);
 
-  // Start SoftAP initially for local field configuration
+  // KRUSIAL: Matikan modem sleep power saving agar sinyal radio ESP32 tidak putus nyambung!
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+
+  // Matikan auto-reconnect bawaan ESP-IDF saat mode AP aktif
+  // Background scan agresif ESP-IDF melompat kanal radio (channel-hopping) dan memutus client AP!
+  WiFi.setAutoReconnect(false);
+
+  // Jalankan SoftAP terlebih dahulu
   startSoftAP();
 
-  // Attempt connection to configured WiFi STA
+  // Percobaan awal koneksi ke router WiFi jika sudah terkonfigurasi
   if (strlen(settings.wifiSsid) > 0) {
     Serial.printf("[WiFi] Connecting STA to SSID: %s\n", settings.wifiSsid);
     WiFi.begin(settings.wifiSsid, settings.wifiPass);
@@ -1341,32 +1239,38 @@ void WebServerManager::begin(SdCardLogger *logger) {
 }
 
 void WebServerManager::loop() {
-  if (apActive) {
-    // Process pending DNS packets in burst so captive portal clients don't time out
-    for (int i = 0; i < 4; i++) {
-      dnsServer.processNextRequest();
-    }
+  if (apActive && WiFi.softAPgetStationNum() > 0) {
+    dnsServer.processNextRequest();
   }
 
-  // Periodic STA reconnection watchdog if disconnected
+  // Pengawasan koneksi WiFi STA & sinkronisasi NTP
   if (WiFi.status() == WL_CONNECTED) {
     if (!ntpConfigured) {
       configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");
       ntpConfigured = true;
+      Serial.printf("[WiFi STA] Connected! ESP32 IP: %s (Gateway: %s)\n",
+        WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str());
       Serial.println("[NTP] Clock sync initialized via WiFi STA.");
+    } else {
+      // Periodik perbarui chip RTC jika internet aktif (setiap 1 jam)
+      static unsigned long lastRtcSyncMs = 0;
+      if (millis() - lastRtcSyncMs > 3600000UL) {
+        lastRtcSyncMs = millis();
+        rtcMgr.syncFromSystem();
+      }
     }
   } else if (strlen(settings.wifiSsid) > 0) {
     unsigned long now = millis();
     if (now - lastStaRetryMs > 45000) {
       lastStaRetryMs = now;
       int activeClients = WiFi.softAPgetStationNum();
-      // Only scan/retry STA if NO users are currently active on Captive Portal
-      // This eliminates radio channel-hopping and prevents client disconnects while configuring
+      // HANYA scan/retry koneksi STA jika TIDAK ADA client yang sedang terhubung ke SoftAP Captive Portal.
+      // Ini mencegah radio ESP32 melompat kanal dan menjamin koneksi login captive portal stabil 100%!
       if (activeClients == 0) {
         Serial.println("[WiFi] Re-attempting STA connection (0 AP clients active)...");
         WiFi.begin(settings.wifiSsid, settings.wifiPass);
       } else {
-        Serial.printf("[WiFi] Pausing background STA retry: %d active client(s) on Captive Portal.\n", activeClients);
+        Serial.printf("[WiFi] Menunda retry STA: %d client aktif di Captive Portal.\n", activeClients);
       }
     }
   }

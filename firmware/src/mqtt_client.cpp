@@ -1,5 +1,6 @@
 #include "mqtt_client.h"
 #include "config.h"
+#include <esp_task_wdt.h>
 
 MqttManager::MqttManager() : client(wifiClient), lastReconnectAttempt(0) {}
 
@@ -19,8 +20,10 @@ CalibrationData MqttManager::getCalibration() const {
 
 void MqttManager::begin() {
   DeviceSettings &s = webServerMgr.getSettings();
+  wifiClient.setTimeout(3);
   client.setServer(s.mqttBroker, s.mqttPort);
   client.setBufferSize(2048); // Expand buffer for JSON bulk payloads
+  client.setSocketTimeout(3);
 
   client.setCallback([this](char *topic, byte *payload, unsigned int length) {
     this->handleMessage(topic, payload, length);
@@ -33,7 +36,7 @@ void MqttManager::loop() {
   if (WiFi.status() == WL_CONNECTED) {
     if (!client.connected()) {
       unsigned long now = millis();
-      if (now - lastReconnectAttempt > 5000) {
+      if (now - lastReconnectAttempt > 10000) {
         lastReconnectAttempt = now;
         reconnect();
       }
@@ -60,7 +63,14 @@ void MqttManager::reconnect() {
 
   Serial.printf("[MQTT] Connecting as '%s' to %s:%d...\n", clientId.c_str(), s.mqttBroker, s.mqttPort);
 
-  if (client.connect(clientId.c_str(), s.mqttUser, s.mqttPass, willTopic.c_str(), 1, false, willPayload.c_str())) {
+  esp_task_wdt_reset();
+  const char *u = (s.mqttUser[0] != '\0') ? s.mqttUser : nullptr;
+  const char *p = (s.mqttPass[0] != '\0') ? s.mqttPass : nullptr;
+
+  bool ok = client.connect(clientId.c_str(), u, p, willTopic.c_str(), 1, false, willPayload.c_str());
+  esp_task_wdt_reset();
+
+  if (ok) {
     Serial.println("[MQTT] Connected to broker successfully!");
 
     // Send online status
@@ -142,8 +152,6 @@ bool MqttManager::publishReading(const LogRecord &record, int readingCount, cons
   doc["raw_distance_cm"] = record.rawDistanceCm;
   doc["water_level_cm"] = record.waterLevelCm;
   doc["temperature_c"] = record.temperatureC;
-  doc["battery_voltage"] = record.batteryVoltage;
-  doc["battery_percent"] = record.batteryPercent;
   doc["signal_quality"] = WiFi.RSSI();
   doc["sd_status"] = "ok";
   doc["reading_count"] = readingCount;
@@ -174,7 +182,7 @@ bool MqttManager::publishAlert(const String &code, const String &severity, const
   return client.publish(getTopic("alert").c_str(), buf);
 }
 
-bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, float battV, int pendingCount) {
+bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount) {
   if (!isConnected()) return false;
 
   String devId = webServerMgr.getEffectiveDeviceId();
@@ -190,9 +198,8 @@ bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, in
   doc["free_heap_bytes"] = esp_get_free_heap_size();
   doc["wifi_rssi"] = WiFi.RSSI();
   doc["sd_card_ok"] = true;
-  doc["sensor_ok"] = webServerMgr.isRealSensorEnabled();
-  doc["demo_mode"] = webServerMgr.isDummySensorEnabled();
-  doc["battery_voltage"] = battV;
+  doc["sensor_ok"] = true;
+  doc["demo_mode"] = false;
   doc["esp_temp_c"] = temperatureRead();
   doc["pending_unsent"] = pendingCount;
   doc["firmware_version"] = FIRMWARE_VERSION;
@@ -205,11 +212,17 @@ bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, in
 void MqttManager::triggerBulkSync(SdCardLogger &sdLogger) {
   if (!isConnected()) return;
 
-  std::vector<LogRecord> unsent = sdLogger.getUnsentRecords("2026-10-07.csv", BULK_CHUNK_SIZE);
+  String currentFilename = webServerMgr.getCurrentLogFilename();
+  std::vector<LogRecord> unsent = sdLogger.getUnsentRecords(currentFilename.c_str(), BULK_CHUNK_SIZE);
   if (unsent.empty()) return;
 
   String devId = webServerMgr.getEffectiveDeviceId();
-  Serial.printf("[BULK SYNC] Syncing %d buffered records for %s...\n", unsent.size(), devId.c_str());
+  Serial.printf("[BULK SYNC] Syncing %d buffered records from %s for %s...\n", unsent.size(), currentFilename.c_str(), devId.c_str());
+
+  String fileDate = currentFilename;
+  if (fileDate.endsWith(".csv")) {
+    fileDate = fileDate.substring(0, fileDate.length() - 4);
+  }
 
   JsonDocument doc;
   doc["device_id"] = devId;
@@ -217,7 +230,7 @@ void MqttManager::triggerBulkSync(SdCardLogger &sdLogger) {
   doc["chunk"] = 1;
   doc["total_chunks"] = 1;
   doc["source"] = "sd_buffer";
-  doc["file_date"] = "2026-10-07";
+  doc["file_date"] = fileDate;
 
   JsonArray records = doc["records"].to<JsonArray>();
   for (const auto &r : unsent) {
@@ -226,12 +239,15 @@ void MqttManager::triggerBulkSync(SdCardLogger &sdLogger) {
     obj["raw_distance_cm"] = r.rawDistanceCm;
     obj["water_level_cm"] = r.waterLevelCm;
     obj["temperature_c"] = r.temperatureC;
-    obj["battery_voltage"] = r.batteryVoltage;
-    obj["battery_percent"] = r.batteryPercent;
   }
 
   char buf[2048];
   serializeJson(doc, buf);
-  client.publish(getTopic("data/bulk").c_str(), buf);
+  bool ok = client.publish(getTopic("data/bulk").c_str(), buf);
+  if (ok) {
+    sdLogger.decrementPending(unsent.size());
+    Serial.printf("[BULK SYNC] Sukses mengirim %d baris buffered data. Sisa pending: %d\n",
+      (int)unsent.size(), sdLogger.getPendingCount());
+  }
   delay(BULK_THROTTLE_MS);
 }

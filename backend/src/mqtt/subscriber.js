@@ -127,7 +127,16 @@ async function handleMessage(deviceId, subtopic, data) {
 }
 
 async function handleSingleReading(deviceId, data) {
-  const ts = data.timestamp ? new Date(typeof data.timestamp === 'number' && data.timestamp < 1e11 ? data.timestamp * 1000 : data.timestamp) : new Date();
+  let ts = data.timestamp ? new Date(typeof data.timestamp === 'number' && data.timestamp < 1e11 ? data.timestamp * 1000 : data.timestamp) : new Date();
+  if (ts.getTime() > Date.now() + 600000) {
+    const corrected = new Date(ts.getTime() - 7 * 3600 * 1000);
+    if (corrected.getTime() <= Date.now() + 60000) {
+      ts = corrected;
+    }
+  }
+  
+  // Align timestamp to the exact minute (:00 seconds) to ensure exactly 1 record per minute
+  ts = new Date(Math.floor(ts.getTime() / 60000) * 60000);
   
   // Aturan perhitungan muka air server-side dari data mentah sensor
   let waterLevel = data.water_level_cm != null ? Number(data.water_level_cm) : null;
@@ -162,8 +171,12 @@ async function handleSingleReading(deviceId, data) {
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     ON CONFLICT (device_id, timestamp) DO UPDATE SET
       water_level_cm = EXCLUDED.water_level_cm,
+      raw_distance_cm = EXCLUDED.raw_distance_cm,
+      temperature_c = EXCLUDED.temperature_c,
       battery_voltage = EXCLUDED.battery_voltage,
-      battery_percent = EXCLUDED.battery_percent
+      battery_percent = EXCLUDED.battery_percent,
+      signal_quality = EXCLUDED.signal_quality,
+      source = EXCLUDED.source
     RETURNING *
   `;
 
@@ -183,6 +196,7 @@ async function handleSingleReading(deviceId, data) {
 
   const res = await query(insertSql, values);
   const savedRow = res.rows[0];
+  console.log(`[MQTT Telemetry] Device: ${deviceId} | Raw: ${rawDist} cm | Level: ${waterLevel} cm | Temp: ${data.temperature_c}°C`);
 
   // Broadcast to Web Dashboard via WebSocket (dual event emission for backwards & forward compatibility)
   if (ioInstance && savedRow) {
@@ -196,7 +210,17 @@ async function handleBulkReadings(deviceId, payload) {
   let savedCount = 0;
 
   for (const item of records) {
-    const ts = item.timestamp ? new Date(typeof item.timestamp === 'number' && item.timestamp < 1e11 ? item.timestamp * 1000 : item.timestamp) : new Date();
+    let ts = item.timestamp ? new Date(typeof item.timestamp === 'number' && item.timestamp < 1e11 ? item.timestamp * 1000 : item.timestamp) : new Date();
+    // Guard: Jika timestamp berada di masa depan (> 10 menit), kemungkinan data offline RTC tersimpan dalam jam lokal (WIB) tanpa konversi UTC
+    if (ts.getTime() > Date.now() + 600000) {
+      const corrected = new Date(ts.getTime() - 7 * 3600 * 1000);
+      if (corrected.getTime() <= Date.now() + 60000) {
+        ts = corrected;
+      }
+    }
+    
+    // Align timestamp to the exact minute (:00 seconds)
+    ts = new Date(Math.floor(ts.getTime() / 60000) * 60000);
     
     const insertSql = `
       INSERT INTO readings (

@@ -9,7 +9,6 @@ RTC_DATA_ATTR uint32_t rtc_panic_count = 0;
 
 void initWatchdog() {
   esp_task_wdt_init(WATCHDOG_TIMEOUT_SEC, true);
-  esp_task_wdt_add(NULL); // Add current main task to watchdog
   Serial.printf("[WDT] Task Watchdog Timer armed (%d seconds timeout)\n", WATCHDOG_TIMEOUT_SEC);
 }
 

@@ -14,8 +14,7 @@
 
 ## 1. Executive Summary & Product Vision
 
-### 1.1 Executive Summary
-**TerraFlow** adalah sistem instrumen **Automatic Water Level Recorder (AWLR)** portabel industri yang dirancang untuk memantau ketinggian muka air secara kontinu (interval 1 menit) di lokasi terpencil atau pesisir pantai. Sistem ini mengintegrasikan mikrokontroler **ESP32-S3 Industrial**, sensor ultrasonik **A16 River/Dam (DYP-A16NY4W-V1.0)** via RS485 Modbus RTU, modul penyimpanan lokal **MicroSD (SPI)**, serta konektivitas IoT berbasis **MQTT**. 
+**TerraFlow** adalah sistem instrumen **Automatic Water Level Recorder (AWLR)** portabel industri yang dirancang untuk memantau ketinggian muka air secara kontinu (interval 1 menit) di lokasi terpencil atau pesisir pantai. Sistem ini mengintegrasikan mikrokontroler **KhursLabs ESP32-S3 IoT Logger**, sensor ultrasonik **DYP-A16** pada Terminal Baut Eksternal (`Pin 1: GPIO 8 SDA` & `Pin 2: GPIO 9 SCL`), onboard **DS3231 Precision RTC (I2C addr `0x68`)** dengan sistem arbitrase bus otomatis (*time-multiplexed*), modul penyimpanan lokal **MicroSD SPI** (`CS=10, MOSI=11, SCK=12, MISO=13`), serta konektivitas IoT berbasis **MQTT**.
 
 Data dikirimkan ke arsitektur cloud/VPS terintegrasi berbasis **Node.js, PostgreSQL, dan React Dashboard** dengan fitur analitik pasang surut (*tidal analysis*), kalibrasi parameter jarak jauh (*remote calibration*), pemantauan kesehatan perangkat (*watchdog & diagnostics*), serta mekanisme *offline-buffering* otomatis yang menjamin nol kehilangan data (*zero data loss*).
 
@@ -47,11 +46,11 @@ Menjadi solusi AWLR portabel berstandar industri dengan keandalan operasional la
 
 ```mermaid
 graph TB
-    subgraph "Edge Device (ESP32-S3 Industrial AWLR)"
-        A16["A16 Ultrasonic Sensor<br/>(RS485 Modbus RTU)"] -->|GPIO 15/16| MCU["ESP32-S3 Industrial<br/>(Dual Core 240MHz)"]
-        SD["MicroSD Card Module<br/>(SPI Buffering)"] <-->|GPIO 10,11,12,13| MCU
-        PWR["Battery / Solar Subsystem<br/>(Voltage Monitor)"] -->|ADC| MCU
-        RTC["RTC Memory & Watchdog<br/>(Crash & Boot Tracker)"] <--> MCU
+    subgraph "Edge Device (KhursLabs ESP32-S3 IoT Logger AWLR)"
+        A16["DYP-A16 Ultrasonic Sensor<br/>(UART TTL Mode)"] -->|Terminal Pin 1 & 2: GPIO 8/9| MCU["ESP32-S3 Industrial<br/>(Dual Core 240MHz)"]
+        RTC["Onboard DS3231 RTC<br/>(I2C Addr 0x68 on GPIO 8/9)"] <-->|Time-Multiplexed Bus| MCU
+        SD["MicroSD Card Module<br/>(SPI CS:10, MOSI:11, SCK:12, MISO:13)"] <-->|SPI Offline Ring Buffer| MCU
+        PWR["5V Regulated Power Rail<br/>(Terminal Pin 3 & 4)"] -->|Power| A16
     end
 
     subgraph "Network & Messaging Layer"
@@ -76,28 +75,36 @@ graph TB
 ## 4. Hardware Specifications & Interfaces
 
 ### 4.1 Perangkat Keras Utama
-* **Mikrokontroler**: ESP32-S3 Industrial (Dual-Core Xtensa LX7 @240MHz, 8MB Flash, 2MB/8MB PSRAM, Wi-Fi 2.4GHz 802.11 b/g/n, Bluetooth 5.0 LE).
-* **Sensor Ketinggian**: A16 Ultrasonic River/Dam Sensor (DYP-A16NY4W-V1.0).
+* **Mikrokontroler**: KhursLabs ESP32-S3 IoT Logger (Dual-Core Xtensa LX7 @240MHz, 16MB Flash, 8MB PSRAM, Wi-Fi 2.4GHz 802.11 b/g/n, Bluetooth 5.0 LE).
+* **Sensor Ketinggian**: DYP-A16 Ultrasonic River/Dam Sensor.
   * Prinsip kerja: Gelombang ultrasonik frekuensi tinggi dengan kompensasi temperatur internal.
-  * Jarak ukur: 50 cm – 1500 cm (Blind Zone: 50 cm).
+  * Jarak ukur: 50 cm – 1500 cm (Blind Zone: 50 cm, toleransi meja uji: 15 cm).
   * Akurasi: $\pm(1 + S \times 0.3\%)$ cm.
-  * Antarmuka: RS485 Industrial, Transceiver MAX485/SP3485.
+  * Antarmuka: UART TTL melalui Terminal Pin 1 (SDA / GPIO 8 RX) dan Pin 2 (SCL / GPIO 9 TX).
   * Proteksi: IP67/IP68 *weatherproof* untuk instalasi luar ruangan.
-* **Media Penyimpanan Lokal**: Modul MicroSD Card Industri (SPI mode, kapasitas 4GB–32GB FAT32).
-* **Manajemen Daya**: Catu daya baterai 12V DC / Solar Panel charge controller dengan pemantau tegangan analog (*voltage divider* ke ADC ESP32).
+* **Onboard Real-Time Clock**: DS3231 Precision I2C RTC (**I2C Address: `0x68`**).
+  * Pin: GPIO 8 (SDA) & GPIO 9 (SCL).
+  * Sinkronisasi POSIX system clock (`settimeofday`) dengan mekanisme time-multiplexing dinamis bersama sensor UART.
+* **Media Penyimpanan Lokal**: Socket MicroSD Card Onboard Industri (SPI Hardware mode, kapasitas 4GB–32GB FAT32).
+  * Pin: CS=GPIO 10, MOSI=GPIO 11, SCK=GPIO 12, MISO=GPIO 13.
+* **Manajemen Daya**: Catu daya teregulasi 5V DC pada Terminal Pin 3 (VCC) dan Pin 4 (GND).
 
-### 4.2 Pemetaan Pin GPIO
+### 4.2 Pemetaan Pin GPIO & Terminal
 
-| Komponen | Sinyal / Jalur | GPIO ESP32-S3 | Mode / Fungsi |
+| Komponen / Terminal | Sinyal / Jalur | GPIO ESP32-S3 | Mode / Fungsi |
 |---|---|---|---|
+| **Terminal Pin 1** | **SDA** | **GPIO 8** | Sensor TX (Putih) &rarr; UART2 RX & I2C SDA (Multiplexed) |
+| **Terminal Pin 2** | **SCL** | **GPIO 9** | Sensor RX (Kuning) &rarr; UART2 TX & I2C SCL (Multiplexed) |
+| **Terminal Pin 3** | **+5V** | — | VCC Power Supply Sensor (Merah) |
+| **Terminal Pin 4** | **GND** | — | Ground Common Sensor (Hitam) |
+| **Terminal Pin 5** | **RS485 A+** | — | Jalur Differensial External RS485 A+ (Opsional) |
+| **Terminal Pin 6** | **RS485 B-** | — | Jalur Differensial External RS485 B- (Opsional) |
+| **DS3231 RTC Onboard** | I2C Addr **`0x68`** | **GPIO 8 (SDA), GPIO 9 (SCL)** | Sinkronisasi Waktu POSIX Sistem |
 | **MicroSD Card** | SPI CS | **GPIO 10** | Output Chip Select |
 | **MicroSD Card** | SPI MOSI | **GPIO 11** | Master Out Slave In |
-| **MicroSD Card** | SPI MISO | **GPIO 12** | Master In Slave Out |
-| **MicroSD Card** | SPI SCK | **GPIO 13** | SPI Clock |
-| **RS485 Transceiver** | TX (ke RX A16) | **GPIO 15** | UART Transmit (Serial2) |
-| **RS485 Transceiver** | RX (ke TX A16) | **GPIO 16** | UART Receive (Serial2) |
-| **Sensor Tegangan Baterai** | BATT_ADC | **GPIO 4** (atau ADC1) | Analog Voltage Divider Read |
-| **Status LED / Indikator** | LED_STATUS | **GPIO 2** | Indikator Online/Sync/Error |
+| **MicroSD Card** | SPI SCK | **GPIO 12** | SPI Clock |
+| **MicroSD Card** | SPI MISO | **GPIO 13** | Master In Slave Out |
+| **Status LED** | LED_STATUS | **GPIO 2** | Indikator Online/Sync/Error |
 
 ---
 
@@ -105,9 +112,11 @@ graph TB
 
 ### 5.1 Siklus Pengukuran Normal (1 Menit)
 1. **Sampling Interval**: Timer interrupt / FreeRTOS task berjalan setiap **60 detik**.
-2. **Pembacaan Sensor**:
-   * ESP32 mengirim request query frame RS485 ke modul A16 (Baudrate 9600 bps, 8N1).
-   * Timeout pembacaan: 2.0 detik. Jika tidak merespons, lakukan percobaan hingga 3 kali.
+2. **Arbitrase Bus & Pembacaan Sensor**:
+   * ESP32 melepas peripheral I2C (`Wire.end()`) pada GPIO 8 & 9.
+   * ESP32 membuka UART Serial2 (Baudrate 9600 bps, 8N1) pada GPIO 8 (RX) dan GPIO 9 (TX).
+   * ESP32 mengirim trigger byte `0x01` ke RX sensor dan menerima respon 4-byte frame `0xFF, Data_H, Data_L, Checksum`.
+   * Setelah pembacaan tuntas, port UART langsung ditutup (`Serial2.end()`), mengembalikan akses GPIO 8 & 9 ke I2C RTC DS3231 (`0x68`) selama 59 detik sisa siklus.
 3. **Perhitungan Water Level (Formula Kalibrasi)**:
    $$\text{Water Level (cm)} = \text{Sensor Height} - (\text{Raw Distance} \times \text{Slope} + \text{Offset})$$
    * Nilai parameter kalibrasi dibaca dari memory NVS (Non-Volatile Storage) ESP32.

@@ -19,8 +19,6 @@ struct LogRecord {
   float filteredDistanceCm;
   float waterLevelCm;
   float temperatureC;
-  float batteryVoltage;
-  int batteryPercent;
   bool isSent;
 };
 

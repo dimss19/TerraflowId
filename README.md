@@ -2,17 +2,19 @@
 # TerraFlow — Industrial Portable Automatic Water Level Recorder (AWLR)
 **PT Tanah Airku Teknologi**
 
-TerraFlow is an end-to-end, industrial-grade portable **Automatic Water Level Recorder (AWLR)** and oceanographic tidal monitoring system. It integrates an **ESP32-S3 Industrial** edge controller, an **A16 River/Dam Ultrasonic Sensor** via RS485 Modbus RTU, an **SPI MicroSD card** for zero-loss offline buffering, an **embedded MQTT broker/ingestion engine (Node.js)**, a partitioned **PostgreSQL time-series database**, and a modern **React + Vite telemetry dashboard**.
+TerraFlow is an end-to-end, industrial-grade portable **Automatic Water Level Recorder (AWLR)** and oceanographic tidal monitoring system. It integrates a **KhursLabs ESP32-S3 IoT Logger** edge controller, a **DYP-A16 River/Dam Ultrasonic Sensor** connected via the terminal header (`GPIO 8 SDA` / `GPIO 9 SCL`), an onboard **DS3231 RTC (I2C addr `0x68`)** with dynamic bus arbitration, an **SPI MicroSD card** (`CS=10, MOSI=11, SCK=12, MISO=13`) for zero-loss offline buffering, an **embedded MQTT broker/ingestion engine (Node.js)**, a partitioned **PostgreSQL time-series database**, and a modern **React + Vite telemetry dashboard**.
 
 ---
 
 ## 🌊 Key Features
 
 1. **Edge MCU & Sensor Interface**:
-   - **ESP32-S3 Industrial** dual-core MCU (240 MHz, FreeRTOS).
-   - **A16 Ultrasonic Sensor (DYP-A16NY4W-V1.0)** via RS485 Modbus RTU (`GPIO 15 TX`, `GPIO 16 RX`), 50–1500 cm range, IP68 rated.
-   - **SPI MicroSD Card Logging** (`GPIO 10 CS`, `GPIO 11 MOSI`, `GPIO 12 MISO`, `GPIO 13 SCK`) formatted as `/data/YYYY-MM-DD.csv`.
-   - **Automatic Sensor Recovery**: Hardware power-cycle relay trigger after 5 consecutive read timeouts.
+   - **ESP32-S3 Industrial** dual-core MCU (240 MHz, FreeRTOS, 16MB Flash / 8MB PSRAM).
+   - **A16 Ultrasonic Sensor (DYP-A16)** via Terminal Pin 1 (`GPIO 8 SDA` as RX) & Pin 2 (`GPIO 9 SCL` as TX), 50–1500 cm measurement range, IP68 rated.
+   - **Onboard DS3231 Real-Time Clock (I2C addr `0x68`)**: Hardware RTC on `GPIO 8 (SDA)` & `GPIO 9 (SCL)` providing automatic POSIX time synchronization (`settimeofday`) without NTP dependency.
+   - **Dynamic Bus Arbitration (Time-Multiplexed)**: Automatically arbitrates `GPIO 8 & 9` between I2C RTC and UART sensor sampling, keeping the RTC accessible during the 59-second idle period.
+   - **SPI MicroSD Card Logging** (`GPIO 10 CS`, `GPIO 11 MOSI`, `GPIO 12 SCK`, `GPIO 13 MISO`) formatted as `/data/YYYY-MM-DD.csv`.
+   - **Automatic Sensor Recovery**: Auto-reconnect sequence after consecutive read timeouts.
 
 2. **Field Resilience & Watchdog Architecture**:
    - **Dual Watchdog**: Task Watchdog Timer (30s) + Interrupt Watchdog Timer (10s).
@@ -43,18 +45,28 @@ TerraFlow is an end-to-end, industrial-grade portable **Automatic Water Level Re
 
 ---
 
-## 🛠️ Hardware Pinout (ESP32-S3)
+## 🛠️ Hardware Pinout & Architecture (KhursLabs ESP32-S3 IoT Logger)
 
-| Component | Signal | GPIO | Description |
+### 1. External Screw Terminal Header (6-Pin Terminal)
+| Terminal Pin | Label / Signal | GPIO ESP32-S3 | Sensor Cable Connection | Description |
+|---|---|---|---|---|
+| **Pin 1** | **SDA** | **GPIO 8** | **Sensor TX (White Cable)** | ESP32-S3 UART2 RX & I2C SDA (Multiplexed) |
+| **Pin 2** | **SCL** | **GPIO 9** | **Sensor RX (Yellow Cable)** | ESP32-S3 UART2 TX & I2C SCL (Multiplexed) |
+| **Pin 3** | **+5V** | — | **Sensor VCC (Red Cable)** | Regulated +5V Power Supply Rail |
+| **Pin 4** | **GND** | — | **Sensor GND (Black Cable)** | Common System & Logic Ground |
+| **Pin 5** | **RS485 A+** | — | External RS485 A+ (Optional) | Differential Data Line (+) |
+| **Pin 6** | **RS485 B-** | — | External RS485 B- (Optional) | Differential Data Line (-) |
+
+### 2. Onboard Peripherals & Bus Specifications
+| Component | Interface | Address / GPIO Pins | Function & Operating Notes |
 |---|---|---|---|
-| **MicroSD Module** | SPI CS | **GPIO 10** | Chip Select |
-| **MicroSD Module** | SPI MOSI | **GPIO 11** | Master Out Slave In |
-| **MicroSD Module** | SPI MISO | **GPIO 12** | Master In Slave Out |
-| **MicroSD Module** | SPI SCK | **GPIO 13** | SPI Clock |
-| **RS485 Transceiver** | TX | **GPIO 15** | UART2 TX (to A16 RX) |
-| **RS485 Transceiver** | RX | **GPIO 16** | UART2 RX (to A16 TX) |
-| **Battery Voltage** | ADC | **GPIO 4** | Voltage Divider (12V Battery) |
-| **Sensor Power Gate** | MOSFET/Relay | **GPIO 5** | Power cycle control |
+| **DS3231 Real-Time Clock** | I2C (Wire) | **I2C Address: `0x68`**<br>SDA: **GPIO 8** &bull; SCL: **GPIO 9** | High-precision RTC synchronizing POSIX system time (`settimeofday`) on boot and loop. |
+| **MicroSD Card Socket** | SPI Hardware | CS: **GPIO 10**<br>MOSI: **GPIO 11**<br>SCK: **GPIO 12**<br>MISO: **GPIO 13** | Dedicated SPI bus for zero-loss offline logging (`/data/YYYY-MM-DD.csv`). Fallback 10MHz &rarr; 4MHz. |
+| **DYP-A16 Ultrasonic Sensor** | UART TTL | RX: **GPIO 8** &bull; TX: **GPIO 9** | Ultrasonic river/dam level sensor (50–1500 cm). |
+
+> [!NOTE]
+> **Dynamic Bus Arbitration / Time-Multiplexing (GPIO 8 & GPIO 9)**:
+> Board KhursLabs ESP32-S3 IoT Logger menggunakan jalur fisik GPIO 8 & 9 bersamaan untuk RTC I2C onboard (`0x68`) dan Terminal Baut Eksternal (Pin 1 & Pin 2). Firmware TerraFlow mengimplementasikan sistem arbitrase otomatis: saat sampling (1x per menit), I2C dilepas (`Wire.end()`) untuk membuka UART membaca Sensor A16, kemudian port UART langsung ditutup seketika (`Serial2.end()`) sehingga GPIO 8 & 9 kembali bebas untuk diakses RTC DS3231 (`0x68`) selama 59 detik sisa siklus.
 
 ---
 

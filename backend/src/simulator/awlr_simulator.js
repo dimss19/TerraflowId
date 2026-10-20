@@ -257,8 +257,8 @@ function injectSensorFail() {
     timestamp: Math.floor(Date.now() / 1000),
     alert_code: 'SENSOR_FAIL',
     severity: 'CRITICAL',
-    message: 'A16 Ultrasonic Sensor not responding after 5 consecutive RS485 queries.',
-    details: { consecutive_fails: 5, rs485_status: 'TIMEOUT' }
+    message: 'A16 Ultrasonic Sensor not responding after 5 consecutive UART queries on Terminal SDA/SCL.',
+    details: { consecutive_fails: 5, sensor_status: 'TIMEOUT' }
   }));
 }
 

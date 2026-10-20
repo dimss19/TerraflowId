@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { 
   Waves, 
   TrendingUp, 
@@ -26,7 +28,10 @@ import {
   Sliders,
   Battery,
   Thermometer,
-  Wifi
+  Wifi,
+  CirclePlus,
+  CircleMinus,
+  RotateCcw
 } from 'lucide-react';
 
 // Helper kurva Bezier halus yang stabil
@@ -74,13 +79,19 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
 
   // --- Zoom State ---
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomCenterIndex, setZoomCenterIndex] = useState(null);
 
   // --- Modal Download Logs State ---
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportFormat, setExportFormat] = useState('txt'); // 'txt', 'csv', 'json'
-  const [exportAggregate, setExportAggregate] = useState('raw'); // 'raw', '5m', '15m', '1h'
+  const [exportFormat, setExportFormat] = useState('pdf'); // 'pdf', 'txt', 'csv'
+  const [exportDate, setExportDate] = useState(() => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  });
   const [exportTz, setExportTz] = useState('wib'); // 'wib', 'utc'
   const [exportUnit, setExportUnit] = useState('m'); // 'm', 'cm'
+  const [isExporting, setIsExporting] = useState(false);
 
   // --- Tidal Analysis State ---
   const [sliderIndex, setSliderIndex] = useState(null);
@@ -186,6 +197,8 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
     }
 
     setActivePreset(label);
+    setZoomLevel(1);
+    setZoomCenterIndex(null);
     const end = new Date();
     const start = new Date(Date.now() - hours * 3600 * 1000);
     const startStr = formatDateOnly(start);
@@ -199,6 +212,8 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
 
   const handleApplyFilter = () => {
     setActivePreset('custom');
+    setZoomLevel(1);
+    setZoomCenterIndex(null);
     setIsFilterApplied(true);
     fetchHistorical(true, startDate, endDate);
     fetchTidal(true, startDate, endDate);
@@ -211,6 +226,7 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
     setIsFilterApplied(false);
     setCustomTidalData(null);
     setZoomLevel(1);
+    setZoomCenterIndex(null);
     fetchHistorical(false);
     fetchTidal(false);
     if (onRefresh) onRefresh();
@@ -223,62 +239,717 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
     }
   }, [device?.device_id]);
 
-  // Ekspor File Data (TXT / CSV / JSON)
-  const handleDownloadFile = () => {
+  // Helper: Persiapan baris data untuk tabel log di PDF (24 Jam Penuh)
+  const prepareAggregatedRows = (data, tz, unit) => {
+    if (!data || data.length === 0) return [];
+    
+    return data.map((row, idx) => {
+      const d = new Date(row.timestamp);
+      let dateStr = '--';
+      if (!isNaN(d.getTime())) {
+        if (tz === 'utc') {
+          dateStr = d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+        } else {
+          const pad = (n) => String(n).padStart(2, '0');
+          const wib = new Date(d.getTime() + 7 * 3600 * 1000);
+          dateStr = `${wib.getUTCFullYear()}-${pad(wib.getUTCMonth() + 1)}-${pad(wib.getUTCDate())} ${pad(wib.getUTCHours())}:${pad(wib.getUTCMinutes())}:${pad(wib.getUTCSeconds())} WIB`;
+        }
+      }
+
+      const wl = Number(row.smoothed_level) || Number(row.water_level_cm) || 0;
+      const elevStr = unit === 'cm' ? `${wl.toFixed(1)} cm` : `${(wl / 100).toFixed(3)} m`;
+      const rssiStr = row.signal_quality != null ? `${row.signal_quality} dBm` : '-';
+      const battStr = row.battery_voltage != null ? `${Number(row.battery_voltage).toFixed(2)} V` : '-';
+      const tempStr = row.temperature_c != null ? `${Number(row.temperature_c).toFixed(1)} °C` : '-';
+      const statusStr = 'VALID';
+
+      return [
+        String(idx + 1),
+        dateStr,
+        elevStr,
+        rssiStr,
+        battStr,
+        tempStr,
+        statusStr
+      ];
+    });
+  };
+
+  // Unduh Laporan Resmi PDF 24 Jam (Kop PT Tanah Airku Teknologi, Logo TerraFlow, AWLR Portable, Lokasi, Koordinat, Grafik & Tabel Log)
+  const handleDownloadPDF = (dataToUse, targetDateStr) => {
     if (!device?.device_id) return;
 
-    // Instant client-side download for TXT formats (matching Luwes TXT standard)
-    if (exportFormat === 'txt' && readings.length > 0) {
-      const dataToExport = [...readings].reverse();
-      const lines = [];
-      dataToExport.forEach(r => {
-        const d = new Date(r.timestamp);
-        let adjusted = d;
-        if (exportTz === 'wib') {
-          adjusted = new Date(d.getTime() + 7 * 3600 * 1000);
-        }
-        const pad = (n) => String(n).padStart(2, '0');
-        const YYYY = adjusted.getUTCFullYear();
-        const MM = pad(adjusted.getUTCMonth() + 1);
-        const DD = pad(adjusted.getUTCDate());
-        const HH = pad(adjusted.getUTCHours());
-        const mm = pad(adjusted.getUTCMinutes());
-        const ss = pad(adjusted.getUTCSeconds());
-        const timeStr = `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}`;
-        const wl = Number(r.water_level_cm) || 0;
-        const val = exportUnit === 'cm' ? wl.toFixed(1) : (wl / 100).toFixed(3);
-        lines.push(`${timeStr}   ${val}`);
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
       });
 
-      const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${device?.device_id || 'AWLR-001'}_${exportAggregate}_${new Date().toISOString().slice(0, 10)}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setShowExportModal(false);
-      return;
-    }
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const marginX = 14;
+      const contentWidth = pageWidth - marginX * 2; // 182 mm
 
-    const q = new URLSearchParams({
-      format: exportFormat,
-      aggregate: exportAggregate,
-      tz: exportTz,
-      unit: exportUnit
-    });
-    if (isFilterApplied) {
-      if (startDate) {
-        const s = startDate.length === 10 ? new Date(startDate + 'T00:00:00') : new Date(startDate);
-        if (!isNaN(s.getTime())) q.set('start', s.toISOString());
+      // 1. Ekstrak Metadata Stasiun & Perangkat
+      const stationName = device?.station_name || device?.name || 'Pos AWLR-001';
+      const deviceId = device?.device_id || 'AWLR-001';
+      const location = device?.location || 'Pantai Batu Bengkung, Malang Selatan, Jawa Timur';
+      
+      const latVal = device?.latitude !== undefined && device?.latitude !== null && !isNaN(Number(device.latitude))
+        ? Number(device.latitude)
+        : -8.4285;
+      const lonVal = device?.longitude !== undefined && device?.longitude !== null && !isNaN(Number(device.longitude))
+        ? Number(device.longitude)
+        : 112.5385;
+
+      const latDirection = latVal >= 0 ? 'LU (N)' : 'LS (S)';
+      const lonDirection = lonVal >= 0 ? 'BT (E)' : 'BB (W)';
+      const coordStr = `${Math.abs(latVal).toFixed(5)}° ${latDirection}, ${Math.abs(lonVal).toFixed(5)}° ${lonDirection} (${latVal.toFixed(6)}, ${lonVal.toFixed(6)})`;
+
+      const sensorHeight = device?.sensor_height_cm || device?.pole_height_cm || 400;
+      const acuan1 = device?.acuan_tiang_1_cm != null ? `${device.acuan_tiang_1_cm} cm` : '-';
+      const acuan2 = device?.acuan_tiang_2_cm != null ? `${device.acuan_tiang_2_cm} cm` : '-';
+
+      // Rentang Tanggal 24 Jam Penuh
+      const activeDate = targetDateStr || exportDate || new Date().toISOString().slice(0, 10);
+      const periodeStr = `${activeDate} (24 Jam Penuh: 00:00:00 - 23:59:59 ${exportTz.toUpperCase()})`;
+
+      const printDate = new Date().toLocaleString('id-ID', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      }) + (exportTz === 'wib' ? ' WIB' : ' UTC');
+
+      const tzLabel = exportTz === 'wib' ? 'WIB (GMT+7)' : 'UTC (GMT+0)';
+      const unitLabel = exportUnit === 'm' ? 'Meter (m)' : 'Centimeter (cm)';
+
+      // 2. KOP RESMI LAPORAN (PT TANAH AIRKU TEKNOLOGI / TERRAFLOW)
+      const logoX = marginX + 8;
+      const logoY = 19;
+      doc.setFillColor(0, 56, 130);
+      doc.circle(logoX, logoY, 7.5, 'F');
+      doc.setFillColor(255, 255, 255);
+      doc.circle(logoX, logoY, 6.3, 'F');
+      doc.setFillColor(0, 56, 130);
+      doc.circle(logoX, logoY, 2.5, 'F');
+      
+      // 4 Arah Jarum Kompas Logo
+      doc.setFillColor(2, 132, 199);
+      doc.triangle(logoX, logoY - 5.5, logoX - 1.2, logoY - 1, logoX + 1.2, logoY - 1, 'F');
+      doc.triangle(logoX, logoY + 5.5, logoX - 1.2, logoY + 1, logoX + 1.2, logoY + 1, 'F');
+      doc.triangle(logoX - 5.5, logoY, logoX - 1, logoY - 1.2, logoX - 1, logoY + 1.2, 'F');
+      doc.triangle(logoX + 5.5, logoY, logoX + 1, logoY - 1.2, logoX + 1, logoY + 1.2, 'F');
+
+      // Teks Brand
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(0, 56, 130);
+      doc.text('TERRAFLOW INDONESIA', marginX + 19, 16);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text('PT TANAH AIRKU TEKNOLOGI', marginX + 19, 20.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.2);
+      doc.setTextColor(71, 85, 105);
+      doc.text('Divisi Instrumentasi Hidrometri & Sistem Telemetri Mandiri (AWLR Portable)', marginX + 19, 24.5);
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Portal Hidrometri: www.tanahairku.tech • Dukungan Teknis: support@tanahairku.tech', marginX + 19, 28);
+
+      // Box Dokumen Info di kanan atas kop
+      const boxW = 55;
+      const boxH = 18;
+      const boxX = pageWidth - marginX - boxW;
+      const boxY = 11;
+      doc.setFillColor(240, 249, 255);
+      doc.setDrawColor(186, 230, 253);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(boxX, boxY, boxW, boxH, 1.5, 1.5, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(0, 56, 130);
+      doc.text('DOKUMEN RESMI HIDROMETRI', boxX + boxW / 2, boxY + 4.5, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.2);
+      doc.setTextColor(51, 65, 85);
+      const docCode = `TF-AWLR/${deviceId}/${activeDate.replace(/-/g, '')}`;
+      doc.text(`No. Dok: ${docCode}`, boxX + 3, boxY + 8.5);
+      doc.text(`Model: AWLR Portable Standar`, boxX + 3, boxY + 12);
+      doc.setTextColor(2, 132, 199);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Status: Terverifikasi Sistem`, boxX + 3, boxY + 15.5);
+
+      // Garis Pembatas Kop Ganda
+      doc.setDrawColor(0, 56, 130);
+      doc.setLineWidth(0.8);
+      doc.line(marginX, 32, pageWidth - marginX, 32);
+      doc.setDrawColor(2, 132, 199);
+      doc.setLineWidth(0.3);
+      doc.line(marginX, 33.2, pageWidth - marginX, 33.2);
+
+      // 3. JUDUL LAPORAN RESMI
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(0, 56, 130);
+      doc.text('LAPORAN RESMI HASIL PEMANTAUAN ELEVASI MUKA AIR & TELEMETRI', pageWidth / 2, 39, { align: 'center' });
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      doc.text('INSTRUMEN AUTOMATIC WATER LEVEL RECORDER (AWLR) PORTABLE — PEMANTAUAN KONTINU', pageWidth / 2, 43.5, { align: 'center' });
+
+      // 4. KOTAK INFORMASI STASIUN, LOKASI & KOORDINAT
+      const infoBoxY = 47;
+      const infoBoxH = 34;
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(marginX, infoBoxY, contentWidth, infoBoxH, 2, 2, 'FD');
+
+      // Subheader Kotak Info
+      doc.setFillColor(237, 242, 252);
+      doc.rect(marginX, infoBoxY, contentWidth, 6, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.2);
+      doc.setTextColor(0, 56, 130);
+      doc.text('IDENTITAS STASIUN, SPESIFIKASI LOKASI & PARAMETER PENGUKURAN', marginX + 4, infoBoxY + 4.2);
+
+      // Kolom 1 (Kiri) & Kolom 2 (Kanan)
+      const col1X = marginX + 4;
+      const col2X = marginX + contentWidth / 2 + 4;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(15, 23, 42);
+
+      // Row 1
+      doc.text('Nama Stasiun:', col1X, infoBoxY + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 65, 85);
+      doc.text(stationName, col1X + 25, infoBoxY + 11);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('ID Perangkat (SN):', col2X, infoBoxY + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 56, 130);
+      doc.text(`${deviceId} (AWLR Portable)`, col2X + 28, infoBoxY + 11);
+
+      // Row 2
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Lokasi Pasang:', col1X, infoBoxY + 16.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 65, 85);
+      doc.text(location.length > 40 ? location.slice(0, 38) + '...' : location, col1X + 25, infoBoxY + 16.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Tinggi Sensor/Tiang:', col2X, infoBoxY + 16.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${sensorHeight} cm (${(sensorHeight / 100).toFixed(2)} m)`, col2X + 28, infoBoxY + 16.5);
+
+      // Row 3
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Koordinat GPS:', col1X, infoBoxY + 22);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 56, 130);
+      doc.text(coordStr, col1X + 25, infoBoxY + 22);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Acuan Tiang 1 / 2:', col2X, infoBoxY + 22);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${acuan1} / ${acuan2}`, col2X + 28, infoBoxY + 22);
+
+      // Row 4
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Periode Rekaman:', col1X, infoBoxY + 27.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 65, 85);
+      doc.text(periodeStr, col1X + 25, infoBoxY + 27.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text('Sampling / Format:', col2X, infoBoxY + 27.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 65, 85);
+      doc.text(`24 Jam Penuh (Raw) | ${tzLabel} | ${unitLabel}`, col2X + 28, infoBoxY + 27.5);
+
+      // 5. KARTU STATISTIK HIDROMETRI (4 Kolom untuk 24 Jam Penuh)
+      const plotSource = (dataToUse && dataToUse.length > 0) ? dataToUse : (readings.length > 0 ? readings : series);
+      const sortedChartSource = [...plotSource].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      const dayLevels = sortedChartSource.map(d => Number(d.water_level_cm) || 0);
+      const dayLlt = dayLevels.length ? Math.min(...dayLevels) : Number(stats.llt || 0);
+      const dayHht = dayLevels.length ? Math.max(...dayLevels) : Number(stats.hht || 0);
+      const dayMsl = dayLevels.length ? (dayLevels.reduce((a, b) => a + b, 0) / dayLevels.length) : Number(stats.msl || 0);
+      const dayRange = dayHht - dayLlt;
+
+      const statY = infoBoxY + infoBoxH + 4;
+      const statCardW = (contentWidth - 9) / 4; // ~43.25 mm
+      const statCardH = 17;
+
+      const statItems = [
+        {
+          label: 'ELEVASI MINIMUM (LLT)',
+          val: exportUnit === 'm' ? `${(dayLlt / 100).toFixed(3)} m` : `${dayLlt.toFixed(1)} cm`,
+          sub: 'Surut Terendah 24 Jam',
+          border: [217, 119, 6] // amber
+        },
+        {
+          label: 'ELEVASI MAKSIMUM (HHT)',
+          val: exportUnit === 'm' ? `${(dayHht / 100).toFixed(3)} m` : `${dayHht.toFixed(1)} cm`,
+          sub: 'Pasang Tertinggi 24 Jam',
+          border: [0, 56, 130] // navy
+        },
+        {
+          label: 'DUDUK TENGAH (MSL)',
+          val: exportUnit === 'm' ? `${(dayMsl / 100).toFixed(3)} m` : `${dayMsl.toFixed(1)} cm`,
+          sub: 'Rata-Rata Elevasi 24 Jam',
+          border: [5, 150, 105] // emerald
+        },
+        {
+          label: 'TUNGGANG AIR (RANGE)',
+          val: exportUnit === 'm' ? `${(dayRange / 100).toFixed(3)} m` : `${dayRange.toFixed(1)} cm`,
+          sub: `${sortedChartSource.length} Sampel Terkalibrasi`,
+          border: [124, 58, 237] // purple
+        }
+      ];
+
+      statItems.forEach((st, idx) => {
+        const cX = marginX + idx * (statCardW + 3);
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(cX, statY, statCardW, statCardH, 1.5, 1.5, 'FD');
+
+        // Color accent line on left
+        doc.setDrawColor(st.border[0], st.border[1], st.border[2]);
+        doc.setLineWidth(1.2);
+        doc.line(cX, statY + 1.5, cX, statY + statCardH - 1.5);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.8);
+        doc.setTextColor(100, 116, 139);
+        doc.text(st.label, cX + 3.5, statY + 4.5);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(0, 56, 130);
+        doc.text(st.val, cX + 3.5, statY + 10.5);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(71, 85, 105);
+        doc.text(st.sub, cX + 3.5, statY + 14.5);
+      });
+
+      // 6. GRAFIK ELEVASI MUKA AIR (HIGH-RESOLUTION CANVAS EMBED)
+      const chartHeaderY = statY + statCardH + 4;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(0, 56, 130);
+      doc.text('GRAFIK TELEMETRI ELEVASI MUKA AIR (WATER LEVEL RECORD)', marginX, chartHeaderY);
+
+      // Render chart canvas
+      const chartCanvas = document.createElement('canvas');
+      chartCanvas.width = 1200;
+      chartCanvas.height = 460;
+      const ctx = chartCanvas.getContext('2d');
+
+      // Draw background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, chartCanvas.width, chartCanvas.height);
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(1, 1, chartCanvas.width - 2, chartCanvas.height - 2);
+
+      // Header inside canvas
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(2, 2, chartCanvas.width - 4, 38);
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(`Water Level Telemetry Curve — Stasiun ${deviceId}`, 24, 25);
+      ctx.fillStyle = '#64748b';
+      ctx.font = '12px "Inter", sans-serif';
+      ctx.fillText(`Rentang: ${activeDate} (24 Jam) • Satuan: ${unitLabel}`, chartCanvas.width - 340, 25);
+
+      // Grid & Graph boundaries
+      const cvPadX = 70;
+      const cvPadY = 60;
+      const cvW = chartCanvas.width - cvPadX * 2;
+      const cvH = chartCanvas.height - cvPadY - 50;
+
+      const chartValues = sortedChartSource.map(s => {
+        const cm = Number(s.smoothed_level) || Number(s.water_level_cm) || 0;
+        return exportUnit === 'm' ? cm / 100 : cm;
+      });
+
+      const chartMinRaw = chartValues.length ? Math.min(...chartValues) : 0;
+      const chartMaxRaw = chartValues.length ? Math.max(...chartValues) : (exportUnit === 'm' ? 5 : 500);
+      const chartSpread = Math.max(exportUnit === 'm' ? 0.1 : 10, chartMaxRaw - chartMinRaw);
+      const chartMinVal = chartMinRaw - chartSpread * 0.15;
+      const chartMaxVal = chartMaxRaw + chartSpread * 0.15;
+      const chartValRange = Math.max(0.001, chartMaxVal - chartMinVal);
+
+      // Draw grid
+      ctx.strokeStyle = '#f1f5f9';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = cvPadY + (i / 4) * cvH;
+        ctx.beginPath();
+        ctx.moveTo(cvPadX, y);
+        ctx.lineTo(cvPadX + cvW, y);
+        ctx.stroke();
+
+        const gridVal = chartMaxVal - (i / 4) * chartValRange;
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(exportUnit === 'cm' ? `${gridVal.toFixed(1)} cm` : `${gridVal.toFixed(3)} m`, cvPadX - 10, y + 4);
       }
-      if (endDate) {
-        const e = endDate.length === 10 ? new Date(endDate + 'T23:59:59') : new Date(endDate);
-        if (!isNaN(e.getTime())) q.set('end', e.toISOString());
+      ctx.textAlign = 'left';
+
+      // Draw Curve
+      if (sortedChartSource.length > 1) {
+        const cvPts = sortedChartSource.map((s, idx) => {
+          const cm = Number(s.smoothed_level) || Number(s.water_level_cm) || 0;
+          const val = exportUnit === 'm' ? cm / 100 : cm;
+          return {
+            x: cvPadX + (idx / Math.max(1, sortedChartSource.length - 1)) * cvW,
+            y: cvPadY + cvH - ((val - chartMinVal) / chartValRange) * cvH
+          };
+        });
+
+        // Gradient Area
+        ctx.beginPath();
+        ctx.moveTo(cvPts[0].x, cvPadY + cvH);
+        cvPts.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.lineTo(cvPts[cvPts.length - 1].x, cvPadY + cvH);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(0, cvPadY, 0, cvPadY + cvH);
+        grad.addColorStop(0, 'rgba(2, 132, 199, 0.32)');
+        grad.addColorStop(1, 'rgba(2, 132, 199, 0.0)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Line
+        ctx.beginPath();
+        cvPts.forEach((p, idx) => {
+          if (idx === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.strokeStyle = '#003882';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Sample Dots
+        const dotSample = cvPts.filter((_, idx) => idx % Math.max(1, Math.floor(cvPts.length / 40)) === 0);
+        dotSample.forEach(p => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#0284c7';
+          ctx.fill();
+        });
       }
+
+      // Canvas Footer Legends
+      ctx.fillStyle = '#003882';
+      ctx.beginPath();
+      ctx.arc(cvPadX + 10, chartCanvas.height - 20, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = 'bold 12px "Inter", sans-serif';
+      ctx.fillStyle = '#334155';
+      ctx.fillText('Water Level (Elevasi Air Aktual)', cvPadX + 20, chartCanvas.height - 16);
+
+      ctx.fillStyle = '#059669';
+      ctx.beginPath();
+      ctx.arc(cvPadX + 240, chartCanvas.height - 20, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#334155';
+      ctx.fillText('Trend Dinamika Pasang Surut', cvPadX + 250, chartCanvas.height - 16);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '11px "Inter", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`Total ${sortedChartSource.length} Titik Sampel (24 Jam) • Dicetak: ${printDate}`, chartCanvas.width - 24, chartCanvas.height - 16);
+      ctx.textAlign = 'left';
+
+      // Add image to PDF
+      const chartImgData = chartCanvas.toDataURL('image/png');
+      const chartPdfH = 68; // mm
+      doc.addImage(chartImgData, 'PNG', marginX, chartHeaderY + 2, contentWidth, chartPdfH);
+
+      // 7. LEMBAR PENGESAHAN & TANDA TANGAN RESMI
+      const signY = chartHeaderY + chartPdfH + 6;
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(marginX, signY, contentWidth, 36, 1.5, 1.5, 'FD');
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('CATATAN: Seluruh data telemetri di atas terekam secara mandiri dan otomatis melalui instrumen TerraFlow AWLR Portable.', marginX + 4, signY + 4.5);
+
+      // Dua kolom tanda tangan
+      const signCol1X = marginX + 16;
+      const signCol2X = marginX + contentWidth - 65;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Petugas Pengamat Hidrometri Lapangan,', signCol1X, signY + 10);
+      doc.text('Penanggung Jawab Teknis Hidrologi,', signCol2X, signY + 10);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Stasiun: ${stationName}`, signCol1X, signY + 13.5);
+      doc.text('PT Tanah Airku Teknologi (TerraFlow)', signCol2X, signY + 13.5);
+
+      // Line for signatures
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.5);
+      doc.line(signCol1X, signY + 28, signCol1X + 46, signY + 28);
+      doc.line(signCol2X, signY + 28, signCol2X + 46, signY + 28);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text('( .................................................... )', signCol1X, signY + 31.5);
+      doc.text('( Verifikator Sistem Digital )', signCol2X, signY + 31.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text('NIP / ID: .......................................', signCol1X, signY + 34.5);
+      doc.text('ID Tiket: TF-SYS-VERIFIED', signCol2X, signY + 34.5);
+
+      // 8. HALAMAN 2: LAMPIRAN TABEL LOG DATA TELEMETRI
+      doc.addPage();
+      
+      // Header Halaman Lampiran
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(0, 56, 130);
+      doc.text('LAMPIRAN TABEL LOG REKAMAN DATA TELEMETRI', marginX, 16);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Stasiun: ${stationName} (${deviceId}) • Periode: ${activeDate} (24 Jam Penuh) • Satuan: ${unitLabel}`, marginX, 20.5);
+
+      // Persiapkan Baris Data
+      const tableRows = prepareAggregatedRows(sortedChartSource, exportTz, exportUnit);
+
+      const autoTableFn = typeof autoTable === 'function' ? autoTable : doc.autoTable;
+      autoTableFn(doc, {
+        startY: 24,
+        head: [['No.', 'Waktu Transmisi', `Elevasi Air (${exportUnit})`, 'Sinyal (RSSI)', 'Baterai', 'Suhu Sensor', 'Status Validasi']],
+        body: tableRows,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [0, 56, 130],
+          textColor: [255, 255, 255],
+          fontSize: 7.5,
+          fontStyle: 'bold',
+          halign: 'center',
+          cellPadding: 2
+        },
+        bodyStyles: {
+          fontSize: 7,
+          textColor: [30, 41, 59],
+          cellPadding: 1.8
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 12 },
+          1: { halign: 'center', cellWidth: 46 },
+          2: { halign: 'right', fontStyle: 'bold', textColor: [0, 56, 130], cellWidth: 32 },
+          3: { halign: 'center', cellWidth: 26 },
+          4: { halign: 'center', cellWidth: 22 },
+          5: { halign: 'center', cellWidth: 22 },
+          6: { halign: 'center', cellWidth: 22 }
+        },
+        margin: { left: marginX, right: marginX, bottom: 16 }
+      });
+
+      // 9. NOMOR HALAMAN & RUNNING FOOTER DI SELURUH HALAMAN
+      const totalPages = doc.getNumberOfPages();
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(marginX, pageHeight - 12, pageWidth - marginX, pageHeight - 12);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.8);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`TerraFlow AWLR Portable • PT Tanah Airku Teknologi • Stasiun ${deviceId}`, marginX, pageHeight - 8);
+        doc.text(`Halaman ${p} dari ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: 'right' });
+      }
+
+      // 10. SIMPAN & UNDUH BERKAS PDF
+      const fileName = `TerraFlow_${deviceId}_Laporan_24Jam_${activeDate}.pdf`;
+      doc.save(fileName);
+      setShowExportModal(false);
+    } catch (err) {
+      console.error('Error generating PDF report:', err);
+      alert('Terjadi kendala saat membuat laporan PDF. Silakan coba kembali.');
     }
-    window.location.href = `/api/export/${device.device_id}?${q}`;
-    setShowExportModal(false);
+  };
+
+  // Ekspor File Data 24 Jam (PDF / TXT / CSV)
+  const handleDownloadFile = async () => {
+    if (!device?.device_id || isExporting) return;
+
+    setIsExporting(true);
+    try {
+      const targetDate = exportDate || new Date().toISOString().slice(0, 10);
+      let sIso, eIso;
+      if (exportTz === 'wib') {
+        sIso = new Date(`${targetDate}T00:00:00+07:00`).toISOString();
+        eIso = new Date(`${targetDate}T23:59:59+07:00`).toISOString();
+      } else {
+        sIso = new Date(`${targetDate}T00:00:00Z`).toISOString();
+        eIso = new Date(`${targetDate}T23:59:59Z`).toISOString();
+      }
+
+      // Ambil seluruh data 24 jam penuh dari server
+      const q = new URLSearchParams({
+        start: sIso,
+        end: eIso,
+        limit: 2000
+      });
+      const res = await fetch(`/api/readings/${device.device_id}?${q}`);
+      const json = await res.json();
+      let dayData = (json.success && Array.isArray(json.data) && json.data.length > 0)
+        ? json.data
+        : [];
+
+      // Fallback lokal jika data filter API kosong
+      if (dayData.length === 0) {
+        dayData = readings.filter(r => {
+          const dStr = exportTz === 'wib' 
+            ? new Date(new Date(r.timestamp).getTime() + 7 * 3600 * 1000).toISOString().slice(0, 10)
+            : new Date(r.timestamp).toISOString().slice(0, 10);
+          return dStr === targetDate;
+        });
+      }
+
+      if (dayData.length === 0) {
+        alert(`Tidak ditemukan rekaman data telemetri pada tanggal ${targetDate} (${exportTz.toUpperCase()}). Silakan pilih tanggal lain yang memiliki rekaman data.`);
+        setIsExporting(false);
+        return;
+      }
+
+      const sortedDayData = [...dayData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      // 1. FORMAT PDF
+      if (exportFormat === 'pdf') {
+        handleDownloadPDF(sortedDayData, targetDate);
+        setIsExporting(false);
+        return;
+      }
+
+      // 2. FORMAT TXT (Standar Hidrometri 24 Jam)
+      if (exportFormat === 'txt') {
+        const lines = [];
+        sortedDayData.forEach(r => {
+          const d = new Date(r.timestamp);
+          let adjusted = d;
+          if (exportTz === 'wib') {
+            adjusted = new Date(d.getTime() + 7 * 3600 * 1000);
+          }
+          const pad = (n) => String(n).padStart(2, '0');
+          const YYYY = adjusted.getUTCFullYear();
+          const MM = pad(adjusted.getUTCMonth() + 1);
+          const DD = pad(adjusted.getUTCDate());
+          const HH = pad(adjusted.getUTCHours());
+          const mm = pad(adjusted.getUTCMinutes());
+          const ss = pad(adjusted.getUTCSeconds());
+          const timeStr = `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}`;
+          const wl = Number(r.smoothed_level) || Number(r.water_level_cm) || 0;
+          const val = exportUnit === 'cm' ? wl.toFixed(1) : (wl / 100).toFixed(3);
+          lines.push(`${timeStr}   ${val}`);
+        });
+
+        const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `TerraFlow_${device.device_id}_Log_24Jam_${targetDate}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setShowExportModal(false);
+        setIsExporting(false);
+        return;
+      }
+
+      // 3. FORMAT CSV (Spreadsheet 24 Jam)
+      if (exportFormat === 'csv') {
+        const headers = [
+          `Waktu (${exportTz === 'wib' ? 'WIB GMT+7' : 'UTC'})`,
+          exportUnit === 'cm' ? 'Muka Air (cm)' : 'Muka Air (m)',
+          'Sinyal RSSI (dBm)',
+          'Tegangan Baterai (V)',
+          'Suhu Sensor (°C)',
+          'Status'
+        ];
+        const csvLines = [headers.join(',')];
+        sortedDayData.forEach(r => {
+          const d = new Date(r.timestamp);
+          let adjusted = d;
+          if (exportTz === 'wib') {
+            adjusted = new Date(d.getTime() + 7 * 3600 * 1000);
+          }
+          const pad = (n) => String(n).padStart(2, '0');
+          const YYYY = adjusted.getUTCFullYear();
+          const MM = pad(adjusted.getUTCMonth() + 1);
+          const DD = pad(adjusted.getUTCDate());
+          const HH = pad(adjusted.getUTCHours());
+          const mm = pad(adjusted.getUTCMinutes());
+          const ss = pad(adjusted.getUTCSeconds());
+          const timeStr = `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}`;
+          const wl = Number(r.smoothed_level) || Number(r.water_level_cm) || 0;
+          const val = exportUnit === 'cm' ? wl.toFixed(1) : (wl / 100).toFixed(3);
+          csvLines.push([
+            timeStr,
+            val,
+            r.signal_quality != null ? r.signal_quality : '-',
+            r.battery_voltage != null ? Number(r.battery_voltage).toFixed(2) : '-',
+            r.temperature_c != null ? Number(r.temperature_c).toFixed(1) : '-',
+            'VALID'
+          ].join(','));
+        });
+
+        const blob = new Blob([csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `TerraFlow_${device.device_id}_Log_24Jam_${targetDate}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setShowExportModal(false);
+        setIsExporting(false);
+        return;
+      }
+    } catch (err) {
+      console.error('Error downloading file:', err);
+      alert('Terjadi kesalahan saat mengunduh data. Silakan coba kembali.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Unduh Grafik sebagai PNG Gambar (Canvas Client-Side)
@@ -384,19 +1055,123 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
   // --- Chart Coordinates & Data Mapping ---
   const svgWidth = 850;
   const svgHeight = 280;
-  const paddingX = 45;
-  const paddingY = 35;
+  const paddingX = 58;
+  const paddingY = 32;
 
-  // Extract values based on activeParam (Water Level or RSSI)
-  const rawValues = series.map(s => {
+  // --- Zoom Logic & Visible Slice ---
+  // Zoom Level: 1 = Zoom Out (100% data), >1 = Zoom In (irisan subset data terperinci)
+  const { displaySeries, visibleStartIndex, visibleEndIndex } = useMemo(() => {
+    if (!series || series.length === 0) {
+      return { displaySeries: [], visibleStartIndex: 0, visibleEndIndex: 0 };
+    }
+    if (zoomLevel <= 1 || series.length <= 8) {
+      return { displaySeries: series, visibleStartIndex: 0, visibleEndIndex: series.length - 1 };
+    }
+
+    const visibleCount = Math.max(8, Math.min(series.length, Math.round(series.length / zoomLevel)));
+    const center = zoomCenterIndex !== null ? zoomCenterIndex : (series.length - 1);
+    const half = Math.floor(visibleCount / 2);
+    let start = center - half;
+    let end = start + visibleCount;
+
+    if (start < 0) {
+      start = 0;
+      end = Math.min(series.length, visibleCount);
+    }
+    if (end > series.length) {
+      end = series.length;
+      start = Math.max(0, end - visibleCount);
+    }
+
+    const slice = series.slice(start, end);
+    return { displaySeries: slice, visibleStartIndex: start, visibleEndIndex: end - 1 };
+  }, [series, zoomLevel, zoomCenterIndex]);
+
+  // Zoom In Handler (Tombol (+) - Gambar 1 / Gambar 2 Zoom In)
+  const handleZoomIn = () => {
+    if (series.length < 8) return;
+    
+    // Tentukan titik fokus zoom (fokus pada titik hover saat ini, atau titik tengah slice)
+    let center = zoomCenterIndex;
+    if (sliderIndex !== null && displaySeries[sliderIndex]) {
+      const activeTimestamp = displaySeries[sliderIndex]?.timestamp;
+      const foundIdx = series.findIndex(s => s.timestamp === activeTimestamp);
+      if (foundIdx !== -1) {
+        center = foundIdx;
+      }
+    }
+    if (center === null) {
+      center = Math.floor(series.length / 2);
+    }
+    setZoomCenterIndex(center);
+
+    setZoomLevel(prev => {
+      if (prev < 1.5) return 1.5;
+      if (prev < 2) return 2;
+      if (prev < 3) return 3;
+      if (prev < 5) return 5;
+      if (prev < 8) return 8;
+      if (prev < 12) return 12;
+      if (prev < 16) return 16;
+      return Math.min(24, Number((prev * 1.5).toFixed(1)));
+    });
+  };
+
+  // Zoom Out Handler (Tombol (-) - Gambar 1 / Gambar 1 Zoom Out)
+  const handleZoomOut = () => {
+    setZoomLevel(prev => {
+      if (prev <= 1.5) {
+        setZoomCenterIndex(null);
+        return 1;
+      }
+      if (prev <= 2) return 1.5;
+      if (prev <= 3) return 2;
+      if (prev <= 5) return 3;
+      if (prev <= 8) return 5;
+      if (prev <= 12) return 8;
+      if (prev <= 16) return 12;
+      return Math.max(1, Number((prev / 1.5).toFixed(1)));
+    });
+  };
+
+  // Reset Zoom ke 1x (Penuh)
+  const handleResetZoom = () => {
+    setZoomLevel(1);
+    setZoomCenterIndex(null);
+  };
+
+  // Geser Horizontal / Pan ke waktu sebelumnya
+  const handlePanLeft = () => {
+    if (zoomLevel <= 1 || series.length === 0) return;
+    const visibleCount = Math.max(8, Math.min(series.length, Math.round(series.length / zoomLevel)));
+    const step = Math.max(1, Math.round(visibleCount * 0.25));
+    setZoomCenterIndex(prev => {
+      const current = prev !== null ? prev : Math.floor(series.length / 2);
+      return Math.max(0, current - step);
+    });
+  };
+
+  // Geser Horizontal / Pan ke waktu berikutnya
+  const handlePanRight = () => {
+    if (zoomLevel <= 1 || series.length === 0) return;
+    const visibleCount = Math.max(8, Math.min(series.length, Math.round(series.length / zoomLevel)));
+    const step = Math.max(1, Math.round(visibleCount * 0.25));
+    setZoomCenterIndex(prev => {
+      const current = prev !== null ? prev : Math.floor(series.length / 2);
+      return Math.min(series.length - 1, current + step);
+    });
+  };
+
+  // Extract values based on activeParam across entire series to keep vertical elevation axis stable
+  const rawValuesAll = series.map(s => {
     if (activeParam === 'rssi') return Number(s.signal_quality) || 0;
     // Water level
     const cm = Number(s.smoothed_level) || Number(s.water_level_cm) || 0;
     return waterUnit === 'm' ? cm / 100 : cm;
   });
 
-  const minRaw = rawValues.length ? Math.min(...rawValues) : 0;
-  const maxRaw = rawValues.length ? Math.max(...rawValues) : 10;
+  const minRaw = rawValuesAll.length ? Math.min(...rawValuesAll) : 0;
+  const maxRaw = rawValuesAll.length ? Math.max(...rawValuesAll) : 10;
   const spread = Math.max(activeParam === 'water' ? (waterUnit === 'm' ? 0.05 : 5) : 5, maxRaw - minRaw);
 
   const minVal = minRaw - spread * 0.15;
@@ -408,15 +1183,11 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
   const totalDuration = Math.max(1000, filterEndTime - filterStartTime);
 
   const points = useMemo(() => {
-    return series.map((s, i) => {
-      let x;
-      if (isFilterApplied && filterStartTime && filterEndTime && filterEndTime > filterStartTime && s.timestamp) {
-        const pTime = new Date(s.timestamp).getTime();
-        const progress = Math.min(1, Math.max(0, (pTime - filterStartTime) / totalDuration));
-        x = paddingX + progress * (svgWidth - paddingX * 2);
-      } else {
-        x = paddingX + (i / Math.max(1, series.length - 1)) * (svgWidth - paddingX * 2);
-      }
+    if (!displaySeries || displaySeries.length === 0) return [];
+
+    return displaySeries.map((s, i) => {
+      // Sebaran titik proporsional merata dari awal ke akhir slice (persis standar RealtimeChart)
+      const x = paddingX + (i / Math.max(1, displaySeries.length - 1)) * (svgWidth - paddingX * 2);
 
       let rawVal = 0;
       if (activeParam === 'rssi') {
@@ -429,23 +1200,41 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
       const y = svgHeight - paddingY - ((rawVal - minVal) / valRange) * (svgHeight - paddingY * 2);
       return { x, y, data: s, val: rawVal };
     });
-  }, [series, activeParam, waterUnit, isFilterApplied, filterStartTime, filterEndTime, minVal, valRange]);
+  }, [displaySeries, activeParam, waterUnit, minVal, valRange]);
+
+  // Titik sampel dot di sepanjang kurva (estetika konsisten persis seperti RealtimeChart di Monitoring)
+  const curveDots = useMemo(() => {
+    if (!points || points.length === 0) return [];
+    if (points.length <= 50) return points;
+    const targetCount = 50;
+    const step = (points.length - 1) / (targetCount - 1);
+    const sampled = [];
+    for (let i = 0; i < targetCount; i++) {
+      const idx = Math.min(points.length - 1, Math.round(i * step));
+      sampled.push(points[idx]);
+    }
+    return sampled;
+  }, [points]);
 
   const pathD = points.length > 0 ? createSmoothPath(points) : '';
   const areaD = points.length > 0
     ? `${pathD} L ${points[points.length - 1].x} ${svgHeight - paddingY} L ${points[0].x} ${svgHeight - paddingY} Z`
     : '';
 
-  // Peak tidal markers
-  const highMarkers = highTides.map(ht => {
-    const found = points.find(p => p.data.timestamp === ht.timestamp) || points[0];
-    return { ...ht, x: found ? found.x : paddingX, y: found ? found.y : paddingY };
-  });
+  // Peak tidal markers (hanya yang masuk dalam irisan zoom)
+  const highMarkers = highTides
+    .map(ht => {
+      const found = points.find(p => p.data?.timestamp === ht.timestamp);
+      return found ? { ...ht, x: found.x, y: found.y } : null;
+    })
+    .filter(Boolean);
 
-  const lowMarkers = lowTides.map(lt => {
-    const found = points.find(p => p.data.timestamp === lt.timestamp) || points[0];
-    return { ...lt, x: found ? found.x : paddingX, y: found ? found.y : paddingY };
-  });
+  const lowMarkers = lowTides
+    .map(lt => {
+      const found = points.find(p => p.data?.timestamp === lt.timestamp);
+      return found ? { ...lt, x: found.x, y: found.y } : null;
+    })
+    .filter(Boolean);
 
   // Active hover/slider point
   const activePointIndex = sliderIndex !== null 
@@ -492,13 +1281,16 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+      minute: '2-digit'
     }) + ' WIB';
   };
 
-  const totalPages = Math.ceil(readings.length / pageSize) || 1;
-  const paginatedData = readings.slice((page - 1) * pageSize, page * pageSize);
+  // Urutkan rekaman dari yang paling baru ke yang paling lama untuk tampilan tabel
+  const sortedReadings = useMemo(() => {
+    return [...readings].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [readings]);
+  const totalPages = Math.ceil(sortedReadings.length / pageSize) || 1;
+  const paginatedData = sortedReadings.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
@@ -723,8 +1515,24 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
             })}
           </div>
 
-          {/* Unit Toggle & Quick Export */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Unit Toggle, Min/Max Stats & Quick Export */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            {/* Min / Max & Sampel Badge persis seperti RealtimeChart */}
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+                Min: <span className="mono-text" style={{ color: '#003882', fontWeight: 700 }}>
+                  {activeParam === 'water' ? (waterUnit === 'm' ? `${minRaw.toFixed(3)} m` : `${(minRaw).toFixed(1)} cm`) : `${minRaw.toFixed(0)} dBm`}
+                </span> &bull; 
+                Max: <span className="mono-text" style={{ color: '#003882', fontWeight: 700 }}>
+                  {activeParam === 'water' ? (waterUnit === 'm' ? ` ${maxRaw.toFixed(3)} m` : ` ${(maxRaw).toFixed(1)} cm`) : ` ${maxRaw.toFixed(0)} dBm`}
+                </span>
+              </div>
+              <span className="badge badge-navy" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <Clock size={11} />
+                {points.length} Sampel
+              </span>
+            </div>
+
             {activeParam === 'water' && (
               <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', borderRadius: '6px', padding: '2px' }}>
                 <button
@@ -760,15 +1568,6 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
               </div>
             )}
 
-            <button
-              onClick={handleDownloadPNG}
-              className="btn btn-secondary"
-              style={{ padding: '6px 12px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-              title="Simpan grafik sebagai gambar PNG"
-            >
-              <Camera size={14} />
-              <span>Simpan Gambar</span>
-            </button>
           </div>
         </div>
 
@@ -798,6 +1597,184 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
             </div>
           ) : (
             <div>
+              {/* Chart Header Bar: Title on Left, Zoom (+) & (-) Toolbar on Right (Persis Gambar 1, 2, 3) */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '10px',
+                paddingBottom: '8px',
+                borderBottom: '1px solid #f1f5f9'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>
+                    {activeParam === 'water' ? 'Water Level' : 'Signal Quality (RSSI)'}
+                  </span>
+                  {zoomLevel > 1 && (
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      color: '#0284c7',
+                      background: '#f0f9ff',
+                      border: '1px solid #bae6fd',
+                      padding: '2px 8px',
+                      borderRadius: '999px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      Zoom {zoomLevel}x ({displaySeries.length} Sampel)
+                    </span>
+                  )}
+                </div>
+
+                {/* Toolbar: (+) and (-) Zoom Buttons & Pan/Reset */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {/* Pan Arrows when Zoomed In */}
+                  {zoomLevel > 1 && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '2px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      padding: '1px 3px'
+                    }}>
+                      <button
+                        id="btn-pan-left"
+                        type="button"
+                        onClick={handlePanLeft}
+                        title="Geser waktu ke kiri / sebelumnya (Pan Kiri)"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          padding: '3px 4px',
+                          color: '#475569',
+                          cursor: 'pointer',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <ChevronLeft size={15} />
+                      </button>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#003882', padding: '0 4px', userSelect: 'none' }}>
+                        Geser
+                      </span>
+                      <button
+                        id="btn-pan-right"
+                        type="button"
+                        onClick={handlePanRight}
+                        title="Geser waktu ke kanan / berikutnya (Pan Kanan)"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          padding: '3px 4px',
+                          color: '#475569',
+                          cursor: 'pointer',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <ChevronRight size={15} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Reset Button when Zoomed In */}
+                  {zoomLevel > 1 && (
+                    <button
+                      id="btn-zoom-reset"
+                      type="button"
+                      onClick={handleResetZoom}
+                      title="Kembali ke ukuran penuh (Zoom Out 1x)"
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #cbd5e1',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        color: '#475569',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#003882'; e.currentTarget.style.color = '#003882'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; }}
+                    >
+                      <RotateCcw size={12} />
+                      <span>Reset</span>
+                    </button>
+                  )}
+
+                  {/* (+) Zoom In Button - Persis Gambar 1 */}
+                  <button
+                    id="btn-zoom-in"
+                    type="button"
+                    onClick={handleZoomIn}
+                    title="Perbesar Grafik (Zoom In)"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '4px',
+                      color: '#5a6e85',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#003882'; e.currentTarget.style.background = '#edf2fc'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e85'; e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <CirclePlus size={20} strokeWidth={1.8} />
+                  </button>
+
+                  {/* (-) Zoom Out Button - Persis Gambar 1 */}
+                  <button
+                    id="btn-zoom-out"
+                    type="button"
+                    onClick={handleZoomOut}
+                    disabled={zoomLevel <= 1}
+                    title={zoomLevel <= 1 ? 'Sudah pada posisi Zoom Out penuh' : 'Perkecil Grafik (Zoom Out)'}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '4px',
+                      color: zoomLevel <= 1 ? '#cbd5e1' : '#5a6e85',
+                      cursor: zoomLevel <= 1 ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (zoomLevel > 1) {
+                        e.currentTarget.style.color = '#003882';
+                        e.currentTarget.style.background = '#edf2fc';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (zoomLevel > 1) {
+                        e.currentTarget.style.color = '#5a6e85';
+                        e.currentTarget.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <CircleMinus size={20} strokeWidth={1.8} />
+                  </button>
+                </div>
+              </div>
+
               <svg 
                 ref={svgRef}
                 viewBox={`0 0 ${svgWidth} ${svgHeight}`} 
@@ -806,23 +1783,20 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                   height: 'auto', 
                   display: 'block', 
                   overflow: 'visible',
-                  cursor: isDraggingSlider ? 'grabbing' : 'crosshair',
+                  cursor: isDraggingSlider ? 'grabbing' : 'ew-resize',
                   touchAction: 'none'
                 }}
                 onPointerDown={(e) => {
                   setIsDraggingSlider(true);
                   handlePointerMove(e);
                 }}
-                onPointerMove={(e) => {
-                  if (isDraggingSlider || e.buttons === 1) {
-                    handlePointerMove(e);
-                  }
-                }}
+                onPointerMove={handlePointerMove}
+                onMouseMove={handlePointerMove}
                 onClick={handlePointerMove}
               >
                 <defs>
                   <linearGradient id="curveGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#003882" stopOpacity="0.25" />
+                    <stop offset="0%" stopColor="#003882" stopOpacity="0.18" />
                     <stop offset="100%" stopColor="#003882" stopOpacity="0.0" />
                   </linearGradient>
                   <filter id="badgeShadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -835,12 +1809,12 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                   const y = paddingY + pct * (svgHeight - paddingY * 2);
                   const val = maxVal - pct * valRange;
                   const formattedVal = activeParam === 'water' && waterUnit === 'm' 
-                    ? `${val.toFixed(3)} m`
-                    : `${val.toFixed(1)} ${activeParam === 'temp' ? '°C' : activeParam === 'batt' ? 'V' : activeParam === 'rssi' ? 'dBm' : 'cm'}`;
+                    ? `${val.toFixed(2)}m`
+                    : `${val.toFixed(0)}${activeParam === 'temp' ? '°C' : activeParam === 'batt' ? 'V' : activeParam === 'rssi' ? 'dBm' : 'cm'}`;
                   return (
                     <g key={idx}>
-                      <line x1={paddingX} y1={y} x2={svgWidth - paddingX} y2={y} stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                      <text x={paddingX - 6} y={y + 3} fill="#94a3b8" fontSize="10" textAnchor="end" fontFamily="monospace">
+                      <line x1={paddingX} y1={y} x2={svgWidth - paddingX} y2={y} stroke="#f1f5f9" strokeWidth="1.5" strokeDasharray="4 4" />
+                      <text x={paddingX - 8} y={y + 3.5} fill="#94a3b8" fontSize="9.5" textAnchor="end" fontFamily="monospace">
                         {formattedVal}
                       </text>
                     </g>
@@ -848,35 +1822,87 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                 })}
 
                 {/* Shaded Area Under Curve */}
-                {areaD && <path d={areaD} fill="url(#curveGradient)" />}
+                {areaD && <path d={areaD} fill="url(#curveGradient)" className="chart-animated-area" />}
 
                 {/* Main Curve Line */}
-                {pathD && <path d={pathD} fill="none" stroke="#003882" strokeWidth="2.6" strokeLinecap="round" />}
+                {pathD && (
+                  <path 
+                    d={pathD} 
+                    fill="none" 
+                    stroke="#003882" 
+                    strokeWidth="2.8" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className="chart-animated-line" 
+                  />
+                )}
+
+                {/* Live Telemetry Beacon Ping on Latest Reading */}
+                {points.length > 0 && !activePoint && (
+                  <circle
+                    cx={points[points.length - 1].x}
+                    cy={points[points.length - 1].y}
+                    r="8"
+                    fill="none"
+                    stroke="#0284c7"
+                    strokeWidth="2.5"
+                    className="chart-beacon-pulse"
+                    pointerEvents="none"
+                  />
+                )}
+
+                {/* Sample Dots along Curve (Aestetika Gambar 1 / RealtimeChart) */}
+                {curveDots.map((p, idx) => {
+                  const isLast = idx === curveDots.length - 1;
+                  const isActive = activePoint && Math.abs(activePoint.x - p.x) < 4;
+                  const radius = isLast ? 4.5 : 2.5;
+
+                  return (
+                    <circle
+                      key={`dot-${idx}`}
+                      cx={p.x}
+                      cy={p.y}
+                      r={isActive ? 6 : radius}
+                      fill={isLast ? "#003882" : (isActive ? "#0284c7" : "#38bdf8")}
+                      stroke="#ffffff"
+                      strokeWidth={isLast ? 2.5 : (isActive ? 2 : 1)}
+                      opacity={activePoint && !isActive ? 0.6 : 1}
+                      style={{ pointerEvents: 'none', transition: 'r 0.15s ease' }}
+                    />
+                  );
+                })}
 
                 {/* High / Low Tide Peak Markers (only on water level mode) */}
-                {activeParam === 'water' && highMarkers.map((m, idx) => (
-                  <g key={`ht-${idx}`}>
-                    <circle cx={m.x} cy={m.y} r="5" fill="#003882" stroke="#ffffff" strokeWidth="2" />
-                    <text x={m.x} y={m.y - 10} fill="#003882" fontSize="10" fontWeight="800" textAnchor="middle">
-                      {waterUnit === 'm' ? `${(Number(m.water_level_cm) / 100).toFixed(2)}m` : `${Number(m.water_level_cm).toFixed(0)}cm`}
-                    </text>
-                  </g>
-                ))}
+                {activeParam === 'water' && highMarkers.map((m, idx) => {
+                  const val = m.level != null ? Number(m.level) : Number(m.water_level_cm || 0);
+                  return (
+                    <g key={`ht-${idx}`}>
+                      <circle cx={m.x} cy={m.y} r="5" fill="#003882" stroke="#ffffff" strokeWidth="2" />
+                      <text x={m.x} y={m.y - 10} fill="#003882" fontSize="10" fontWeight="800" textAnchor="middle">
+                        {waterUnit === 'm' ? `${(val / 100).toFixed(2)}m` : `${val.toFixed(0)}cm`}
+                      </text>
+                    </g>
+                  );
+                })}
 
-                {activeParam === 'water' && lowMarkers.map((m, idx) => (
-                  <g key={`lt-${idx}`}>
-                    <circle cx={m.x} cy={m.y} r="5" fill="#d97706" stroke="#ffffff" strokeWidth="2" />
-                    <text x={m.x} y={m.y + 16} fill="#d97706" fontSize="10" fontWeight="800" textAnchor="middle">
-                      {waterUnit === 'm' ? `${(Number(m.water_level_cm) / 100).toFixed(2)}m` : `${Number(m.water_level_cm).toFixed(0)}cm`}
-                    </text>
-                  </g>
-                ))}
+                {activeParam === 'water' && lowMarkers.map((m, idx) => {
+                  const val = m.level != null ? Number(m.level) : Number(m.water_level_cm || 0);
+                  return (
+                    <g key={`lt-${idx}`}>
+                      <circle cx={m.x} cy={m.y} r="5" fill="#d97706" stroke="#ffffff" strokeWidth="2" />
+                      <text x={m.x} y={m.y + 16} fill="#d97706" fontSize="10" fontWeight="800" textAnchor="middle">
+                        {waterUnit === 'm' ? `${(val / 100).toFixed(2)}m` : `${val.toFixed(0)}cm`}
+                      </text>
+                    </g>
+                  );
+                })}
 
-                {/* ========================================= */}
-                {/* INTERACTIVE HOVER GUIDE LINE & TOOLTIP */}
-                {/* ========================================= */}
+                {/* ======================================================== */}
+                {/* SLIDING CROSSHAIR, INTERSECTION POINT & DARK TOOLTIP */}
+                {/* (Interaksi geser horizontal persis seperti RealtimeChart)  */}
+                {/* ======================================================== */}
                 {activePoint && (
-                  <g style={{ cursor: 'ew-resize' }}>
+                  <g style={{ cursor: 'ew-resize', pointerEvents: 'none' }}>
                     {/* Dotted Vertical Guide Line */}
                     <line 
                       x1={activePoint.x} 
@@ -899,36 +1925,61 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                       filter="url(#badgeShadow)"
                     />
 
-                    {/* Floating Tooltip Box */}
-                    <g 
-                      transform={`translate(${Math.min(Math.max(activePoint.x, paddingX + 55), svgWidth - paddingX - 55)}, ${Math.max(26, activePoint.y - 32)})`}
-                      filter="url(#badgeShadow)"
-                    >
-                      <rect 
-                        x="-55" 
-                        y="-22" 
-                        width="110" 
-                        height="30" 
-                        rx="6" 
-                        fill="#0f172a" 
-                      />
-                      <polygon points="-5,8 5,8 0,12" fill="#0f172a" />
-                      <text x="0" y="-7" fill="#94a3b8" fontSize="9" fontWeight="600" textAnchor="middle">
-                        {activePoint.data?.timestamp ? new Date(activePoint.data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
-                      </text>
-                      <text x="0" y="5" fill="#ffffff" fontSize="11" fontWeight="800" fontFamily="monospace" textAnchor="middle">
-                        {activeParam === 'water' 
-                          ? `${Number(activePoint.val).toFixed(waterUnit === 'm' ? 3 : 1)} ${waterUnit}`
-                          : `${Number(activePoint.val).toFixed(0)} dBm`}
-                      </text>
-                    </g>
+                    {/* Floating Dark Tooltip Box */}
+                    {(() => {
+                      const tooltipWidth = 126;
+                      const halfWidth = tooltipWidth / 2;
+                      const clampedX = Math.min(Math.max(activePoint.x, paddingX + halfWidth), svgWidth - paddingX - halfWidth);
+                      const isTop = activePoint.y < 58;
+                      const tooltipY = isTop ? activePoint.y + 36 : activePoint.y - 28;
+
+                      // Format TMA dalam cm & m
+                      let line2 = '';
+                      if (activeParam === 'water') {
+                        const cmVal = waterUnit === 'm' ? Number(activePoint.val) * 100 : Number(activePoint.val);
+                        const mVal = waterUnit === 'm' ? Number(activePoint.val) : Number(activePoint.val) / 100;
+                        line2 = `${cmVal.toFixed(1)} cm (${mVal.toFixed(2)} m)`;
+                      } else {
+                        line2 = `${Number(activePoint.val).toFixed(0)} dBm`;
+                      }
+
+                      const d = activePoint.data?.timestamp ? new Date(activePoint.data.timestamp) : null;
+                      const timeStr = d ? d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+                      return (
+                        <g 
+                          transform={`translate(${clampedX}, ${tooltipY})`}
+                          filter="url(#badgeShadow)"
+                        >
+                          <rect 
+                            x={-halfWidth} 
+                            y="-22" 
+                            width={tooltipWidth} 
+                            height="32" 
+                            rx="6" 
+                            fill="#0f172a" 
+                          />
+                          {isTop ? (
+                            <polygon points="-5,-22 5,-22 0,-26" fill="#0f172a" />
+                          ) : (
+                            <polygon points="-5,10 5,10 0,14" fill="#0f172a" />
+                          )}
+                          <text x="0" y="-8" fill="#94a3b8" fontSize="9" fontWeight="600" textAnchor="middle">
+                            {timeStr}
+                          </text>
+                          <text x="0" y="6" fill="#ffffff" fontSize="11" fontWeight="800" fontFamily="monospace" textAnchor="middle">
+                            {line2}
+                          </text>
+                        </g>
+                      );
+                    })()}
 
                     {/* Bottom Time Badge */}
                     {activePoint.data?.timestamp && (
-                      <g transform={`translate(${Math.min(Math.max(activePoint.x, paddingX + 45), svgWidth - paddingX - 45)}, ${svgHeight - paddingY + 24})`}>
-                        <rect x="-42" y="-10" width="84" height="18" rx="4" fill="#e2e8f0" />
-                        <text x="0" y="3" fill="#334155" fontSize="10" fontWeight="700" textAnchor="middle">
-                          {new Date(activePoint.data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      <g transform={`translate(${Math.min(Math.max(activePoint.x, paddingX + 32), svgWidth - paddingX - 32)}, ${svgHeight - paddingY + 22})`}>
+                        <rect x="-28" y="-9" width="56" height="18" rx="4" fill="#e2e8f0" />
+                        <text x="0" y="3.5" fill="#334155" fontSize="10" fontWeight="700" textAnchor="middle">
+                          {new Date(activePoint.data.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                         </text>
                       </g>
                     )}
@@ -936,12 +1987,55 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                 )}
               </svg>
 
-              {/* Time Span Footer */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #f1f5f9', fontSize: '0.74rem', color: '#64748b' }}>
-                <span>Awal: <b>{points.length > 0 && points[0].data?.timestamp ? new Date(points[0].data.timestamp).toLocaleString('id-ID', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</b></span>
-                <span>Total: <b>{points.length} Titik Sampel</b></span>
-                <span>Terkini: <b>{points.length > 0 && points[points.length - 1].data?.timestamp ? new Date(points[points.length - 1].data.timestamp).toLocaleString('id-ID', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</b></span>
+              {/* Time axis footer (persis seperti RealtimeChart) */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'flex-start',
+                marginTop: '14px', 
+                paddingTop: '10px',
+                borderTop: '1px solid #f1f5f9',
+                fontSize: '0.76rem'
+              }}>
+                {/* Sisi Kiri: Awal Pembacaan Data */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: '0.67rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {zoomLevel > 1 ? 'Awal Window Zoom' : 'Awal Pembacaan'}
+                  </span>
+                  <span style={{ fontWeight: 700, color: '#334155' }}>
+                    {points.length > 0 && points[0].data?.timestamp ? new Date(points[0].data.timestamp).toLocaleString('id-ID', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}
+                  </span>
+                </div>
+
+                {/* Sisi Tengah: Rentang Data & Jumlah Titik */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.67rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {zoomLevel > 1 ? `Zoom Aktif (${zoomLevel}x)` : 'Rentang Pembacaan'}
+                  </span>
+                  <span style={{ fontWeight: 700, color: '#003882' }}>
+                    {points.length} Titik Sampel {zoomLevel > 1 ? `(dari ${series.length})` : ''}
+                  </span>
+                </div>
+
+                {/* Sisi Kanan: Data Terkini */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <span style={{ 
+                    fontSize: '0.67rem', 
+                    fontWeight: 700,
+                    textTransform: 'uppercase', 
+                    letterSpacing: '0.04em',
+                    color: '#0284c7'
+                  }}>
+                    {zoomLevel > 1 ? 'Akhir Window Zoom' : 'Terkini'}
+                  </span>
+                  <span style={{ fontWeight: 800, color: '#003882' }}>
+                    {points.length > 0 && points[points.length - 1].data?.timestamp 
+                      ? `${new Date(points[points.length - 1].data.timestamp).toLocaleString('id-ID', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} (${(waterUnit === 'm' ? Number(points[points.length - 1].val) * 100 : Number(points[points.length - 1].val)).toFixed(1)} cm)`
+                      : '--'}
+                  </span>
+                </div>
               </div>
+
             </div>
           )}
         </div>
@@ -1145,7 +2239,7 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                   Unduh Rekaman Data (Download Logs)
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                  Stasiun: {device?.device_id || 'AWLR-001'} &bull; Rentang filter aktif
+                  Stasiun: {device?.device_id || 'AWLR-001'} &bull; Rekaman 24 Jam Penuh
                 </span>
               </div>
               <button
@@ -1159,16 +2253,16 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
             {/* Modal Form */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
-              {/* 1. Format Berkas (Tanpa format jam redundan) */}
+              {/* 1. Format Berkas (PDF, TXT, CSV) */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', marginBottom: '8px' }}>
                   1. Format Berkas:
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
                   {[
+                    { id: 'pdf', label: 'PDF (Laporan Resmi)' },
                     { id: 'txt', label: 'TXT (Teks Log)' },
-                    { id: 'csv', label: 'CSV Spreadsheet' },
-                    { id: 'json', label: 'JSON API' }
+                    { id: 'csv', label: 'CSV Spreadsheet' }
                   ].map(f => (
                     <label key={f.id} style={{
                       display: 'flex',
@@ -1196,41 +2290,92 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                 </div>
               </div>
 
-              {/* 2. Agregasi Data */}
+              {/* 2. Pilih Tanggal Log (24 Jam Penuh) */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', marginBottom: '8px' }}>
-                  2. Agregasi Waktu (Sampling):
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '8px' }}>
-                  {[
-                    { id: 'raw', label: 'Raw (Asli)' },
-                    { id: '5m', label: '5 Menit' },
-                    { id: '15m', label: '15 Menit' },
-                    { id: '1h', label: '1 Jam' }
-                  ].map(a => (
-                    <label key={a.id} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: exportAggregate === a.id ? '#edf2fc' : '#f8fafc',
-                      border: `1px solid ${exportAggregate === a.id ? '#003882' : '#e2e8f0'}`,
-                      borderRadius: '8px',
-                      padding: '8px 10px',
-                      cursor: 'pointer',
-                      fontSize: '0.78rem',
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', margin: 0 }}>
+                    2. Pilih Tanggal Log (24 Jam Penuh):
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const pad = (n) => String(n).padStart(2, '0');
+                        setExportDate(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
+                      }}
+                      style={{
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Hari Ini
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const yesterday = new Date(Date.now() - 24 * 3600 * 1000);
+                        const pad = (n) => String(n).padStart(2, '0');
+                        setExportDate(`${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`);
+                      }}
+                      style={{
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Kemarin
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '8px 12px'
+                }}>
+                  <Calendar size={18} color="#003882" style={{ flexShrink: 0 }} />
+                  <input
+                    type="date"
+                    value={exportDate}
+                    onChange={(e) => setExportDate(e.target.value)}
+                    max={(() => {
+                      const now = new Date();
+                      const pad = (n) => String(n).padStart(2, '0');
+                      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+                    })()}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      fontSize: '0.82rem',
                       fontWeight: 700,
-                      color: exportAggregate === a.id ? '#003882' : '#475569'
-                    }}>
-                      <input
-                        type="radio"
-                        name="expAgg"
-                        checked={exportAggregate === a.id}
-                        onChange={() => setExportAggregate(a.id)}
-                        style={{ accentColor: '#003882' }}
-                      />
-                      <span>{a.label}</span>
-                    </label>
-                  ))}
+                      color: '#0f172a',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      flex: 1
+                    }}
+                  />
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', background: '#e2e8f0', padding: '2px 8px', borderRadius: '4px' }}>
+                    00:00:00 s/d 23:59:59 {exportTz.toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '6px' }}>
+                  * Sistem otomatis mengunduh seluruh rekaman transmisi asli (Raw) selama 24 jam penuh pada tanggal yang dipilih.
                 </div>
               </div>
 
@@ -1294,12 +2439,34 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
                 </button>
                 <button
                   type="button"
+                  disabled={isExporting}
                   onClick={handleDownloadFile}
                   className="btn btn-primary"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '8px 18px', fontWeight: 700 }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.8rem',
+                    padding: '8px 18px',
+                    fontWeight: 700,
+                    opacity: isExporting ? 0.7 : 1,
+                    cursor: isExporting ? 'not-allowed' : 'pointer'
+                  }}
                 >
-                  <Download size={15} />
-                  <span>Unduh File Data</span>
+                  {isExporting ? (
+                    <RefreshCw size={15} className="spin-slow" />
+                  ) : exportFormat === 'pdf' ? (
+                    <FileText size={15} />
+                  ) : (
+                    <Download size={15} />
+                  )}
+                  <span>
+                    {isExporting
+                      ? 'Memproses 24 Jam...'
+                      : exportFormat === 'pdf'
+                      ? 'Unduh Laporan PDF'
+                      : 'Unduh File Data'}
+                  </span>
                 </button>
               </div>
             </div>

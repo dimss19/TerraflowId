@@ -11,6 +11,7 @@
 #include "mqtt_client.h"
 #include "watchdog_mgr.h"
 #include "web_server_mgr.h"
+#include "rtc_mgr.h"
 
 // Subsystem Instances
 SensorA16 sensor;
@@ -23,17 +24,6 @@ int readingCount = 0;
 unsigned long lastHourlyDiagMs = 0;
 unsigned long lastHealthPollMs = 0;
 
-// Read battery voltage via ADC voltage divider (safe fallback when hardware is not present)
-float readBatteryVoltage() {
-  if (PIN_BATT_ADC < 0) {
-    return 0.0f; // Modul pembagi tegangan aki tidak terpasang
-  }
-  int rawAdc = analogRead(PIN_BATT_ADC);
-  // 12V lead-acid / LiFePO4 battery divider ratio
-  float voltage = (rawAdc / 4095.0f) * 3.3f * 4.24f;
-  return voltage;
-}
-
 // ==========================================
 // FREERTOS TASK 1: SAMPLING (CORE 1)
 // ==========================================
@@ -43,143 +33,125 @@ void samplingTask(void *pvParameters) {
   while (true) {
     readingCount++;
     uint32_t intervalSec = webServerMgr.getSettings().samplingIntervalSec;
-    if (intervalSec < 5) intervalSec = 60;
+    if (intervalSec < 60) intervalSec = 60;
     TickType_t cycleInterval = pdMS_TO_TICKS(intervalSec * 1000);
 
-    Serial.printf("\n[CYCLE #%d] Starting AWLR sampling (Interval: %lu s)...\n",
+    Serial.printf("\n[SIKLUS #%d] Memulai sampling sensor AWLR (Interval: %lu dtk)...\n",
       readingCount, (unsigned long)intervalSec);
 
-    bool realActive = webServerMgr.isRealSensorEnabled();
-    bool dummyActive = webServerMgr.isDummySensorEnabled();
+    // 1. Akuisisi Data dari Sensor Fisik A16
+    A16Reading reading = sensor.readFilteredDistance(3);
     const char *dataSource = "none";
-    A16Reading reading;
-    reading.isValid = false;
 
-    float batteryV = readBatteryVoltage();
-    int batteryPct = min(100, max(0, (int)(((batteryV - 10.5f) / 2.3f) * 100.0f)));
+    CalibrationData calib = mqttMgr.getCalibration();
+    float effectiveDist = 0.0f;
+    float waterLevel = 0.0f;
 
-    // 1. Data Acquisition Strategy (Real Sensor vs Dummy / Demo Simulation)
-    if (realActive) {
-      // Mode operasional sungai normal di lapangan (RS485 A16)
-      reading = sensor.readFilteredDistance(5);
-      if (reading.isValid) {
-        dataSource = "live";
-      } else if (dummyActive) {
-        Serial.printf("[SENSOR FALLBACK] Real sensor disconnected/failed (%s). Fallback to dummy simulation.\n",
-          reading.errorMsg.c_str());
-      }
-    }
-
-    if (!reading.isValid && dummyActive) {
-      // Mode demo meja pameran / presentasi tanpa sensor fisik
-      static float simPhase = 0.0f;
-      simPhase += 0.25f;
-      CalibrationData calib = mqttMgr.getCalibration();
-      float dummyWaterLevel = 250.0f + sinf(simPhase) * 18.0f + ((float)(esp_random() % 100) / 100.0f - 0.5f) * 3.0f;
-      float effectiveDist = calib.sensorHeightCm - dummyWaterLevel;
-
-      reading.isValid = true;
-      reading.rawDistanceCm = effectiveDist;
-      reading.filteredDistanceCm = effectiveDist;
-      reading.temperatureC = 27.5f;
-      reading.validSamples = 5;
-      reading.errorMsg = "";
-      dataSource = "dummy";
-      Serial.printf("[DEMO MODE] Generated dummy wave: Level=%.1f cm (Dist=%.1f cm)\n",
-        dummyWaterLevel, effectiveDist);
-    }
-
-    // 2. Process Telemetry when Valid Data Exists
     if (reading.isValid) {
-      CalibrationData calib = mqttMgr.getCalibration();
-      float effectiveDist = (reading.filteredDistanceCm > 0.0f) ? reading.filteredDistanceCm : reading.rawDistanceCm;
-      float waterLevel = calib.sensorHeightCm - (effectiveDist * calib.slope + calib.offsetCm);
+      dataSource = (reading.validSamples > 0) ? "live" : "hold";
+      effectiveDist = (reading.filteredDistanceCm > 0.0f) ? reading.filteredDistanceCm : reading.rawDistanceCm;
+      waterLevel = calib.sensorHeightCm - (effectiveDist * calib.slope + calib.offsetCm);
+    } else {
+      dataSource = "error";
+      Serial.printf("[SENSOR PERINGATAN] Sensor A16 tidak terbaca: %s. Mencatat status menit ini agar kontinuitas data 1 menit tidak putus.\n",
+        reading.errorMsg.c_str());
+    }
 
-      LogRecord record;
-      memset(&record, 0, sizeof(record));
+    LogRecord record;
+    memset(&record, 0, sizeof(record));
 
-      time_t now = time(nullptr);
-      struct tm timeinfo;
-      if (now > 1700000000 && localtime_r(&now, &timeinfo)) {
-        strftime(record.date, sizeof(record.date), "%Y-%m-%d", &timeinfo);
-        strftime(record.time, sizeof(record.time), "%H:%M:%S", &timeinfo);
-        record.minute = (uint8_t)timeinfo.tm_min;
-        record.timestamp = (uint32_t)now;
+    time_t now = time(nullptr);
+    struct tm timeinfo;
+    if (now > 1700000000 && localtime_r(&now, &timeinfo)) {
+      // Bulatkan timestamp ke batas menit (:00) agar tidak terjadi duplikasi dalam 1 menit
+      time_t minAligned = (now / 60) * 60;
+      struct tm alignedTm;
+      localtime_r(&minAligned, &alignedTm);
+      strftime(record.date, sizeof(record.date), "%Y-%m-%d", &alignedTm);
+      strftime(record.time, sizeof(record.time), "%H:%M:00", &alignedTm);
+      record.minute = (uint8_t)alignedTm.tm_min;
+      record.timestamp = (uint32_t)minAligned;
+    } else {
+      struct tm rtcTm;
+      if (rtcMgr.readDateTime(rtcTm)) {
+        time_t epoch = mktime(&rtcTm);
+        time_t minAligned = (epoch / 60) * 60;
+        struct tm alignedTm;
+        localtime_r(&minAligned, &alignedTm);
+        strftime(record.date, sizeof(record.date), "%Y-%m-%d", &alignedTm);
+        strftime(record.time, sizeof(record.time), "%H:%M:00", &alignedTm);
+        record.minute = (uint8_t)alignedTm.tm_min;
+        record.timestamp = (uint32_t)minAligned;
+        struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+        settimeofday(&tv, nullptr);
       } else {
         uint32_t upSec = millis() / 1000;
-        uint32_t upMin = (upSec / 60) % 60;
-        uint32_t upHour = (upSec / 3600) % 24;
-        uint32_t upDay = 1 + (upSec / 86400);
-        snprintf(record.date, sizeof(record.date), "2026-10-%02u", upDay > 31 ? 31 : upDay);
-        snprintf(record.time, sizeof(record.time), "%02u:%02u:%02u", upHour, upMin, upSec % 60);
+        uint32_t upAligned = (upSec / 60) * 60;
+        uint32_t upMin = (upAligned / 60) % 60;
+        uint32_t upHour = (upAligned / 3600) % 24;
+        uint32_t upDay = 1 + (upAligned / 86400);
+        snprintf(record.date, sizeof(record.date), "1970-01-%02u", upDay > 31 ? 31 : upDay);
+        snprintf(record.time, sizeof(record.time), "%02u:%02u:00", upHour, upMin);
         record.minute = (uint8_t)upMin;
-        record.timestamp = upSec;
-      }
-
-      record.rawDistanceCm = reading.rawDistanceCm;
-      record.filteredDistanceCm = effectiveDist;
-      record.waterLevelCm = waterLevel;
-      record.temperatureC = reading.temperatureC;
-      record.batteryVoltage = batteryV;
-      record.batteryPercent = batteryPct;
-      record.isSent = false;
-
-      // 3. Mandatory Offline-First Storage on SD Card (Dynamic NTP-based filename)
-      String filename = webServerMgr.getCurrentLogFilename();
-      sdLogger.appendRecord(filename, record);
-
-      // 4. Publish Real-time Telemetry via MQTT
-      if (mqttMgr.isConnected()) {
-        bool ok = mqttMgr.publishReading(record, readingCount, dataSource);
-        if (ok) {
-          record.isSent = true;
-          sdLogger.markRecordSent(filename, record.timestamp);
-          Serial.printf("[TELEMETRY SENT (%s)] Level: %.1f cm | Dist: %.1f cm | Batt: %.2fV\n",
-            dataSource, waterLevel, reading.rawDistanceCm, batteryV);
-        }
-
-        // Trigger bulk sync if offline buffer has pending records
-        if (sdLogger.getPendingCount() > 0) {
-          mqttMgr.triggerBulkSync(sdLogger);
-        }
-      } else {
-        Serial.printf("[OFFLINE] No MQTT. Buffered to SD Card %s (%d pending)\n",
-          filename.c_str(), sdLogger.getPendingCount());
-      }
-
-      // 5. Update Web Telemetry Snapshot for local Web Dashboard
-      TelemetrySnapshot snap;
-      snap.waterLevelCm = waterLevel;
-      snap.rawDistanceCm = reading.rawDistanceCm;
-      snap.filteredDistanceCm = effectiveDist;
-      snap.temperatureC = reading.temperatureC;
-      snap.batteryVoltage = batteryV;
-      snap.batteryPercent = batteryPct;
-      snap.signalRssi = WiFi.RSSI();
-      snap.sdCardOk = sdLogger.isReady();
-      snap.pendingLogs = sdLogger.getPendingCount();
-      snap.readingCount = readingCount;
-      snap.wifiConnected = (WiFi.status() == WL_CONNECTED);
-      snap.mqttConnected = mqttMgr.isConnected();
-      strncpy(snap.dataSource, dataSource, sizeof(snap.dataSource) - 1);
-      snprintf(snap.lastSampleTime, sizeof(snap.lastSampleTime), "%lu s", (unsigned long)(millis() / 1000));
-      webServerMgr.updateTelemetry(snap);
-
-    } else {
-      if (!realActive && !dummyActive) {
-        Serial.println("[STANDBY] Both Real Sensor and Dummy Simulation are OFF. Sampling paused.");
-        TelemetrySnapshot snap = webServerMgr.getTelemetry();
-        strncpy(snap.dataSource, "paused", sizeof(snap.dataSource) - 1);
-        snap.batteryVoltage = batteryV;
-        snap.batteryPercent = batteryPct;
-        webServerMgr.updateTelemetry(snap);
-      } else {
-        Serial.printf("[SENSOR ERROR] Reading skipped: %s\n", reading.errorMsg.c_str());
+        record.timestamp = upAligned;
       }
     }
 
-    // Wait until next configured cycle interval
-    vTaskDelayUntil(&lastWakeTime, cycleInterval);
+    record.rawDistanceCm = reading.rawDistanceCm;
+    record.filteredDistanceCm = effectiveDist;
+    record.waterLevelCm = waterLevel;
+    record.temperatureC = reading.temperatureC;
+    record.isSent = false;
+
+    // 2. Simpan ke Kartu MicroSD (Offline-First)
+    String filename = webServerMgr.getCurrentLogFilename();
+    sdLogger.appendRecord(filename, record);
+
+    // 3. Publikasikan Telemetri via MQTT
+    if (mqttMgr.isConnected()) {
+      bool ok = mqttMgr.publishReading(record, readingCount, dataSource);
+      if (ok) {
+        record.isSent = true;
+        sdLogger.markRecordSent(filename, record.timestamp);
+        Serial.printf("[TELEMETRI TERKIRIM] Level: %.1f cm | Jarak: %.1f cm | Suhu: %.1f°C | Sumber: %s | Jam: %s\n",
+          waterLevel, reading.rawDistanceCm, reading.temperatureC, dataSource, record.time);
+      }
+
+      if (sdLogger.getPendingCount() > 0) {
+        mqttMgr.triggerBulkSync(sdLogger);
+      }
+    } else {
+      Serial.printf("[OFFLINE] MQTT tidak terhubung. Disimpan ke SD Card %s (%d antrean pending)\n",
+        filename.c_str(), sdLogger.getPendingCount());
+    }
+
+    // 4. Perbarui Snapshot Telemetri Web Lokal
+    TelemetrySnapshot snap;
+    snap.waterLevelCm = waterLevel;
+    snap.rawDistanceCm = reading.rawDistanceCm;
+    snap.filteredDistanceCm = effectiveDist;
+    snap.temperatureC = reading.temperatureC;
+    snap.signalRssi = WiFi.RSSI();
+    snap.sdCardOk = sdLogger.isReady();
+    snap.pendingLogs = sdLogger.getPendingCount();
+    snap.readingCount = readingCount;
+    snap.wifiConnected = (WiFi.status() == WL_CONNECTED);
+    snap.mqttConnected = mqttMgr.isConnected();
+    strncpy(snap.dataSource, dataSource, sizeof(snap.dataSource) - 1);
+    snprintf(snap.lastSampleTime, sizeof(snap.lastSampleTime), "%lu s", (unsigned long)(millis() / 1000));
+    webServerMgr.updateTelemetry(snap);
+
+    // 5. Sinkronisasi tidur presisi ke batas menit berikutnya (:00)
+    time_t curNow = time(nullptr);
+    struct tm curTm;
+    if (curNow > 1700000000 && localtime_r(&curNow, &curTm)) {
+      int secUntilNextMin = 60 - curTm.tm_sec;
+      if (secUntilNextMin <= 0) secUntilNextMin = 60;
+      Serial.printf("[SINKRONISASI MENIT] Menunggu %d detik menuju awal menit berikutnya (:00)...\n", secUntilNextMin);
+      vTaskDelay(pdMS_TO_TICKS(secUntilNextMin * 1000));
+    } else {
+      vTaskDelayUntil(&lastWakeTime, cycleInterval);
+    }
   }
 }
 
@@ -187,66 +159,54 @@ void samplingTask(void *pvParameters) {
 // FREERTOS TASK 2: HEALTH & NETWORK MONITOR (CORE 0)
 // ==========================================
 void healthTask(void *pvParameters) {
+  esp_task_wdt_add(NULL);
   unsigned long lastWdtFeedMs = 0;
 
   while (true) {
     unsigned long now = millis();
 
-    // 1. Feed Task Watchdog Timer every 1 second (completely prevents WDT timeouts!)
+    // 1. Feed Watchdog Timer setiap 1 detik
     if (now - lastWdtFeedMs >= 1000) {
       feedWatchdog();
       lastWdtFeedMs = now;
     }
 
-    // 2. Process MQTT network loop
+    // 2. MQTT network loop
     mqttMgr.loop();
 
-    // 3. Process Web Server background / Captive Portal DNS
+    // 3. Web Server background & DNS
     webServerMgr.loop();
 
-    // Periodic slower health evaluations (every 30 seconds)
+    // Evaluasi kesehatan periodik (setiap 30 detik)
     if (now - lastHealthPollMs >= 30000) {
       lastHealthPollMs = now;
 
-      // Sensor Health Check (only active when physical real sensor is enabled)
-      if (webServerMgr.isRealSensorEnabled() && sensor.getConsecutiveFailures() >= 5) {
+      // Cek Sensor A16 jika gagal 5 siklus berturut-turut
+      if (sensor.getConsecutiveFailures() >= 5) {
         mqttMgr.publishAlert(
-          "SENSOR_FAIL", "CRITICAL",
-          "Sensor A16 RS485 gagal merespons 5 siklus berturut-turut. Siklus daya otomatis dijalankan."
+          "SENSOR_DISCONNECTED", "CRITICAL",
+          "Sensor A16 tidak merespons 5 siklus berturut-turut. Periksa koneksi kabel TX/RX dan power sensor."
         );
       }
 
-      // Battery Voltage Check (only active if hardware divider pin is defined)
-      if (PIN_BATT_ADC >= 0) {
-        float battV = readBatteryVoltage();
-        if (battV > 1.0f && battV < 10.5f) {
-          mqttMgr.publishAlert("BATTERY_CRITICAL", "CRITICAL", "Tegangan baterai sangat rendah (<10.5V).");
-        } else if (battV >= 10.5f && battV < 11.5f) {
-          mqttMgr.publishAlert("BATTERY_LOW", "WARNING", "Tegangan baterai menurun di bawah ambang (<11.5V).");
-        }
-      }
-
-      // Memory Health Check
+      // Cek Heap Memory
       if (esp_get_free_heap_size() < 20480) {
         mqttMgr.publishAlert("HEAP_LOW", "WARNING", "Sisa heap memory ESP32 rendah (<20KB).");
       }
     }
 
-    // 4. Hourly Diagnostics Report
+    // 4. Laporan Diagnostik Berkala (1 Jam)
     if (now - lastHourlyDiagMs > DIAGNOSTICS_MS) {
-      float battV = readBatteryVoltage();
       mqttMgr.publishDiagnostics(
         bootStats.reasonStr,
         bootStats.bootCount,
         bootStats.watchdogCount,
-        battV,
         sdLogger.getPendingCount()
       );
       lastHourlyDiagMs = now;
     }
 
-    // Fast 30ms yield allows instant DNS resolution and responsive captive portal HTTP handling
-    vTaskDelay(pdMS_TO_TICKS(30));
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
@@ -262,17 +222,24 @@ void setup() {
   Serial.println("🏢 " COMPANY_NAME);
   Serial.println("==================================================");
 
+  // 0. Konfigurasi Timezone WIB (UTC+7)
+  setenv("TZ", "WIB-7", 1);
+  tzset();
+
   // 1. Inisialisasi Watchdog & Analisis Boot Reason
   bootStats = handleBootReason();
   initWatchdog();
 
-  // 2. Inisialisasi MicroSD Card (SPI GPIO 10, 11, 12, 13)
+  // 2. Inisialisasi Onboard Real-Time Clock (DS3231/DS1307 at 0x68 via GPIO 8 & 9)
+  rtcMgr.begin();
+
+  // 3. Inisialisasi MicroSD Card (SPI GPIO 10 CS, 11 MOSI, 12 SCK, 13 MISO)
   sdLogger.begin();
   if (bootStats.isCrashReset) {
     sdLogger.logCrash(bootStats.reasonStr, "Watchdog/Brownout reset detected at startup");
   }
 
-  // 3. Inisialisasi Sensor A16 (RS485 GPIO 15, 16)
+  // 4. Inisialisasi Sensor A16 (UART TTL GPIO 8 RX, 9 TX)
   sensor.begin();
 
   // 4. Inisialisasi Web Server Manager dengan SD Logger Reference
@@ -308,5 +275,6 @@ void setup() {
 
 void loop() {
   // Main loop yields as FreeRTOS tasks manage execution
+  feedWatchdog();
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

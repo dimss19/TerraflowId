@@ -19,23 +19,46 @@ bool SdCardLogger::begin() {
     sdMutex = xSemaphoreCreateMutex();
   }
 
-  // Initialize dedicated SPI bus with specified GPIOs (10, 11, 12, 13)
-  spiBus.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, PIN_SD_CS);
+  // Siapkan pin CS dan pull-up MISO untuk kestabilan transmisi SPI
+  pinMode(PIN_SD_CS, OUTPUT);
+  digitalWrite(PIN_SD_CS, HIGH);
+  pinMode(PIN_SD_MISO, INPUT_PULLUP);
+  delay(10);
 
-  if (!SD.begin(PIN_SD_CS, spiBus, 20000000)) {
-    Serial.println("[SD ERROR] Failed to mount MicroSD Card! Fallback to RAM buffer.");
+  // Initialize dedicated SPI bus with specified GPIOs (10 CS, 11 MOSI, 12 SCK, 13 MISO)
+  // Gunakan -1 pada argumen SS hardware agar SD library mengendalikan pin CS secara mandiri
+  spiBus.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, -1);
+  delay(20);
+
+  // Percobaan 1: Kecepatan standar 10 MHz
+  bool mounted = SD.begin(PIN_SD_CS, spiBus, 10000000);
+  if (!mounted) {
+    // Percobaan 2 (Fallback): Kecepatan aman 4 MHz jika kartu SD lambat / sinyal panjang
+    Serial.println("[SD] Mount 10MHz gagal, mencoba fallback ke 4MHz...");
+    delay(50);
+    mounted = SD.begin(PIN_SD_CS, spiBus, 4000000);
+  }
+
+  if (!mounted) {
+    Serial.println("[SD ERROR] Gagal mount MicroSD Card! Periksa slot/format FAT32 (Fallback ke RAM).");
     ready = false;
     return false;
   }
 
   uint8_t cardType = SD.cardType();
   if (cardType == CARD_NONE) {
-    Serial.println("[SD ERROR] No MicroSD Card detected in slot.");
+    Serial.println("[SD ERROR] Kartu MicroSD tidak terdeteksi dalam slot (CARD_NONE).");
     ready = false;
     return false;
   }
 
-  Serial.printf("[SD] MicroSD Card mounted successfully. Size: %llu MB\n", SD.cardSize() / (1024 * 1024));
+  const char *typeStr = "UNKNOWN";
+  if (cardType == CARD_MMC) typeStr = "MMC";
+  else if (cardType == CARD_SD) typeStr = "SDSC";
+  else if (cardType == CARD_SDHC) typeStr = "SDHC/SDXC";
+
+  Serial.printf("[SD] MicroSD Card mounted successfully (%s). Size: %llu MB\n",
+    typeStr, SD.cardSize() / (1024 * 1024));
   ready = true;
   consecutiveErrors = 0;
   initDirectories();
@@ -50,10 +73,21 @@ bool SdCardLogger::autoRecover() {
   spiBus.end();
   delay(50);
 
-  spiBus.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, PIN_SD_CS);
+  pinMode(PIN_SD_CS, OUTPUT);
+  digitalWrite(PIN_SD_CS, HIGH);
+  pinMode(PIN_SD_MISO, INPUT_PULLUP);
+  delay(10);
+
+  spiBus.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, -1);
   delay(50);
 
-  if (SD.begin(PIN_SD_CS, spiBus, 20000000)) {
+  bool mounted = SD.begin(PIN_SD_CS, spiBus, 10000000);
+  if (!mounted) {
+    delay(50);
+    mounted = SD.begin(PIN_SD_CS, spiBus, 4000000);
+  }
+
+  if (mounted) {
     uint8_t cardType = SD.cardType();
     if (cardType != CARD_NONE) {
       ready = true;
@@ -111,21 +145,28 @@ bool SdCardLogger::appendRecord(const String &filename, const LogRecord &record)
   consecutiveErrors = 0;
 
   if (isNewFile) {
-    file.println("date,time,minute,timestamp,raw_distance_cm,filtered_distance_cm,water_level_cm,temperature_c,battery_voltage,battery_percent,sent");
+    file.println("date,time,minute,timestamp,raw_distance_cm,filtered_distance_cm,water_level_cm,temperature_c,sent");
+  }
+
+  char fallbackDate[16] = "1970-01-01";
+  char fallbackTime[16] = "00:00:00";
+  time_t nowSec = time(nullptr);
+  struct tm ti;
+  if (nowSec > 1700000000 && localtime_r(&nowSec, &ti)) {
+    strftime(fallbackDate, sizeof(fallbackDate), "%Y-%m-%d", &ti);
+    strftime(fallbackTime, sizeof(fallbackTime), "%H:%M:%S", &ti);
   }
 
   char line[160];
-  snprintf(line, sizeof(line), "%s,%s,%u,%lu,%.1f,%.1f,%.1f,%.1f,%.2f,%d,%d",
-    record.date[0] ? record.date : "2026-10-11",
-    record.time[0] ? record.time : "00:00:00",
+  snprintf(line, sizeof(line), "%s,%s,%u,%lu,%.1f,%.1f,%.1f,%.1f,%d",
+    record.date[0] ? record.date : fallbackDate,
+    record.time[0] ? record.time : fallbackTime,
     record.minute,
     (unsigned long)record.timestamp,
     record.rawDistanceCm,
     record.filteredDistanceCm,
     record.waterLevelCm,
     record.temperatureC,
-    record.batteryVoltage,
-    record.batteryPercent,
     record.isSent ? 1 : 0
   );
 
@@ -224,8 +265,8 @@ std::vector<LogRecord> SdCardLogger::getUnsentRecords(const String &filename, in
       }
       tokens.push_back(line.substring(start));
 
-      if (tokens.size() >= 11) {
-        // New format: date,time,minute,timestamp,raw_dist,filt_dist,water_level,temp,batt_v,batt_pct,sent
+      if (tokens.size() >= 9) {
+        // Standard format: date,time,minute,timestamp,raw_dist,filt_dist,water_level,temp,sent
         strncpy(rec.date, tokens[0].c_str(), sizeof(rec.date) - 1);
         strncpy(rec.time, tokens[1].c_str(), sizeof(rec.time) - 1);
         rec.minute = (uint8_t)tokens[2].toInt();
@@ -234,19 +275,15 @@ std::vector<LogRecord> SdCardLogger::getUnsentRecords(const String &filename, in
         rec.filteredDistanceCm = tokens[5].toFloat();
         rec.waterLevelCm = tokens[6].toFloat();
         rec.temperatureC = tokens[7].toFloat();
-        rec.batteryVoltage = tokens[8].toFloat();
-        rec.batteryPercent = tokens[9].toInt();
         rec.isSent = false;
         list.push_back(rec);
-      } else if (tokens.size() >= 7) {
-        // Legacy format: timestamp,raw_distance_cm,water_level_cm,temperature_c,battery_voltage,battery_percent,sent
+      } else if (tokens.size() >= 5) {
+        // Fallback format
         rec.timestamp = (uint32_t)tokens[0].toInt();
         rec.rawDistanceCm = tokens[1].toFloat();
         rec.filteredDistanceCm = rec.rawDistanceCm;
         rec.waterLevelCm = tokens[2].toFloat();
         rec.temperatureC = tokens[3].toFloat();
-        rec.batteryVoltage = tokens[4].toFloat();
-        rec.batteryPercent = tokens[5].toInt();
         rec.isSent = false;
         list.push_back(rec);
       }

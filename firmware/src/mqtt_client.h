@@ -23,7 +23,7 @@ public:
   
   bool publishReading(const LogRecord &record, int readingCount, const char *source = "live");
   bool publishAlert(const String &code, const String &severity, const String &message, const String &detailsJson = "{}");
-  bool publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, float battV, int pendingCount);
+  bool publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount);
   
   void triggerBulkSync(SdCardLogger &sdLogger);
   CalibrationData getCalibration() const;

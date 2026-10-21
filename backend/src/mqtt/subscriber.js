@@ -2,6 +2,7 @@ const mqtt = require('mqtt');
 const config = require('../config');
 const { query } = require('../db/connection');
 const { parseTelemetryTimestamp, alignToMinute } = require('../utils/timestamp');
+const { evaluateReadingRules, evaluateDiagnosticsRules } = require('../services/alertRules');
 
 let mqttClient = null;
 let ioInstance = null;
@@ -200,6 +201,20 @@ async function handleSingleReading(deviceId, data) {
     ioInstance.emit('sensor:data', savedRow);
     ioInstance.emit('telemetry', { device_id: deviceId, data: savedRow });
   }
+
+  // Evaluasi rule alert (SENSOR_ANOMALY, dll.) terhadap pembacaan ini
+  if (savedRow) {
+    try {
+      const alerts = await evaluateReadingRules(deviceId, savedRow);
+      if (ioInstance) {
+        for (const alert of alerts) {
+          ioInstance.emit('alert:new', alert);
+        }
+      }
+    } catch (e) {
+      console.warn('[Rule Engine] error:', e.message);
+    }
+  }
 }
 
 async function handleBulkReadings(deviceId, payload) {
@@ -226,7 +241,7 @@ async function handleBulkReadings(deviceId, payload) {
     `;
 
     try {
-      await query(insertSql, [
+      const inserted = await query(insertSql, [
         deviceId,
         ts,
         item.raw_distance_cm != null ? Number(item.raw_distance_cm) : null,
@@ -236,6 +251,20 @@ async function handleBulkReadings(deviceId, payload) {
         item.reading_count != null ? Number(item.reading_count) : null
       ]);
       savedCount++;
+
+      // Evaluasi rule alert untuk data offline yang disinkronkan
+      if (inserted.rows[0]) {
+        try {
+          const alerts = await evaluateReadingRules(deviceId, inserted.rows[0]);
+          if (ioInstance) {
+            for (const alert of alerts) {
+              ioInstance.emit('alert:new', alert);
+            }
+          }
+        } catch (e) {
+          console.warn('[Rule Engine] error:', e.message);
+        }
+      }
     } catch (e) {
       console.warn('[Bulk Insert Warning]', e.message);
       // Catat timestamp yang gagal agar perangkat hanya mengulang baris ini
@@ -342,6 +371,20 @@ async function handleDiagnostics(deviceId, data) {
   const diag = res.rows[0];
   if (ioInstance && diag) {
     ioInstance.emit('diagnostics:update', diag);
+  }
+
+  // Evaluasi rule alert berbasis diagnostik (TEMP_HIGH, dll.)
+  if (diag) {
+    try {
+      const alerts = await evaluateDiagnosticsRules(deviceId, diag);
+      if (ioInstance) {
+        for (const alert of alerts) {
+          ioInstance.emit('alert:new', alert);
+        }
+      }
+    } catch (e) {
+      console.warn('[Rule Engine] error:', e.message);
+    }
   }
 }
 

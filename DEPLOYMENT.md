@@ -382,6 +382,79 @@ Perbaikan: file baru `backend/src/db/migrations/005_auth_schema_sync.sql`
 perlu di-*commit* & di-*push* ke `dimss19/TerraflowId` agar deployment berikutnya
 di server lain tidak mengalami error yang sama.
 
+### Daftar migrasi
+
+| File | Isi |
+|---|---|
+| `001`–`004` | Skema asli (dari upstream) |
+| `005_auth_schema_sync.sql` | `users.is_approved`, `users.google_id`, tabel `password_resets` |
+| `006_remove_battery_fields.sql` | Hapus kolom tegangan baterai + rule/alert baterai |
+| `007_alert_rules_unique.sql` | Buang duplikat `alert_rules` + constraint unik `(device_id, alert_code)` |
+
+---
+
+## 8b. Rule Engine Alert
+
+`alert_rules` kini **dieksekusi**, bukan sekadar tabel konfigurasi. Rule
+dievaluasi terhadap telemetry yang masuk (MQTT live, bulk sync, dan HTTP
+offline-sync) oleh `backend/src/services/alertRules.js`.
+
+| Kode | Sumber | Pemicu | Severity | Cooldown |
+|---|---|---|---|---|
+| `SENSOR_ANOMALY` | Pembacaan berturut-turut | Lonjakan elevasi air > `threshold_value` cm dalam 1 menit | WARNING | 10 menit |
+| `TEMP_HIGH` | Laporan diagnostik | Suhu internal ESP32 (`esp_temp_c`) > `threshold_value` °C | WARNING | 30 menit |
+
+Alert yang dibuat otomatis juga disiarkan ke dashboard lewat event WebSocket
+`alert:new`, dan muncul di Active Alerts Console. Rule baru bisa ditambah dengan
+menambah kode pada `RULE_DEFINITIONS` di `services/alertRules.js`.
+
+> Catatan: `TEMP_HIGH` dievaluasi dari `esp_temp_c` (suhu chip), **bukan** suhu
+> air — sesuai PRD. Semua rule dimuat dari tabel `alert_rules`, sehingga
+> ambang batas dan cooldown dapat diubah dari database tanpa mengubah kode.
+
+---
+
+## 8c. Partisi Bulanan Otomatis
+
+Tabel `readings` dipartisi per bulan (`readings_YYYY_MM`) dengan
+`readings_default` sebagai penampung. Tanpa partisi yang dibuat otomatis,
+seluruh data setelah bulan terakhir menumpuk di `readings_default` — tidak ada
+data yang hilang, tetapi performanya menurun drastis.
+
+Job pemeliharaan berjalan **harian** via systemd timer:
+
+```bash
+systemctl list-timers terraflow-partitions.timer
+systemctl start terraflow-partitions.service     # jalankan manual
+journalctl -u terraflow-partitions -n 20
+```
+
+| Environment variable | Default | Arti |
+|---|---|---|
+| `READINGS_PARTITION_MONTHS_AHEAD` | `3` | Berapa bulan ke depan partisi disiapkan |
+| `READINGS_RETENTION_MONTHS` | `0` | Berapa lama data disimpan; `0` = simpan semua |
+
+Retensi `0` (default) berarti **tidak ada data yang pernah dihapus otomatis** —
+partisi lama dibiarkan. Isi `READINGS_RETENTION_MONTHS` (mis. `12`) bila
+ingin partisiolder beserta datanya dibuang secara otomatis.
+
+Manual juga bisa: `cd backend && npm run partitions`
+
+---
+
+## 8d. Catatan tentang `npm run seed`
+
+Seed bersifat idempoten untuk `alert_rules` dan `device_alerts` — menjalankannya
+berulang kali tidak menambah duplikat. Namun dataset `readings` memakai
+**jendela 24 jam yang bergeser** mengikuti waktu sekarang, sehingga setiap
+kali seed dijalankan ulang akan menambah 1441 baris baru (bukan menimpa yang
+lama). Bila ingin dataset yang bersih:
+
+```bash
+sudo -u postgres psql -d teraflowid -c "TRUNCATE readings;"
+cd backend && npm run seed
+```
+
 ---
 
 ## 9. Perintah Verifikasi
@@ -408,4 +481,11 @@ curl -s -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
 
 # Uji autentikasi & pub/sub MQTT (melalui port 80 publik)
 node /root/mqtt-auth-test.js 43.134.53.192 80
+```
+
+### Service & timer tambahan
+
+```bash
+systemctl status terraflow terraflow-mux terraflow-partitions.timer
+systemctl list-timers terraflow-partitions.timer
 ```

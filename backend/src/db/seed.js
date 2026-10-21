@@ -47,7 +47,10 @@ async function seedData() {
       await query(`
         INSERT INTO alert_rules (device_id, alert_code, enabled, threshold_value, cooldown_minutes)
         VALUES ($1, $2, true, $3, $4)
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (device_id, alert_code) DO UPDATE SET
+          enabled = EXCLUDED.enabled,
+          threshold_value = EXCLUDED.threshold_value,
+          cooldown_minutes = EXCLUDED.cooldown_minutes
       `, ['AWLR-001', code, thresh, cooldown]);
     }
 
@@ -117,11 +120,20 @@ async function seedData() {
     console.log(`[Seed] Successfully inserted ${readingsBatch.length} historical readings.`);
 
     // 5. Seed sample alerts
+    // Idempotent: alert seed yang sama tidak boleh terduplikasi setiap kali
+    // seed dijalankan ulang. Tabel device_alerts tidak punya batasan unik,
+    // jadi pengecekan dilakukan eksplisit.
     await query(`
       INSERT INTO device_alerts (device_id, timestamp, alert_code, severity, message, details, resolved)
-      VALUES 
-      ($1, NOW() - INTERVAL '3 hours', 'SENSOR_ANOMALY', 'WARNING', 'Perubahan elevasi terdeteksi melebihi batas rata-rata saat uji lapangan awal.', '{"delta_cm": 22.4}', true)
-      ON CONFLICT DO NOTHING
+      SELECT $1::varchar, NOW() - INTERVAL '3 hours', 'SENSOR_ANOMALY', 'WARNING',
+             'Perubahan elevasi terdeteksi melebihi batas rata-rata saat uji lapangan awal.',
+             '{"delta_cm": 22.4}', true
+       WHERE NOT EXISTS (
+         SELECT 1 FROM device_alerts
+          WHERE device_id = $1::varchar
+            AND alert_code = 'SENSOR_ANOMALY'
+            AND message = 'Perubahan elevasi terdeteksi melebihi batas rata-rata saat uji lapangan awal.'
+       )
     `, ['AWLR-001']);
 
     // 6. Seed sample diagnostic snapshot

@@ -4,6 +4,7 @@ const { query } = require('../db/connection');
 const { publishCalibration, publishCommand } = require('../mqtt/publisher');
 const { analyzeTidalReadings } = require('../services/tidalAnalysis');
 const { parseTelemetryTimestamp, alignToMinute } = require('../utils/timestamp');
+const { evaluateReadingRules } = require('../services/alertRules');
 const { authenticateToken, requireAdmin } = require('./auth');
 
 // ==========================================
@@ -610,6 +611,22 @@ router.post('/readings/offline-sync', async (req, res) => {
       console.warn('[WS Emit Warning]', wsErr.message);
     }
 
+    // Evaluasi rule alert (SENSOR_ANOMALY, dll.)
+    if (savedRow) {
+      try {
+        const alerts = await evaluateReadingRules(device_id, savedRow);
+        const { getSocketIO } = require('../mqtt/subscriber');
+        const io = getSocketIO ? getSocketIO() : null;
+        if (io) {
+          for (const alert of alerts) {
+            io.emit('alert:new', alert);
+          }
+        }
+      } catch (ruleErr) {
+        console.warn('[Rule Engine] error:', ruleErr.message);
+      }
+    }
+
     res.json({
       success: true,
       message: 'Data offline berhasil disinkronkan',
@@ -638,6 +655,7 @@ router.post('/readings/offline-batch', async (req, res) => {
     }
 
     let savedCount = 0;
+    let lastInsertedRow = null;
 
     for (const item of records) {
       // Timestamp: field `timestamp` (epoch) menjadi sumber utama, fallback
@@ -655,7 +673,7 @@ router.post('/readings/offline-batch', async (req, res) => {
       }
 
       try {
-        await query(`
+        const inserted = await query(`
           INSERT INTO readings (
             device_id, timestamp, raw_distance_cm, water_level_cm,
             temperature_c, signal_quality, sd_status, reading_count, source
@@ -665,6 +683,7 @@ router.post('/readings/offline-batch', async (req, res) => {
             water_level_cm = EXCLUDED.water_level_cm,
             raw_distance_cm = EXCLUDED.raw_distance_cm,
             source = 'offline_sync'
+          RETURNING *
         `, [
           device_id,
           parsedDate.toISOString(),
@@ -673,8 +692,25 @@ router.post('/readings/offline-batch', async (req, res) => {
           28.0
         ]);
         savedCount++;
+        lastInsertedRow = inserted.rows[0] || null;
       } catch (rowErr) {
         console.warn('[Offline Batch Row Warning]', rowErr.message);
+      }
+    }
+
+    // Evaluasi rule alert untuk data offline yang disinkronkan
+    if (lastInsertedRow) {
+      try {
+        const alerts = await evaluateReadingRules(device_id, lastInsertedRow);
+        const { getSocketIO } = require('../mqtt/subscriber');
+        const io = getSocketIO ? getSocketIO() : null;
+        if (io) {
+          for (const alert of alerts) {
+            io.emit('alert:new', alert);
+          }
+        }
+      } catch (ruleErr) {
+        console.warn('[Rule Engine] error:', ruleErr.message);
       }
     }
 

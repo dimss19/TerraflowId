@@ -61,6 +61,7 @@
 #define WATCHDOG_TIMEOUT_SEC  30      // Task WDT 30s timeout
 #define BULK_CHUNK_SIZE       10      // 10 records per bulk sync MQTT chunk
 #define BULK_THROTTLE_MS      200     // Delay between chunks to prevent broker flooding
+#define BULK_ACK_TIMEOUT_MS   30000   // Batas menunggu ACK server sebelum batch dianggap gagal & dikirim ulang
 
 // ==========================================
 // 4. NETWORK & MQTT SETTINGS

@@ -2,7 +2,10 @@
 #include "config.h"
 #include <esp_task_wdt.h>
 
-MqttManager::MqttManager() : client(wifiClient), lastReconnectAttempt(0) {}
+MqttManager::MqttManager() : client(wifiClient), lastReconnectAttempt(0) {
+  pendingBulk.active = false;
+  pendingBulk.sentAtMs = 0;
+}
 
 String MqttManager::getTopic(const char *subtopic) {
   String devId = webServerMgr.getEffectiveDeviceId();
@@ -64,6 +67,9 @@ void MqttManager::loop() {
       }
     } else {
       client.loop();
+      // Batch yang menunggu ACK terlalu lama -> dianggap gagal dan
+      // akan dikirim ulang pada siklus triggerBulkSync berikutnya.
+      expireBulkAck();
     }
   }
 }
@@ -125,6 +131,12 @@ void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
   String topicStr(topic);
   String calibSetTopic = getTopic("calibration/set");
   String restartTopic  = getTopic("command/restart");
+  String bulkAckTopic  = getTopic("data/bulk/ack");
+
+  if (topicStr == bulkAckTopic) {
+    handleBulkAck(doc);
+    return;
+  }
 
   if (topicStr == calibSetTopic) {
     DeviceSettings &s = webServerMgr.getSettings();
@@ -204,7 +216,7 @@ bool MqttManager::publishAlert(const String &code, const String &severity, const
   return client.publish(getTopic("alert").c_str(), buf);
 }
 
-bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount) {
+bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount, int brownoutCount) {
   if (!isConnected()) return false;
 
   String devId = webServerMgr.getEffectiveDeviceId();
@@ -215,7 +227,7 @@ bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, in
   doc["uptime_sec"] = millis() / 1000;
   doc["boot_count"] = bootCount;
   doc["watchdog_count"] = wdtCount;
-  doc["brownout_count"] = 0;
+  doc["brownout_count"] = brownoutCount;
   doc["panic_count"] = 0;
   doc["free_heap_bytes"] = esp_get_free_heap_size();
   doc["wifi_rssi"] = WiFi.RSSI();
@@ -234,6 +246,12 @@ bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, in
 void MqttManager::triggerBulkSync(SdCardLogger &sdLogger) {
   if (!isConnected()) return;
 
+  // Jangan kirim batch baru selagi masih menunggu ACK batch sebelumnya -
+  // yang lama akan kedaluwarsa lewat expireBulkAck() dan dikirim ulang.
+  if (pendingBulk.active) {
+    return;
+  }
+
   String currentFilename = webServerMgr.getCurrentLogFilename();
   std::vector<LogRecord> unsent = sdLogger.getUnsentRecords(currentFilename.c_str(), BULK_CHUNK_SIZE);
   if (unsent.empty()) return;
@@ -248,28 +266,108 @@ void MqttManager::triggerBulkSync(SdCardLogger &sdLogger) {
 
   JsonDocument doc;
   doc["device_id"] = devId;
-  doc["batch_id"] = String("BATCH_") + String(millis());
+  const String batchId = String("BATCH_") + String(millis());
+  doc["batch_id"] = batchId;
   doc["chunk"] = 1;
   doc["total_chunks"] = 1;
   doc["source"] = "sd_buffer";
   doc["file_date"] = fileDate;
 
   JsonArray records = doc["records"].to<JsonArray>();
+  std::vector<uint32_t> batchTimestamps;
   for (const auto &r : unsent) {
     JsonObject obj = records.add<JsonObject>();
     obj["timestamp"] = r.timestamp;
     obj["raw_distance_cm"] = r.rawDistanceCm;
     obj["water_level_cm"] = r.waterLevelCm;
     obj["temperature_c"] = r.temperatureC;
+    batchTimestamps.push_back(r.timestamp);
   }
 
   char buf[2048];
   serializeJson(doc, buf);
   bool ok = client.publish(getTopic("data/bulk").c_str(), buf);
   if (ok) {
-    sdLogger.decrementPending(unsent.size());
-    Serial.printf("[BULK SYNC] Sukses mengirim %d baris buffered data. Sisa pending: %d\n",
-      (int)unsent.size(), sdLogger.getPendingCount());
+    // PENTING: record BELUM ditandai terkirim di sini. Penandaan hanya
+    // dilakukan setelah server membalas ACK lewat terraflow/{id}/data/bulk/ack.
+    // Bila ACK tidak pernah datang, record tetap pending dan dikirim ulang
+    // pada siklus berikutnya - tidak ada data yang hilang diam-diam.
+    pendingBulk.active = true;
+    pendingBulk.batchId = batchId;
+    pendingBulk.filename = currentFilename;
+    pendingBulk.timestamps = batchTimestamps;
+    pendingBulk.sentAtMs = millis();
+    Serial.printf("[BULK SYNC] Terkirim %d baris (batch %s), menunggu ACK server...\n",
+      (int)unsent.size(), batchId.c_str());
   }
   delay(BULK_THROTTLE_MS);
+}
+
+// ------------------------------------------------------------
+//  Handler ACK sinkronisasi bulk
+// ------------------------------------------------------------
+void MqttManager::handleBulkAck(JsonDocument &doc) {
+  const String status = doc["status"] | "error";
+  const String ackBatchId = doc["batch_id"] | "";
+
+  if (!pendingBulk.active) {
+    Serial.println("[BULK ACK] ACK diterima tanpa batch tertunda - diabaikan.");
+    return;
+  }
+  if (!ackBatchId.isEmpty() && ackBatchId != pendingBulk.batchId) {
+    Serial.printf("[BULK ACK] batch_id tidak cocok (terkirim: %s, ack: %s) - diabaikan.\n",
+      pendingBulk.batchId.c_str(), ackBatchId.c_str());
+    return;
+  }
+
+  if (status == "error") {
+    Serial.printf("[BULK ACK] Server gagal menyimpan batch %s - record akan dikirim ulang.\n",
+      pendingBulk.batchId.c_str());
+    pendingBulk.active = false;
+    pendingBulk.timestamps.clear();
+    return;
+  }
+
+  // Timestamp yang gagal disimpan - hanya yang ini yang perlu dikirim ulang.
+  std::vector<uint32_t> failed;
+  JsonArray failedArr = doc["failed_timestamps"];
+  if (!failedArr.isNull()) {
+    for (JsonVariant v : failedArr) {
+      failed.push_back((uint32_t)(long)v.as<long>());
+    }
+  }
+
+  int marked = 0;
+  SdCardLogger *sdLogger = webServerMgr.getSdLogger();
+  for (uint32_t ts : pendingBulk.timestamps) {
+    bool isFailed = false;
+    for (uint32_t f : failed) {
+      if (f == ts) { isFailed = true; break; }
+    }
+    if (isFailed) continue;
+    // Tandai terkirim di ledger MicroSD
+    if (sdLogger && sdLogger->markRecordSent(pendingBulk.filename, ts)) {
+      marked++;
+    }
+  }
+
+  Serial.printf("[BULK ACK] Batch %s: %d record ditandai terkirim, %d gagal (total pending: %d)\n",
+    pendingBulk.batchId.c_str(), marked, (int)failed.size(),
+    sdLogger ? sdLogger->getPendingCount() : -1);
+
+  pendingBulk.active = false;
+  pendingBulk.timestamps.clear();
+}
+
+// ------------------------------------------------------------
+//  Kadaluarsa ACK - batch dianggap gagal agar dikirim ulang
+// ------------------------------------------------------------
+void MqttManager::expireBulkAck() {
+  if (!pendingBulk.active) return;
+  if (millis() - pendingBulk.sentAtMs < BULK_ACK_TIMEOUT_MS) return;
+
+  Serial.printf("[BULK ACK] Timeout %lu ms menunggu ACK batch %s - akan dikirim ulang.\n",
+    (unsigned long)BULK_ACK_TIMEOUT_MS, pendingBulk.batchId.c_str());
+  pendingBulk.active = false;
+  pendingBulk.timestamps.clear();
 }

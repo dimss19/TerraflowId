@@ -312,6 +312,26 @@ diterapkan ke koneksi MQTT seketika tanpa restart perangkat.
 Portal lokal: SoftAP `TerraFlow-<DEVICE_ID>` (tanpa password), IP `192.168.4.1`,
 login password default `password`.
 
+### Sinkronisasi bulk & konfirmasi (ACK)
+
+Data offline di MicroSD hanya ditandai "sudah terkirim" **setelah** server
+mengonfirmasi lewat topik `terraflow/{device_id}/data/bulk/ack`. Server mengirim
+ACK berisi `status` (`ok` / `partial` / `error`), `records_saved`,
+`records_failed`, dan `failed_timestamps` — hanya record yang benar-benar
+tersimpan yang ditandai. Bila ACK tidak datang dalam 30 detik, batch dianggap
+gagal dan dikirim ulang; record tetap `pending` sehingga tidak ada data yang
+hilang diam-diam.
+
+Penandaan "sudah terkirim" disimpan pada **file ledger append-only**
+`/data/.sent_<YYYY-MM-DD>` (satu epoch per baris), bukan dengan menulis ulang
+kolom `sent` di CSV. Filesystem ESP32 tidak mendukung tulis in-place
+(`O_RDWR`), sedangkan rewrite penuh berkas tiap menit akan menguras umur
+MicroSD (±176 MB/hari). File ledger ini akan terlihat di portal perangkat pada
+daftar file — itu normal, bukan berkas data.
+
+> Kolom `sent` pada kolom terakhir CSV bersifat historis dan tidak lagi
+> diperbarui. Yang otoritatif adalah file ledger `.sent_*`.
+
 Backup konfigurasi asli: `firmware/src/config.h.bak`
 
 > **`device_id` harus `AWLR-001`** (atau device_id lain yang terdaftar di tabel

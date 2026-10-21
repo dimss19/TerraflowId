@@ -42,7 +42,12 @@ public:
   bool autoRecover();
   
   bool appendRecord(const String &filename, const LogRecord &record);
+
+  // Tandai satu record sebagai sudah terkirim (dikonfirmasi server via ACK).
+  // Dicatat pada ledger append-only per hari - bukan dengan menulis ulang
+  // CSV, karena rewrite penuh tiap menit akan menguras umur MicroSD.
   bool markRecordSent(const String &filename, uint32_t timestamp);
+
   void logCrash(const String &reason, const String &details);
   
   int getPendingCount();
@@ -64,6 +69,13 @@ private:
   int consecutiveErrors;
   SemaphoreHandle_t sdMutex;
   void initDirectories();
+
+  // Ledger "sudah terkirim" per berkas log (append-only, 1 timestamp per baris)
+  String sentLedgerPathFor(const String &filename) const;
+  std::vector<uint32_t> readSentLedger(const String &filename);
+  bool appendToSentLedger(const String &filename, uint32_t timestamp);
+  std::vector<uint32_t> sentLedgerCache;
+  String sentLedgerCachedFor;
 };
 
 #endif // SDCARD_LOGGER_H

@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <vector>
 #include "sdcard_logger.h"
 #include "web_server_mgr.h"
 
@@ -29,7 +30,7 @@ public:
   
   bool publishReading(const LogRecord &record, int readingCount, const char *source = "live");
   bool publishAlert(const String &code, const String &severity, const String &message, const String &detailsJson = "{}");
-  bool publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount);
+  bool publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount, int brownoutCount = 0);
   
   void triggerBulkSync(SdCardLogger &sdLogger);
   CalibrationData getCalibration() const;
@@ -38,10 +39,29 @@ private:
   WiFiClient wifiClient;
   PubSubClient client;
   unsigned long lastReconnectAttempt;
-  
+
+  // ------------------------------------------------------------
+  //  Sinkronisasi bulk yang menunggu konfirmasi server (ACK)
+  // ------------------------------------------------------------
+  //  Data di MicroSD hanya ditandai "sudah terkirim" setelah server
+  //  mengonfirmasi lewat topik terraflow/{device_id}/data/bulk/ack.
+  //  Sebelum ACK diterima, record tetap dihitung pending sehingga
+  //  akan dikirim ulang - tidak ada data yang hilang.
+  struct PendingBulk {
+    bool active;
+    String batchId;
+    String filename;
+    std::vector<uint32_t> timestamps;  // timestamp record dalam batch
+    uint32_t sentAtMs;
+  };
+  PendingBulk pendingBulk;
+
+  void handleBulkAck(JsonDocument &doc);
+  void expireBulkAck();
+
   void reconnect();
   void handleMessage(char *topic, byte *payload, unsigned int length);
-  
+
   // Topic helpers
   String getTopic(const char *subtopic);
 };

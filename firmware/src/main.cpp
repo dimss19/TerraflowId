@@ -206,7 +206,8 @@ void healthTask(void *pvParameters) {
         bootStats.reasonStr,
         bootStats.bootCount,
         bootStats.watchdogCount,
-        sdLogger.getPendingCount()
+        sdLogger.getPendingCount(),
+        (int)bootStats.brownoutCount
       );
       lastHourlyDiagMs = now;
     }

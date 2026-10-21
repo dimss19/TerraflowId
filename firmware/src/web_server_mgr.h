@@ -56,6 +56,10 @@ public:
   DeviceSettings& getSettings() { return settings; }
   void updateCalibration(float height, float offset, float slope);
 
+  // Akses ke logger MicroSD (dipakai MqttManager untuk menandai record
+  // terkirim setelah server mengonfirmasi lewat ACK).
+  SdCardLogger* getSdLogger() const { return sdLoggerRef; }
+
   void loadSettings();
   void saveSettings();
   String getEffectiveDeviceId();

@@ -206,6 +206,8 @@ async function handleBulkReadings(deviceId, payload) {
   const records = payload.records || [];
   let savedCount = 0;
 
+  const failedTimestamps = [];
+
   for (const item of records) {
     // Timestamp: field `timestamp` (epoch) menjadi sumber utama, fallback
     // date+jam diinterpretasi sebagai WIB. Lihat utils/timestamp.js.
@@ -236,23 +238,35 @@ async function handleBulkReadings(deviceId, payload) {
       savedCount++;
     } catch (e) {
       console.warn('[Bulk Insert Warning]', e.message);
+      // Catat timestamp yang gagal agar perangkat hanya mengulang baris ini
+      failedTimestamps.push(Math.floor(ts.getTime() / 1000));
     }
   }
 
-  // Publish ACK to device
+  // Publish ACK ke perangkat. Status mencerminkan kondisi sebenarnya:
+  // perangkat hanya menandai record "terkirim" untuk yang benar-benar
+  // tersimpan di server.
+  const totalRecords = records.length;
+  const status = failedTimestamps.length === 0
+    ? 'ok'
+    : (savedCount > 0 ? 'partial' : 'error');
+
   const ackTopic = `terraflow/${deviceId}/data/bulk/ack`;
   const ackPayload = JSON.stringify({
     device_id: deviceId,
     batch_id: payload.batch_id || 'unknown',
     chunk: payload.chunk || 1,
-    status: 'ok',
+    status,
+    records_total: totalRecords,
     records_saved: savedCount,
+    records_failed: failedTimestamps.length,
+    failed_timestamps: failedTimestamps,
     timestamp: Math.floor(Date.now() / 1000)
   });
 
   if (mqttClient && mqttClient.connected) {
     mqttClient.publish(ackTopic, ackPayload);
-    console.log(`[MQTT Bulk ACK] Sent ACK for chunk ${payload.chunk} (${savedCount} saved) to ${ackTopic}`);
+    console.log(`[MQTT Bulk ACK] chunk ${payload.chunk} -> status=${status} (${savedCount}/${totalRecords} saved, ${failedTimestamps.length} failed) ke ${ackTopic}`);
   }
 
   if (ioInstance) {

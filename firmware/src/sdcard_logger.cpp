@@ -1,22 +1,27 @@
 #include "sdcard_logger.h"
 #include "config.h"
 
+#include <algorithm>
+
 SdCardLogger::SdCardLogger() : ready(false), spiBus(FSPI), pendingCount(0), consecutiveErrors(0), sdMutex(NULL) {}
 
 bool SdCardLogger::sdLock(uint32_t waitMs) {
   if (!sdMutex) return true;
-  return xSemaphoreTake(sdMutex, pdMS_TO_TICKS(waitMs)) == pdTRUE;
+  // Mutex REKURSIF: beberapa jalur memanggil sdLock() di dalam sdLock()
+  // (mis. getUnsentRecords -> readSentLedger). Dengan mutex biasa,
+  // pemanggilan kedua akan timeout dan mengembalikan nilai kosong.
+  return xSemaphoreTakeRecursive(sdMutex, pdMS_TO_TICKS(waitMs)) == pdTRUE;
 }
 
 void SdCardLogger::sdUnlock() {
   if (sdMutex) {
-    xSemaphoreGive(sdMutex);
+    xSemaphoreGiveRecursive(sdMutex);
   }
 }
 
 bool SdCardLogger::begin() {
   if (!sdMutex) {
-    sdMutex = xSemaphoreCreateMutex();
+    sdMutex = xSemaphoreCreateRecursiveMutex();
   }
 
   // Siapkan pin CS dan pull-up MISO untuk kestabilan transmisi SPI
@@ -181,10 +186,96 @@ bool SdCardLogger::appendRecord(const String &filename, const LogRecord &record)
   return true;
 }
 
-bool SdCardLogger::markRecordSent(const String &filename, uint32_t timestamp) {
-  (void)filename;
-  (void)timestamp;
+// ==============================================================
+//  Ledger "sudah terkirim" (append-only)
+// ==============================================================
+//  Kolom `sent` pada CSV tidak pernah bisa ditulis ulang di tempat
+//  (Filesystem ESP32 tidak mendukung O_RDWR), dan rewrite penuh
+//  tiap menit menguras umur MicroSD. Karena itu penandaan
+//  "sudah terkirim" disimpan pada file ledger terpisah per hari -
+//  hanya append, jauh lebih murah untuk kartu.
+//
+//  Format: satu epoch (detik) per baris, diurutkan menaik.
+
+String SdCardLogger::sentLedgerPathFor(const String &filename) const {
+  String base = filename;
+  if (base.endsWith(".csv")) {
+    base = base.substring(0, base.length() - 4);
+  }
+  return "/data/.sent_" + base;
+}
+
+std::vector<uint32_t> SdCardLogger::readSentLedger(const String &filename) {
+  std::vector<uint32_t> out;
+  if (!ready) return out;
+
+  const String path = sentLedgerPathFor(filename);
+
+  // Cache per berkas supaya tidak dibaca berulang
+  if (sentLedgerCachedFor == filename) {
+    return sentLedgerCache;
+  }
+
+  if (!sdLock(1500)) return out;
+  File file = SD.open(path, FILE_READ);
+  if (file) {
+    while (file.available()) {
+      String line = file.readStringUntil('\n');
+      line.trim();
+      if (line.length() == 0) continue;
+      out.push_back((uint32_t)line.toInt());
+    }
+    file.close();
+  }
+
+  // Urutkan menaik agar bisa dicek dengan binary search.
+  // Cache diperbarui di dalam critical section agar aman bila dua task
+  // (sampling & MQTT) sama-sama accessing ledger.
+  std::sort(out.begin(), out.end());
+  sentLedgerCache = out;
+  sentLedgerCachedFor = filename;
+
+  sdUnlock();
+  return out;
+}
+
+bool SdCardLogger::appendToSentLedger(const String &filename, uint32_t timestamp) {
   if (!ready) return false;
+  if (!sdLock(1500)) return false;
+
+  const String path = sentLedgerPathFor(filename);
+  bool ok = false;
+  File file = SD.open(path, FILE_APPEND);
+  if (file) {
+    file.printf("%lu\n", (unsigned long)timestamp);
+    file.close();
+    ok = true;
+  } else {
+    // Ledger belum ada -> buat baru
+    file = SD.open(path, FILE_WRITE);
+    if (file) {
+      file.printf("%lu\n", (unsigned long)timestamp);
+      file.close();
+      ok = true;
+    }
+  }
+  if (ok) {
+    // Perbarui cache (di dalam critical section)
+    if (sentLedgerCachedFor != filename) {
+      sentLedgerCachedFor = filename;
+      sentLedgerCache.clear();
+    }
+    sentLedgerCache.push_back(timestamp);
+    std::sort(sentLedgerCache.begin(), sentLedgerCache.end());
+  }
+  sdUnlock();
+  return ok;
+}
+bool SdCardLogger::markRecordSent(const String &filename, uint32_t timestamp) {
+  if (!ready) return false;
+  if (!appendToSentLedger(filename, timestamp)) {
+    return false;
+  }
   decrementPending(1);
   return true;
 }
@@ -245,13 +336,16 @@ std::vector<LogRecord> SdCardLogger::getUnsentRecords(const String &filename, in
   // Skip CSV header
   if (file.available()) file.readStringUntil('\n');
 
+  // Ledger "sudah terkirim" - authoritative, bukan kolom `sent` di CSV
+  // (kolom itu tidak bisa ditulis ulang tanpa rewrite penuh berkas).
+  std::vector<uint32_t> sentLedger = readSentLedger(filename);
+
   while (file.available() && (int)list.size() < limit) {
     String line = file.readStringUntil('\n');
     line.trim();
     if (line.length() < 10) continue;
 
-    // Check last character for sent flag (ends with 0)
-    if (line.endsWith(",0")) {
+    {
       LogRecord rec;
       memset(&rec, 0, sizeof(rec));
 
@@ -276,7 +370,10 @@ std::vector<LogRecord> SdCardLogger::getUnsentRecords(const String &filename, in
         rec.waterLevelCm = tokens[6].toFloat();
         rec.temperatureC = tokens[7].toFloat();
         rec.isSent = false;
-        list.push_back(rec);
+        // Lewati bila timestamp sudah tercatat di ledger "sudah terkirim"
+        if (!std::binary_search(sentLedger.begin(), sentLedger.end(), rec.timestamp)) {
+          list.push_back(rec);
+        }
       } else if (tokens.size() >= 5) {
         // Fallback format
         rec.timestamp = (uint32_t)tokens[0].toInt();
@@ -285,7 +382,9 @@ std::vector<LogRecord> SdCardLogger::getUnsentRecords(const String &filename, in
         rec.waterLevelCm = tokens[2].toFloat();
         rec.temperatureC = tokens[3].toFloat();
         rec.isSent = false;
-        list.push_back(rec);
+        if (!std::binary_search(sentLedger.begin(), sentLedger.end(), rec.timestamp)) {
+          list.push_back(rec);
+        }
       }
     }
   }

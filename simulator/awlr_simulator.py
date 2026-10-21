@@ -42,7 +42,6 @@ class AWLRSimulator:
         self.reading_counter = 100
         self.boot_count = 1
         self.watchdog_count = 0
-        self.battery_voltage = 12.55
         self.last_diag_time = 0
         self.diag_interval = 300  # Heartbeat diagnostics every 5 minutes
 
@@ -176,14 +175,6 @@ class AWLRSimulator:
         hour_of_day = (now_sec / 3600.0 + 7) % 24  # UTC+7
         temp_c = round(27.0 + 4.0 * math.sin((hour_of_day - 8) * math.pi / 12) + random.uniform(-0.2, 0.2), 2)
 
-        # Battery voltage: slight discharge with solar charging simulation
-        if 9 <= hour_of_day <= 16:
-            self.battery_voltage = min(12.75, self.battery_voltage + 0.002)
-        else:
-            self.battery_voltage = max(11.80, self.battery_voltage - 0.001)
-        batt_v = round(self.battery_voltage, 2)
-        batt_pct = min(100, max(0, int(((batt_v - 11.5) / 1.25) * 100)))
-
         rssi = -65 + int(random.uniform(-5, 5))
 
         return {
@@ -192,8 +183,6 @@ class AWLRSimulator:
             "raw_distance_cm": raw_distance,
             "water_level_cm": water_level,
             "temperature_c": temp_c,
-            "battery_voltage": batt_v,
-            "battery_percent": batt_pct,
             "signal_quality": rssi,
             "sd_status": "ok",
             "reading_count": self.reading_counter,
@@ -215,7 +204,6 @@ class AWLRSimulator:
             "wifi_rssi": -65 + random.randint(-4, 4),
             "sd_card_ok": True,
             "sensor_ok": True,
-            "battery_voltage": round(self.battery_voltage, 2),
             "esp_temp_c": round(38.0 + random.uniform(-1.0, 1.0), 1),
             "pending_unsent": 0,
             "firmware_version": "v1.2.0"
@@ -243,7 +231,6 @@ class AWLRSimulator:
 
                 print(f"[Data Terkirim] Level: {reading['water_level_cm']:>6.2f} cm | "
                       f"Jarak: {reading['raw_distance_cm']:>6.2f} cm | "
-                      f"Aki: {reading['battery_voltage']:.2f}V ({reading['battery_percent']}%) | "
                       f"Suhu: {reading['temperature_c']}°C")
 
                 # Send diagnostics periodically

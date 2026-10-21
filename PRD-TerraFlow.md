@@ -36,7 +36,7 @@ Menjadi solusi AWLR portabel berstandar industri dengan keandalan operasional la
 | Persona | Role & Tanggung Jawab | Kebutuhan Utama |
 |---|---|---|
 | **Teknisi Lapangan (Field Engineer)** | Pemasangan perangkat, verifikasi kelistrikan, perawatan sensor | Status konektivitas, log diagnostik hardware, verifikasi pembacaan awal, kalibrasi instan |
-| **Operator / Pengamat Hidrologi** | Monitoring harian ketinggian air sungai / laut | Dashboard interaktif, notifikasi alert bila level air kritis / sensor rusak, status baterai |
+| **Operator / Pengamat Hidrologi** | Monitoring harian ketinggian air sungai / laut | Dashboard interaktif, notifikasi alert bila level air kritis / sensor rusak |
 | **Analis Oseanografi & SDA** | Pengolahan tren pasang surut, debit air, studi hidrologi | Kurva pasang surut 24 jam, ekspor data CSV terfilter, kalkulasi HHT/LLT/MSL |
 | **Administrator Sistem** | Manajemen armada alat (*fleet*), pengguna, dan infrastruktur cloud | Manajemen device ID, konfigurasi batas ambang (*thresholds*), audit log |
 
@@ -163,8 +163,6 @@ graph TB
 | `SENSOR_FAIL` | 🔴 **CRITICAL** | Pembacaan sensor A16 gagal berturut-turut 5 kali | Siklus daya (*power cycle*) sensor via transistor/relay |
 | `SENSOR_TIMEOUT`| 🟡 **WARNING** | RS485 tidak membalas dalam batas toleransi 2 detik | Lewati siklus saat ini, coba lagi pada interval berikutnya |
 | `SENSOR_ANOMALY`| 🟡 **WARNING** | Lonjakan delta ketinggian air $>50\text{ cm}$ dalam 1 menit | Catat anomali, beri flag peringatan pada payload data |
-| `BATTERY_LOW` | 🟡 **WARNING** | Tegangan baterai turun di bawah $11.5\text{ V}$ | Kirim peringatan peringatan daya |
-| `BATTERY_CRITICAL`| 🔴 **CRITICAL** | Tegangan baterai turun di bawah $10.5\text{ V}$ | Kirim notifikasi darurat, aktifkan mode *Deep Sleep* |
 | `BROWNOUT` | 🔴 **CRITICAL** | Suplai tegangan drop secara instan di bawah ambang batas | Logging RTC counter, restart terkontrol |
 | `SD_CARD_FAIL` | 🔴 **CRITICAL** | Modul SD Card tidak merespons init atau read/write gagal | Beralih ke RAM Ring-Buffer (kapasitas 100 record) |
 | `SD_CARD_FULL` | 🟡 **WARNING** | Sisa ruang kosong MicroSD $<10\text{ MB}$ | Eksekusi rotasi pembersihan berkas lama di direktori `/sd/sent/` |
@@ -208,8 +206,6 @@ terraflow/
   "raw_distance_cm": 420.50,
   "water_level_cm": 179.50,
   "temperature_c": 29.20,
-  "battery_voltage": 12.45,
-  "battery_percent": 88,
   "signal_quality": -68,
   "sd_status": "ok",
   "reading_count": 1440,
@@ -231,17 +227,13 @@ terraflow/
       "timestamp": 1791331200,
       "raw_distance_cm": 425.10,
       "water_level_cm": 174.90,
-      "temperature_c": 28.90,
-      "battery_voltage": 12.48,
-      "battery_percent": 89
+      "temperature_c": 28.90
     },
     {
       "timestamp": 1791331260,
       "raw_distance_cm": 424.80,
       "water_level_cm": 175.20,
-      "temperature_c": 28.90,
-      "battery_voltage": 12.47,
-      "battery_percent": 89
+      "temperature_c": 28.90
     }
   ]
 }
@@ -328,8 +320,6 @@ CREATE TABLE readings (
     raw_distance_cm DECIMAL(8, 2),
     water_level_cm DECIMAL(8, 2),
     temperature_c DECIMAL(5, 2),
-    battery_voltage DECIMAL(5, 2),
-    battery_percent SMALLINT,
     signal_quality SMALLINT,
     sd_status VARCHAR(10),
     reading_count INTEGER,
@@ -386,7 +376,6 @@ CREATE TABLE device_diagnostics (
     wifi_rssi SMALLINT,
     sd_card_ok BOOLEAN,
     sensor_ok BOOLEAN,
-    battery_voltage DECIMAL(5, 2),
     esp_temp_c DECIMAL(5, 2),
     pending_unsent INTEGER,
     firmware_version VARCHAR(20),
@@ -440,7 +429,7 @@ graph LR
 * **Water Level Gauge**: Radial gauge interaktif dengan indikasi zona elevasi (Normal, Waspada, Siaga, Bahaya).
 * **Tidal Status Badge**: Label status dinamis `🔺 PASANG SEDANG NAIK`, `🔻 SURUT`, atau `➡️ SLACK WATER`.
 * **Realtime Sparkline Chart**: Grafik pergerakan air 60 menit terakhir yang bergulir secara otomatis melalui Socket.IO.
-* **Card Metrik Operasional**: Menampilkan parameter terkini: Jarak Sensor (cm), Temperatur Sensor/Air (°C), Tegangan Aki & Persentase Baterai (V / %), dan Kualitas Sinyal RSSI (dBm).
+* **Card Metrik Operasional**: Menampilkan parameter terkini: Jarak Sensor (cm), Temperatur Sensor/Air (°C), Kualitas Sinyal RSSI (dBm).
 * **Device Health Banner**: Indikator instan bila ada insiden `CRITICAL` atau `WARNING` yang belum diselesaikan.
 
 ### 9.2 Halaman Analisis Pasang Surut (Tidal Curve)
@@ -467,8 +456,8 @@ graph LR
 
 ### 9.5 Halaman Diagnostik Perangkat & Manajemen Peringatan (Alerts & Health)
 * **Active Alerts Console**: Daftar peringatan yang masih aktif dengan opsi tombol `Acknowledge / Mark Resolved`.
-* **Hardware Diagnostic Timeline**: Grafik riwayat reboot perangkat, mencatat kategori pemicu restart (Normal Power-On, Watchdog Timeout, Brownout Baterai, Software Panic).
-* **Grafik Tren Kesehatan Baterai & Suhu**: Analisis degradasi baterai harian guna mengantisipasi penggantian aki sebelum alat mati total di lokasi terpencil.
+* **Hardware Diagnostic Timeline**: Grafik riwayat reboot perangkat, mencatat kategori pemicu restart (Normal Power-On, Watchdog Timeout, Brownout Daya, Software Panic).
+* **Grafik Tren Suhu**: Analisis variasi suhu sensor untuk membantu mendeteksi anomali lingkungan di lokasi pemantauan.
 * **Aksi Kontrol Jarak Jauh**: Tombol pengiriman perintah darurat `Reboot Device` dan `Force Sync SD Card`.
 
 ---
@@ -498,7 +487,7 @@ graph LR
 Guna memastikan pengembangan frontend dan backend dapat berlangsung secara independen tanpa ketergantungan pada unit fisik ESP32 di tahap awal, disediakan **AWLR Hardware Simulator (Node.js)**:
 1. **Generator Kurva Pasut Sinusoidal**: Mensimulasikan dinamika pasang surut realistis berperiode 12.4 jam dengan sedikit variasi acak (*noise*).
 2. **Simulasi Kegagalan Jaringan**: Menguji skenario pemutusan koneksi buatan selama 6 jam untuk memverifikasi akumulasi record pending dan uji ketahanan bulk upload.
-3. **Simulasi Error Terkendali**: Injeksi buatan pesan insiden `WDT_RESET`, `BATTERY_LOW`, dan `SENSOR_FAIL` untuk menguji reaktivitas antarmuka dashboard dan notifikasi pengguna.
+3. **Simulasi Error Terkendali**: Injeksi buatan pesan insiden `WDT_RESET`, `BROWNOUT`, dan `SENSOR_FAIL` untuk menguji reaktivitas antarmuka dashboard dan notifikasi pengguna.
 
 ---
 
@@ -511,7 +500,7 @@ Guna memastikan pengembangan frontend dan backend dapat berlangsung secara indep
 | **Fase 3: Frontend Dashboard & Realtime** | Minggu 2 | Setup React Vite, implementasi Socket.IO hook, Water Level Gauge, grafik realtime, indikator pasut |
 | **Fase 4: Modul Analisis Pasang Surut** | Minggu 3 | API kalkulasi puncak/lembah, 24-hr area chart, monthly calendar heatmap, metrik HHT/LLT/MSL |
 | **Fase 5: Kalibrasi & Riwayat Data** | Minggu 3-4 | Form kalibrasi dua arah via MQTT, tabel riwayat, export CSV, date range filtering |
-| **Fase 6: Modul Diagnostik & Manajemen Alert** | Minggu 4 | Ingest alert, panel daftar insiden, grafik tren baterai dan reboot reason |
+| **Fase 6: Modul Diagnostik & Manajemen Alert** | Minggu 4 | Ingest alert, panel daftar insiden, grafik tren reboot reason |
 | **Fase 7: Firmware Reference ESP32-S3** | Minggu 5 | Driver Modbus A16, sistem rotasi SD Card CSV, offline sync state machine, Watchdog RTC tracking |
 | **Fase 8: Integrasi Akhir & Uji Lapangan** | Minggu 6 | Uji ketahanan perangkat (*soak testing*), pengujian *zero data loss*, dokumentasi manual teknisi |
 

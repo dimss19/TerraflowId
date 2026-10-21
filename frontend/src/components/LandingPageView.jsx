@@ -565,7 +565,7 @@ export default function LandingPageView({ onGoToLogin }) {
                 <Battery size={20} />
               </div>
               <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#003882', marginBottom: '8px' }}>Daya Mandiri Solar &amp; Baterai</h4>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Konsumsi daya ultra-efisien dengan telemetri voltase baterai terintegrasi, siap beroperasi 24/7 di perairan terisolasi.</p>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>Konsumsi daya ultra-efisien dengan panel surya dan baterai, siap beroperasi 24/7 di perairan terisolasi tanpa bergantung pada jaringan listrik.</p>
             </div>
           </div>
         </div>

@@ -40,8 +40,6 @@ async function seedData() {
 
     // 3. Seed alert rules
     const rules = [
-      ['BATTERY_LOW', 11.50, 30],
-      ['BATTERY_CRITICAL', 10.50, 15],
       ['SENSOR_ANOMALY', 50.00, 10],
       ['TEMP_HIGH', 60.00, 30],
     ];
@@ -74,8 +72,6 @@ async function seedData() {
       const waterLevel = +(baseMsl + (tidalAmplitude * Math.sin(phaseM2)) + (20.0 * Math.sin(phaseS2)) + noise).toFixed(2);
       const rawDistance = +(sensorHeight - waterLevel).toFixed(2);
       const temperature = +(28.2 + Math.sin(i / 100) * 1.5).toFixed(2);
-      const batteryVoltage = +(12.45 - (i / 1440) * 0.15).toFixed(2);
-      const batteryPercent = Math.min(100, Math.max(0, Math.round(((batteryVoltage - 10.5) / 2.3) * 100)));
       const signalQuality = -65 - Math.round(Math.abs(Math.sin(i)) * 10);
 
       readingsBatch.push([
@@ -84,8 +80,6 @@ async function seedData() {
         rawDistance,
         waterLevel,
         temperature,
-        batteryVoltage,
-        batteryPercent,
         signalQuality,
         'ok',
         1441 - i,
@@ -113,8 +107,7 @@ async function seedData() {
       const insertSql = `
         INSERT INTO readings (
           device_id, timestamp, raw_distance_cm, water_level_cm,
-          temperature_c, battery_voltage, battery_percent,
-          signal_quality, sd_status, reading_count, source
+          temperature_c, signal_quality, sd_status, reading_count, source
         )
         VALUES ${valueClauses.join(', ')}
         ON CONFLICT (device_id, timestamp) DO NOTHING
@@ -127,8 +120,7 @@ async function seedData() {
     await query(`
       INSERT INTO device_alerts (device_id, timestamp, alert_code, severity, message, details, resolved)
       VALUES 
-      ($1, NOW() - INTERVAL '3 hours', 'SENSOR_ANOMALY', 'WARNING', 'Perubahan elevasi terdeteksi melebihi batas rata-rata saat uji lapangan awal.', '{"delta_cm": 22.4}', true),
-      ($1, NOW() - INTERVAL '15 minutes', 'BATTERY_LOW', 'WARNING', 'Tegangan baterai cadangan terdeteksi di bawah 12.3V.', '{"voltage": 12.28, "percent": 77}', false)
+      ($1, NOW() - INTERVAL '3 hours', 'SENSOR_ANOMALY', 'WARNING', 'Perubahan elevasi terdeteksi melebihi batas rata-rata saat uji lapangan awal.', '{"delta_cm": 22.4}', true)
       ON CONFLICT DO NOTHING
     `, ['AWLR-001']);
 
@@ -137,10 +129,10 @@ async function seedData() {
       INSERT INTO device_diagnostics (
         device_id, timestamp, boot_reason, uptime_sec, boot_count,
         watchdog_count, brownout_count, panic_count, free_heap_bytes,
-        wifi_rssi, sd_card_ok, sensor_ok, battery_voltage, esp_temp_c,
+        wifi_rssi, sd_card_ok, sensor_ok, esp_temp_c,
         pending_unsent, firmware_version
       )
-      VALUES ($1, NOW(), 'POWERON_RESET', 86400, 1, 0, 0, 0, 168420, -66, true, true, 12.35, 41.2, 0, '1.0.0')
+      VALUES ($1, NOW(), 'POWERON_RESET', 86400, 1, 0, 0, 0, 168420, -66, true, true, 41.2, 0, '1.0.0')
       ON CONFLICT DO NOTHING
     `, ['AWLR-001']);
 

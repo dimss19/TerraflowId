@@ -170,16 +170,13 @@ async function handleSingleReading(deviceId, data) {
   const insertSql = `
     INSERT INTO readings (
       device_id, timestamp, raw_distance_cm, water_level_cm,
-      temperature_c, battery_voltage, battery_percent,
-      signal_quality, sd_status, reading_count, source
+      temperature_c, signal_quality, sd_status, reading_count, source
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     ON CONFLICT (device_id, timestamp) DO UPDATE SET
       water_level_cm = EXCLUDED.water_level_cm,
       raw_distance_cm = EXCLUDED.raw_distance_cm,
       temperature_c = EXCLUDED.temperature_c,
-      battery_voltage = EXCLUDED.battery_voltage,
-      battery_percent = EXCLUDED.battery_percent,
       signal_quality = EXCLUDED.signal_quality,
       source = EXCLUDED.source
     RETURNING *
@@ -191,8 +188,6 @@ async function handleSingleReading(deviceId, data) {
     rawDist,
     waterLevel,
     data.temperature_c != null ? Number(data.temperature_c) : null,
-    data.battery_voltage != null ? Number(data.battery_voltage) : null,
-    data.battery_percent != null ? Number(data.battery_percent) : null,
     data.signal_quality != null ? Number(data.signal_quality) : null,
     data.sd_status || 'ok',
     data.reading_count != null ? Number(data.reading_count) : null,
@@ -230,10 +225,9 @@ async function handleBulkReadings(deviceId, payload) {
     const insertSql = `
       INSERT INTO readings (
         device_id, timestamp, raw_distance_cm, water_level_cm,
-        temperature_c, battery_voltage, battery_percent,
-        signal_quality, sd_status, reading_count, source
+        temperature_c, signal_quality, sd_status, reading_count, source
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'sd_buffer')
+      VALUES ($1, $2, $3, $4, $5, $6, 'ok', $7, 'sd_buffer')
       ON CONFLICT (device_id, timestamp) DO NOTHING
     `;
 
@@ -244,10 +238,7 @@ async function handleBulkReadings(deviceId, payload) {
         item.raw_distance_cm != null ? Number(item.raw_distance_cm) : null,
         item.water_level_cm != null ? Number(item.water_level_cm) : null,
         item.temperature_c != null ? Number(item.temperature_c) : null,
-        item.battery_voltage != null ? Number(item.battery_voltage) : null,
-        item.battery_percent != null ? Number(item.battery_percent) : null,
         item.signal_quality != null ? Number(item.signal_quality) : null,
-        'ok',
         item.reading_count != null ? Number(item.reading_count) : null
       ]);
       savedCount++;
@@ -317,10 +308,10 @@ async function handleDiagnostics(deviceId, data) {
     INSERT INTO device_diagnostics (
       device_id, timestamp, boot_reason, uptime_sec, boot_count,
       watchdog_count, brownout_count, panic_count, free_heap_bytes,
-      wifi_rssi, sd_card_ok, sensor_ok, battery_voltage, esp_temp_c,
+      wifi_rssi, sd_card_ok, sensor_ok, esp_temp_c,
       pending_unsent, firmware_version
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING *
   `;
 
@@ -337,7 +328,6 @@ async function handleDiagnostics(deviceId, data) {
     data.wifi_rssi || -70,
     data.sd_card_ok !== false,
     data.sensor_ok !== false,
-    data.battery_voltage || null,
     data.esp_temp_c || null,
     data.pending_unsent || 0,
     data.firmware_version || '1.0.0'

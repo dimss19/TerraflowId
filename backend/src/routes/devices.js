@@ -26,8 +26,6 @@ router.get('/', authenticateToken, async (req, res) => {
              (SELECT json_build_object(
                 'timestamp', r.timestamp,
                 'water_level_cm', r.water_level_cm,
-                'battery_voltage', r.battery_voltage,
-                'battery_percent', r.battery_percent,
                 'temperature_c', r.temperature_c,
                 'signal_quality', r.signal_quality
               ) FROM readings r WHERE r.device_id = d.device_id ORDER BY r.timestamp DESC LIMIT 1) AS latest_reading

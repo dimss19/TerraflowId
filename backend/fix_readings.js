@@ -36,7 +36,7 @@ async function fixReadings() {
   // 3. Fill missing minute gaps for today (2026-10-20) between 12:00 and now
   console.log('=== STEP 3: HEAL MISSING MINUTES ON 2026-10-20 ===');
   const todayRows = await query(`
-    SELECT id, timestamp, water_level_cm, raw_distance_cm, temperature_c, battery_voltage, signal_quality, source
+    SELECT id, timestamp, water_level_cm, raw_distance_cm, temperature_c, signal_quality, source
     FROM readings
     WHERE timestamp >= '2026-10-20 12:00:00+07'
     ORDER BY timestamp ASC;
@@ -71,9 +71,9 @@ async function fixReadings() {
         await query(`
           INSERT INTO readings (
             device_id, timestamp, water_level_cm, raw_distance_cm,
-            temperature_c, battery_voltage, signal_quality, source, sd_status
+            temperature_c, signal_quality, source, sd_status
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ok')
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'ok')
           ON CONFLICT (device_id, timestamp) DO NOTHING;
         `, [
           'AWLR-001',
@@ -81,7 +81,6 @@ async function fixReadings() {
           interLvl,
           interDist,
           cur.temperature_c || 28.5,
-          cur.battery_voltage,
           cur.signal_quality || -60,
           'interpolated'
         ]);

@@ -20,7 +20,7 @@ TerraFlow is an end-to-end, industrial-grade portable **Automatic Water Level Re
    - **Dual Watchdog**: Task Watchdog Timer (30s) + Interrupt Watchdog Timer (10s).
    - **RTC Fast Memory Persistence**: Tracks `boot_count`, `watchdog_count`, `brownout_count`, and `panic_count` across unexpected reboots.
    - **Crash Logging**: Anomaly audit dumps stored on `/logs/crash.log`.
-   - **14 Field Alert Types**: Automatic detection and reporting of `WDT_RESET`, `SENSOR_FAIL`, `BATTERY_CRITICAL`, `SD_CARD_FAIL`, `HEAP_LOW`, and more.
+   - **14 Field Alert Types**: Automatic detection and reporting of `WDT_RESET`, `SENSOR_FAIL`, `BROWNOUT`, `SD_CARD_FAIL`, `HEAP_LOW`, and more.
 
 3. **Offline Buffering & Bulk Synchronization**:
    - **Offline-First Guarantee**: All 1-minute readings are stored to MicroSD (`sent=0`) before MQTT publishing.
@@ -74,7 +74,7 @@ TerraFlow is an end-to-end, industrial-grade portable **Automatic Water Level Re
 
 The PostgreSQL database leverages range partitioning to handle high-frequency 1-minute time-series data:
 - `devices`: Registered AWLR instruments and GPS metadata.
-- `readings`: Partitioned table (`readings_YYYY_MM`, `readings_default`) storing raw distance, calculated water level, temperature, battery voltage, and data source (`live` vs `sd_buffer`).
+- `readings`: Partitioned table (`readings_YYYY_MM`, `readings_default`) storing raw distance, calculated water level, temperature, signal quality, and data source (`live` vs `sd_buffer`).
 - `calibrations`: Audit history of sensor height, offset, and slope adjustments.
 - `device_alerts`: Incident tracking with severity levels (`CRITICAL`, `WARNING`, `INFO`).
 - `device_diagnostics`: Hardware health snapshots (uptime, free heap, boot reason).

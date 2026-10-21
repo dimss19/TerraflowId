@@ -26,7 +26,6 @@ import {
   Globe,
   Radio,
   Sliders,
-  Battery,
   Thermometer,
   Wifi,
   CirclePlus,
@@ -259,7 +258,6 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
       const wl = Number(row.smoothed_level) || Number(row.water_level_cm) || 0;
       const elevStr = unit === 'cm' ? `${wl.toFixed(1)} cm` : `${(wl / 100).toFixed(3)} m`;
       const rssiStr = row.signal_quality != null ? `${row.signal_quality} dBm` : '-';
-      const battStr = row.battery_voltage != null ? `${Number(row.battery_voltage).toFixed(2)} V` : '-';
       const tempStr = row.temperature_c != null ? `${Number(row.temperature_c).toFixed(1)} °C` : '-';
       const statusStr = 'VALID';
 
@@ -268,7 +266,6 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
         dateStr,
         elevStr,
         rssiStr,
-        battStr,
         tempStr,
         statusStr
       ];
@@ -753,7 +750,7 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
       const autoTableFn = typeof autoTable === 'function' ? autoTable : doc.autoTable;
       autoTableFn(doc, {
         startY: 24,
-        head: [['No.', 'Waktu Transmisi', `Elevasi Air (${exportUnit})`, 'Sinyal (RSSI)', 'Baterai', 'Suhu Sensor', 'Status Validasi']],
+        head: [['No.', 'Waktu Transmisi', `Elevasi Air (${exportUnit})`, 'Sinyal (RSSI)', 'Suhu Sensor', 'Status Validasi']],
         body: tableRows,
         theme: 'grid',
         headStyles: {
@@ -902,7 +899,6 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
           `Waktu (${exportTz === 'wib' ? 'WIB GMT+7' : 'UTC'})`,
           exportUnit === 'cm' ? 'Muka Air (cm)' : 'Muka Air (m)',
           'Sinyal RSSI (dBm)',
-          'Tegangan Baterai (V)',
           'Suhu Sensor (°C)',
           'Status'
         ];
@@ -927,7 +923,6 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
             timeStr,
             val,
             r.signal_quality != null ? r.signal_quality : '-',
-            r.battery_voltage != null ? Number(r.battery_voltage).toFixed(2) : '-',
             r.temperature_c != null ? Number(r.temperature_c).toFixed(1) : '-',
             'VALID'
           ].join(','));

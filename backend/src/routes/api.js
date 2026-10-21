@@ -104,7 +104,7 @@ router.get('/readings/:device_id/tidal', async (req, res) => {
       }
 
       result = await query(`
-        SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c, battery_voltage
+        SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c
         FROM readings
         WHERE ${conditions.join(' AND ')}
         ORDER BY timestamp ASC
@@ -125,7 +125,7 @@ router.get('/readings/:device_id/tidal', async (req, res) => {
         result = { rows: [] };
       } else {
         result = await query(`
-          SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c, battery_voltage
+          SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c
           FROM readings
           WHERE (device_id = $1 OR device_id = $2)
             AND timestamp >= $3::timestamptz - ($4 || ' hours')::INTERVAL
@@ -136,9 +136,9 @@ router.get('/readings/:device_id/tidal', async (req, res) => {
         // Jika jumlah data dalam jendela waktu tersebut sedikit (< 150 sampel), fallback ke 500 pembacaan terbaru agar kurva panjang
         if (result.rows.length < 150) {
           result = await query(`
-            SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c, battery_voltage
+            SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c
             FROM (
-              SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c, battery_voltage
+              SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c
               FROM readings
               WHERE (device_id = $1 OR device_id = $2)
               ORDER BY timestamp DESC
@@ -355,7 +355,7 @@ router.get('/export/:device_id', async (req, res) => {
   try {
     const result = await query(`
       SELECT timestamp, raw_distance_cm, water_level_cm, temperature_c,
-             battery_voltage, battery_percent, signal_quality, sd_status, source
+             signal_quality, sd_status, source
       FROM readings
       WHERE ${conditions.join(' AND ')}
       ORDER BY timestamp ASC
@@ -533,8 +533,6 @@ router.post('/readings/offline-sync', async (req, res) => {
       raw_distance_cm,
       filtered_distance_cm,
       water_level_cm,
-      battery_voltage,
-      battery_percent,
       recalculate = false,
       sensor_height_cm,
       offset_cm,
@@ -581,23 +579,15 @@ router.post('/readings/offline-sync', async (req, res) => {
       finalWaterLevel = calibHeight - (effDist * calibSlope + calibOffset);
     }
 
-    const battV = battery_voltage != null ? parseFloat(battery_voltage) : null;
-    const battPct = battery_percent != null 
-      ? parseInt(battery_percent, 10) 
-      : (battV != null ? Math.min(100, Math.max(0, Math.round(((battV - 10.5) / 2.3) * 100))) : null);
-
     const insertSql = `
       INSERT INTO readings (
         device_id, timestamp, raw_distance_cm, water_level_cm,
-        temperature_c, battery_voltage, battery_percent,
-        signal_quality, sd_status, reading_count, source
+        temperature_c, signal_quality, sd_status, reading_count, source
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 100, 'ok', 0, 'offline_sync')
+      VALUES ($1, $2, $3, $4, $5, 100, 'ok', 0, 'offline_sync')
       ON CONFLICT (device_id, timestamp) DO UPDATE SET
         water_level_cm = EXCLUDED.water_level_cm,
         raw_distance_cm = EXCLUDED.raw_distance_cm,
-        battery_voltage = EXCLUDED.battery_voltage,
-        battery_percent = EXCLUDED.battery_percent,
         source = 'offline_sync'
       RETURNING *
     `;
@@ -607,9 +597,7 @@ router.post('/readings/offline-sync', async (req, res) => {
       parsedDate.toISOString(),
       rawDist,
       finalWaterLevel,
-      28.0,
-      battV,
-      battPct
+      28.0
     ]);
 
     const savedRow = resDb.rows[0];
@@ -675,33 +663,23 @@ router.post('/readings/offline-batch', async (req, res) => {
         waterLevel = devCalib.height - (effDist * devCalib.slope + devCalib.offset);
       }
 
-      const battV = item.battery_voltage != null ? parseFloat(item.battery_voltage) : null;
-      const battPct = item.battery_percent != null 
-        ? parseInt(item.battery_percent, 10) 
-        : (battV != null ? Math.min(100, Math.max(0, Math.round(((battV - 10.5) / 2.3) * 100))) : null);
-
       try {
         await query(`
           INSERT INTO readings (
             device_id, timestamp, raw_distance_cm, water_level_cm,
-            temperature_c, battery_voltage, battery_percent,
-            signal_quality, sd_status, reading_count, source
+            temperature_c, signal_quality, sd_status, reading_count, source
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, 100, 'ok', 0, 'offline_sync')
+          VALUES ($1, $2, $3, $4, $5, 100, 'ok', 0, 'offline_sync')
           ON CONFLICT (device_id, timestamp) DO UPDATE SET
             water_level_cm = EXCLUDED.water_level_cm,
             raw_distance_cm = EXCLUDED.raw_distance_cm,
-            battery_voltage = EXCLUDED.battery_voltage,
-            battery_percent = EXCLUDED.battery_percent,
             source = 'offline_sync'
         `, [
           device_id,
           parsedDate.toISOString(),
           rawDist,
           waterLevel,
-          28.0,
-          battV,
-          battPct
+          28.0
         ]);
         savedCount++;
       } catch (rowErr) {

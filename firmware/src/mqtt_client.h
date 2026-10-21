@@ -20,6 +20,12 @@ public:
   void begin();
   void loop();
   bool isConnected();
+
+  // Terapkan ulang konfigurasi broker (dipanggil bila pengaturan portal berubah)
+  void reconfigure();
+
+  // True bila kredensial broker tersedia (kosong = broker akan menolak koneksi)
+  bool hasCredentials() const;
   
   bool publishReading(const LogRecord &record, int readingCount, const char *source = "live");
   bool publishAlert(const String &code, const String &severity, const String &message, const String &detailsJson = "{}");

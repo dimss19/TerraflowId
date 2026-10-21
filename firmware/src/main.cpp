@@ -174,6 +174,11 @@ void healthTask(void *pvParameters) {
     // 2. MQTT network loop
     mqttMgr.loop();
 
+    // 2b. Terapkan ulang konfigurasi broker bila diubah lewat portal /settings
+    if (webServerMgr.consumeMqttConfigDirty()) {
+      mqttMgr.reconfigure();
+    }
+
     // 3. Web Server background & DNS
     webServerMgr.loop();
 

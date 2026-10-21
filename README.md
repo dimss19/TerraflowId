@@ -86,10 +86,12 @@ The PostgreSQL database leverages range partitioning to handle high-frequency 1-
 ### 1. Database Setup
 Ensure PostgreSQL is running locally on port 5432:
 ```bash
-# Database name: teraflowid, Password: 123
 cd backend
+cp .env.example .env      # sesuaikan DB_USER / DB_PASSWORD / DB_NAME
+npm install
 npm run migrate
 npm run seed
+npm run seed:users        # membuat akun admin & operator
 ```
 
 ### 2. Backend Server & Embedded MQTT Broker
@@ -98,22 +100,51 @@ cd backend
 npm start
 ```
 - REST API & WebSocket: `http://127.0.0.1:5000`
-- Embedded MQTT Broker: `127.0.0.1:1883`
+- Embedded MQTT Broker: `127.0.0.1:1883` (butuh `MQTT_USER` / `MQTT_PASS` bila diakses publik)
 
 ### 3. Frontend Web Dashboard
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run build      # hasil build di frontend/dist, dilayani Nginx / Express
+npm run dev        # mode pengembangan di http://localhost:5173
 ```
-Open `http://localhost:5173` in your browser.
 
 ### 4. AWLR Hardware Simulator
-Run the simulator to generate realistic sinusoidal tidal curves and test network drops:
+Simulator Python untuk mensimulasikan perangkat AWLR (kurva pasang surut realistis + uji putus koneksi):
 ```bash
-cd backend
-npm run simulate
+cd simulator
+pip install -r requirements.txt
+python3 awlr_simulator.py --broker 127.0.0.1 --port 1883 \
+    --username terraflow --password "<password broker>" --device-id AWLR-001
 ```
+
+### 5. Flash Firmware ke Perangkat AWLR
+
+Kredensial broker **tidak** disimpan di Git (repo ini publik). Siapkan dulu file rahasia:
+```bash
+cd firmware
+./setup-secrets.sh                                  # interaktif
+# atau: ./setup-secrets.sh --user terraflow --pass "<password>"
+```
+Skrip tersebut membuat `firmware/src/config_secrets.h` (sudah masuk `.gitignore`).
+Saat `pio run`, `scripts/build_check.py` akan memperingatkan bila file ini belum ada.
+
+Build & upload:
+```bash
+pio run -e esp32-s3-devkitc-1 -t upload
+pio device monitor -b 115200
+```
+
+Perangkat membuka portal web lokal (SoftAP `TerraFlow-<DEVICE_ID>`, IP `192.168.4.1`,
+password default `password`) tempat `mq_host`, `mq_port`, `mq_user`, `mq_pass`
+bisa diatur tanpa reflashing. Perubahan tersebut langsung diterapkan ke koneksi
+MQTT tanpa perlu restart perangkat.
+
+> **Penting:** `device_id` perangkat harus terdaftar di tabel `devices`
+> (default `AWLR-001` dari seed), karena `device_diagnostics`, `device_alerts`,
+> dan `calibrations` memakai foreign key ke `devices(device_id)`.
+
 
 ---
 

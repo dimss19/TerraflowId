@@ -261,17 +261,61 @@ nginx -t && systemctl reload nginx
 
 ```c
 #define MQTT_BROKER  "43.134.53.192"
-#define MQTT_PORT    80   // HTTP + MQTT berbagi port via TCP multiplexer
-#define MQTT_USER    "terraflow"
-#define MQTT_PASS    "********"
+#define MQTT_PORT    80
 ```
 
+Kredensial broker ada di `firmware/src/config_secrets.h` (gitignored) — buat di
+PC tempat Anda melakukan build:
+
+```bash
+cd firmware
+./setup-secrets.sh          # atau: --user terraflow --pass "<password>"
+pio run -e esp32-s3-devkitc-1 -t upload
+```
+
+> `pio run -t upload` **tidak** menghapus NVS. Bila perangkat pernah memakai
+> `dev_id` lain, nilai lama masih terbaca. Untuk kondisi factory (kembali ke
+> `AWLR-001` dan kredensial default): `pio run -e esp32-s3-devkitc-1 -t erase`
+> baru `pio run -e esp32-s3-devkitc-1 -t upload`.
+
 Perangkat juga dapat diubah saat runtime lewat portal lokal `/settings`
-(`mq_host`, `mq_port`, `mq_user`, `mq_pass`) tanpa reflashing.
+(`mq_host`, `mq_port`, `mq_user`, `mq_pass`) tanpa reflashing — perubahan
+diterapkan ke koneksi MQTT seketika tanpa restart perangkat.
+
+Portal lokal: SoftAP `TerraFlow-<DEVICE_ID>` (tanpa password), IP `192.168.4.1`,
+login password default `password`.
 
 Backup konfigurasi asli: `firmware/src/config.h.bak`
 
-### 7.5 Backlog MQTT di masa depan
+> **`device_id` harus `AWLR-001`** (atau device_id lain yang terdaftar di tabel
+> `devices`). Tabel `readings` tidak punya FK, tetapi `device_diagnostics`,
+> `device_alerts`, dan `calibrations` punya FK ke `devices(device_id)` — data
+> perangkat yang tidak terdaftar akan gagal disimpan di tabel-tabel tersebut
+> dan tidak muncul di dashboard.
+
+### 7.5 Toolchain firmware (WAJIB)
+
+`firmware/platformio.ini` di-pin ke **Arduino-ESP32 core 2.0.17**
+(`platform = espressif32 @ 6.6.0`). Alasannya: pada core 3.x, ESPAsyncWebServer
+membutuhkan library `Network` terpisah, yang tidak bisa dipetakan Library
+Dependency Finder PlatformIO (folder `Network`, tetapi `library.properties`
+menuliskan `name=Networking` tanpa `includes=`) — build gagal dengan
+`fatal error: Network.h: No such file or directory`.
+
+ESPAsyncWebServer di-pin ke commit `2d2da07` (v2.9.1) — versi terakhir yang
+memakai API `beginResponse()` **dan** masih mendukung core 2.x. Repo upstream
+sudah dipindah ke `ESP32Async/ESPAsyncWebServer` tanpa tag lama, sehingga
+versinya di-pin lewat commit, bukan tag.
+
+```bash
+cd firmware
+./setup-secrets.sh
+pio run -e esp32-s3-devkitc-1 -t upload
+```
+
+Hasil build yang terverifikasi: RAM 14.3% (46.996 B), Flash 28.8% (962.381 B).
+
+### 7.6 Backlog MQTT di masa depan
 
 Topik `terraflow/+/data/bulk` (bulk sync offline) ditangani di
 `backend/src/mqtt/subscriber.js`. Pastikan alur chunk 10 record + ACK

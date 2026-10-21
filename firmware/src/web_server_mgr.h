@@ -62,6 +62,15 @@ public:
   String getSoftApSsid();
   String getCurrentLogFilename();
 
+  // Dipanggil true bila pengaturan broker MQTT berubah lewat portal.
+  // Main loop mengambil flag ini lalu meminta MqttManager menerapkan
+  // ulang konfigurasi, sehingga tidak perlu restart perangkat.
+  bool consumeMqttConfigDirty() {
+    bool v = mqttConfigDirty;
+    mqttConfigDirty = false;
+    return v;
+  }
+
 private:
   DNSServer dnsServer;
   AsyncWebServer server;
@@ -76,6 +85,7 @@ private:
   bool apActive;
   unsigned long lastStaRetryMs;
   bool ntpConfigured;
+  bool mqttConfigDirty;
 
   void startSoftAP();
   void stopSoftAP();

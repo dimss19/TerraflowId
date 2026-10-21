@@ -23,11 +23,14 @@ except ImportError:
 
 
 class AWLRSimulator:
-    def __init__(self, broker="127.0.0.1", port=1883, device_id="AWLR-001", interval=10):
+    def __init__(self, broker="127.0.0.1", port=1883, device_id="AWLR-001", interval=10,
+                 username=None, password=None):
         self.broker = broker
         self.port = port
         self.device_id = device_id
         self.interval = interval
+        self.username = username
+        self.password = password
         self.running = True
 
         # Sensor & Calibration State
@@ -49,6 +52,10 @@ class AWLRSimulator:
             self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
         else:
             self.client = mqtt.Client(client_id=client_id)
+
+        # Autentikasi username/password (wajib bila broker mewajibkannya)
+        if self.username:
+            self.client.username_pw_set(self.username, self.password)
 
         # Configure Last Will and Testament (LWT)
         lwt_payload = json.dumps({
@@ -272,6 +279,8 @@ def main():
     parser.add_argument("--port", type=int, default=1883, help="Port broker MQTT (default: 1883)")
     parser.add_argument("--device-id", default="AWLR-001", help="ID Perangkat AWLR (default: AWLR-001)")
     parser.add_argument("--interval", type=int, default=10, help="Interval pengiriman data dalam detik (default: 10)")
+    parser.add_argument("--username", default=None, help="Username broker MQTT (wajib bila broker memakai autentikasi)")
+    parser.add_argument("--password", default=None, help="Password broker MQTT")
 
     args = parser.parse_args()
 
@@ -279,7 +288,9 @@ def main():
         broker=args.broker,
         port=args.port,
         device_id=args.device_id,
-        interval=args.interval
+        interval=args.interval,
+        username=args.username,
+        password=args.password
     )
 
     def sig_handler(sig, frame):

@@ -519,6 +519,7 @@ WebServerManager::WebServerManager() : server(80), sdLoggerRef(NULL), ntpConfigu
   sessionStart = 0;
   apActive = false;
   lastStaRetryMs = 0;
+  mqttConfigDirty = false;
 
   // Defaults
   memset(&settings, 0, sizeof(settings));
@@ -1151,20 +1152,26 @@ void WebServerManager::setupRoutes() {
       v.trim();
       if (v.length() > 0) {
         strncpy(this->settings.mqttBroker, v.c_str(), sizeof(this->settings.mqttBroker) - 1);
+        this->mqttConfigDirty = true;
       }
     }
     if (req->hasParam("mq_port", true)) {
       uint16_t p = req->getParam("mq_port", true)->value().toInt();
-      if (p > 0) this->settings.mqttPort = p;
+      if (p > 0) {
+        this->settings.mqttPort = p;
+        this->mqttConfigDirty = true;
+      }
     }
     if (req->hasParam("mq_user", true)) {
       String v = req->getParam("mq_user", true)->value();
       strncpy(this->settings.mqttUser, v.c_str(), sizeof(this->settings.mqttUser) - 1);
+      this->mqttConfigDirty = true;
     }
     if (req->hasParam("mq_pass", true)) {
       String v = req->getParam("mq_pass", true)->value();
       if (v.length() > 0) {
         strncpy(this->settings.mqttPass, v.c_str(), sizeof(this->settings.mqttPass) - 1);
+        this->mqttConfigDirty = true;
       }
     }
     if (req->hasParam("lpass", true)) {

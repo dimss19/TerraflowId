@@ -30,6 +30,28 @@ void MqttManager::begin() {
   });
   Serial.printf("[MQTT] Initialized for Broker: %s:%d (Device ID: %s)\n",
     s.mqttBroker, s.mqttPort, webServerMgr.getEffectiveDeviceId().c_str());
+
+  if (!hasCredentials()) {
+    Serial.println("[MQTT] ==========================================================");
+    Serial.println("[MQTT] PERINGATAN: kredensial broker MQTT KOSONG!");
+    Serial.println("[MQTT] Broker TerraFlow mewajibkan username/password, jadi");
+    Serial.println("[MQTT] koneksi AKAN DITOLAK. Perbaiki salah satu:");
+    Serial.println("[MQTT]   1) firmware/src/config_secrets.h  (lalu build ulang)");
+    Serial.println("[MQTT]   2) portal perangkat /settings -> mq_user & mq_pass");
+    Serial.println("[MQTT] ==========================================================");
+  }
+}
+
+bool MqttManager::hasCredentials() const {
+  const DeviceSettings &s = webServerMgr.getSettings();
+  return strlen(s.mqttUser) > 0 && strlen(s.mqttPass) > 0;
+}
+
+void MqttManager::reconfigure() {
+  Serial.println("[MQTT] Menerapkan ulang konfigurasi broker (dari portal /settings)...");
+  client.disconnect();
+  begin();     // setServer() + setCallback() dengan nilai terbaru
+  reconnect(); // langsung coba sambung, tanpa perlu restart perangkat
 }
 
 void MqttManager::loop() {

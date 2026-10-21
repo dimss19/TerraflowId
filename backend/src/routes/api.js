@@ -3,6 +3,7 @@ const router = express.Router();
 const { query } = require('../db/connection');
 const { publishCalibration, publishCommand } = require('../mqtt/publisher');
 const { analyzeTidalReadings } = require('../services/tidalAnalysis');
+const { parseTelemetryTimestamp, alignToMinute } = require('../utils/timestamp');
 const { authenticateToken, requireAdmin } = require('./auth');
 
 // ==========================================
@@ -526,6 +527,7 @@ router.post('/readings/offline-sync', async (req, res) => {
   try {
     const {
       device_id,
+      timestamp,
       date,
       hour,
       minute,
@@ -542,21 +544,15 @@ router.post('/readings/offline-sync', async (req, res) => {
     if (!device_id) {
       return res.status(400).json({ success: false, error: 'device_id wajib disertakan' });
     }
-    if (!date || hour === undefined || minute === undefined) {
-      return res.status(400).json({ success: false, error: 'Data minimal offline wajib memuat: date (YYYY-MM-DD), hour (jam), dan minute (menit)' });
+    // Sumber waktu: `timestamp` (epoch) menjadi utama; date+jam fallback
+    // yang diinterpretasi sebagai WIB. Lihat utils/timestamp.js.
+    if (timestamp === undefined && (!date || hour === undefined || minute === undefined)) {
+      return res.status(400).json({ success: false, error: 'Data minimal offline wajib memuat: timestamp (epoch), atau date (YYYY-MM-DD) + hour (jam) + minute (menit)' });
     }
 
-    const pad = (n) => String(n).padStart(2, '0');
-    const h = Math.max(0, Math.min(23, parseInt(hour, 10) || 0));
-    const m = Math.max(0, Math.min(59, parseInt(minute, 10) || 0));
-    const s = Math.max(0, Math.min(59, parseInt(second, 10) || 0));
-    
-    // Construct valid timestamp
-    const dateStr = String(date).trim();
-    const isoString = `${dateStr}T${pad(h)}:${pad(m)}:${pad(s)}`;
-    const parsedDate = new Date(isoString);
-    if (isNaN(parsedDate.getTime())) {
-      return res.status(400).json({ success: false, error: `Format tanggal/waktu tidak valid: ${dateStr} ${h}:${m}:${s}` });
+    const parsedDate = alignToMinute(parseTelemetryTimestamp({ timestamp, date, hour, minute, second }));
+    if (!parsedDate) {
+      return res.status(400).json({ success: false, error: 'Format timestamp atau tanggal/waktu tidak valid' });
     }
 
     const rawDist = raw_distance_cm != null ? parseFloat(raw_distance_cm) : null;
@@ -642,17 +638,12 @@ router.post('/readings/offline-batch', async (req, res) => {
     }
 
     let savedCount = 0;
-    const pad = (n) => String(n).padStart(2, '0');
 
     for (const item of records) {
-      if (!item.date || item.hour === undefined || item.minute === undefined) continue;
-
-      const h = Math.max(0, Math.min(23, parseInt(item.hour, 10) || 0));
-      const m = Math.max(0, Math.min(59, parseInt(item.minute, 10) || 0));
-      const s = Math.max(0, Math.min(59, parseInt(item.second, 10) || 0));
-      const dateStr = String(item.date).trim();
-      const parsedDate = new Date(`${dateStr}T${pad(h)}:${pad(m)}:${pad(s)}`);
-      if (isNaN(parsedDate.getTime())) continue;
+      // Timestamp: field `timestamp` (epoch) menjadi sumber utama, fallback
+      // date+jam diinterpretasi sebagai WIB. Lihat utils/timestamp.js.
+      const parsedDate = alignToMinute(parseTelemetryTimestamp(item));
+      if (!parsedDate) continue;
 
       const rawDist = item.raw_distance_cm != null ? parseFloat(item.raw_distance_cm) : null;
       const filtDist = item.filtered_distance_cm != null ? parseFloat(item.filtered_distance_cm) : rawDist;

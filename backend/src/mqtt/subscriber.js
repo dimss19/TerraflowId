@@ -1,6 +1,7 @@
 const mqtt = require('mqtt');
 const config = require('../config');
 const { query } = require('../db/connection');
+const { parseTelemetryTimestamp, alignToMinute } = require('../utils/timestamp');
 
 let mqttClient = null;
 let ioInstance = null;
@@ -132,16 +133,12 @@ async function handleMessage(deviceId, subtopic, data) {
 }
 
 async function handleSingleReading(deviceId, data) {
-  let ts = data.timestamp ? new Date(typeof data.timestamp === 'number' && data.timestamp < 1e11 ? data.timestamp * 1000 : data.timestamp) : new Date();
-  if (ts.getTime() > Date.now() + 600000) {
-    const corrected = new Date(ts.getTime() - 7 * 3600 * 1000);
-    if (corrected.getTime() <= Date.now() + 60000) {
-      ts = corrected;
-    }
-  }
-  
+  // Timestamp: field `timestamp` (epoch) menjadi sumber utama, fallback
+  // date+jam diinterpretasi sebagai WIB. Lihat utils/timestamp.js.
+  let ts = parseTelemetryTimestamp(data) || new Date();
+
   // Align timestamp to the exact minute (:00 seconds) to ensure exactly 1 record per minute
-  ts = new Date(Math.floor(ts.getTime() / 60000) * 60000);
+  ts = alignToMinute(ts);
   
   // Aturan perhitungan muka air server-side dari data mentah sensor
   let waterLevel = data.water_level_cm != null ? Number(data.water_level_cm) : null;
@@ -210,17 +207,12 @@ async function handleBulkReadings(deviceId, payload) {
   let savedCount = 0;
 
   for (const item of records) {
-    let ts = item.timestamp ? new Date(typeof item.timestamp === 'number' && item.timestamp < 1e11 ? item.timestamp * 1000 : item.timestamp) : new Date();
-    // Guard: Jika timestamp berada di masa depan (> 10 menit), kemungkinan data offline RTC tersimpan dalam jam lokal (WIB) tanpa konversi UTC
-    if (ts.getTime() > Date.now() + 600000) {
-      const corrected = new Date(ts.getTime() - 7 * 3600 * 1000);
-      if (corrected.getTime() <= Date.now() + 60000) {
-        ts = corrected;
-      }
-    }
-    
+    // Timestamp: field `timestamp` (epoch) menjadi sumber utama, fallback
+    // date+jam diinterpretasi sebagai WIB. Lihat utils/timestamp.js.
+    let ts = parseTelemetryTimestamp(item) || new Date();
+
     // Align timestamp to the exact minute (:00 seconds)
-    ts = new Date(Math.floor(ts.getTime() / 60000) * 60000);
+    ts = alignToMinute(ts);
     
     const insertSql = `
       INSERT INTO readings (

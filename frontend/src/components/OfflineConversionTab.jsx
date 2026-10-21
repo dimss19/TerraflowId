@@ -51,6 +51,17 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
     };
   }, []);
 
+  // Epoch (detik) dari date + jam, diinterpretasi sebagai WIB (UTC+7).
+  // Sesuai zona waktu perangkat (firmware memakai setenv("TZ", "WIB-7", 1)).
+  // Nilai epoch inilah yang dikirim ke server - unambiguous, sehingga tidak
+  // lagi bergantung pada zona waktu server.
+  const wibEpoch = (dateStr, h, m, s) => {
+    if (!dateStr) return null;
+    const pad = (n) => String(n).padStart(2, '0');
+    const ms = Date.parse(`${dateStr}T${pad(h)}:${pad(m)}:${pad(s)}+07:00`);
+    return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
+  };
+
   // Helper konversi format tanggal ISO / waktu lokal
   const extractDateParts = (timestampMsOrEpoch) => {
     let dateObj;
@@ -120,6 +131,7 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
         let minute = 0;
         let second = 0;
         let timeStr = '';
+        let epochSec = null;
 
         if (idxDate >= 0 && parts[idxDate]) {
           dateStr = parts[idxDate];
@@ -134,6 +146,10 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
             const pad = (n) => String(n).padStart(2, '0');
             timeStr = `${pad(hour)}:${pad(minute)}:00`;
           }
+          // Kolom date/time pada CSV MicroSD berasal dari RTC perangkat
+          // yang berzona WIB - koreksi manual operator pada kolom ini
+          // tetap dihormati karena epoch diturunkan dari date+time.
+          epochSec = wibEpoch(dateStr, hour, minute, second);
         } else if (idxTs >= 0 && parts[idxTs]) {
           const tsVal = Number(parts[idxTs]);
           const ext = extractDateParts(tsVal);
@@ -142,6 +158,7 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
           minute = ext.minute;
           second = ext.second;
           timeStr = ext.timeStr;
+          epochSec = Number.isFinite(tsVal) ? Math.floor(tsVal) : null;
         } else {
           // Fallback sequential 1-minute steps
           const stepTs = nowEpoch - (lines.length - i) * 60;
@@ -151,6 +168,7 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
           minute = ext.minute;
           second = ext.second;
           timeStr = ext.timeStr;
+          epochSec = Math.floor(stepTs);
         }
 
         const rawDist = idxRaw >= 0 ? parseFloat(parts[idxRaw]) || 0 : 0;
@@ -176,6 +194,7 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
           minute,
           second,
           timeFull: formattedFullTime,
+          epochSec,
           rawDistanceCm: Math.round(rawDist * 10) / 10,
           waterLevelCm: Math.round(waterLevelCm * 10) / 10,
           waterLevelM: Number((waterLevelCm / 100).toFixed(3))
@@ -320,6 +339,9 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
         hour: r.hour,
         minute: r.minute,
         second: r.second || 0,
+        // Epoch (WIB) menjadi sumber waktu utama di server.
+        // date/hour/minute tetap dikirim sebagai fallback.
+        ...(r.epochSec ? { timestamp: r.epochSec } : {}),
         raw_distance_cm: r.rawDistanceCm,
         water_level_cm: r.waterLevelCm
       }));

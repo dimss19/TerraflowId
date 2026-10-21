@@ -203,10 +203,37 @@ sudo -u postgres psql -d teraflowid -c "\dt"
 | Password | `/root/.terraflow_dbpass` (root-only, chmod 600) |
 | Listen | `127.0.0.1:5432` (tidak publik) |
 | Auth | `scram-sha-256` via TCP |
+| Timezone | `Asia/Jakarta` (WIB) |
 
 Tabel: `devices`, `readings` (partitioned: `readings_2026_10`, `readings_2026_11`,
 `readings_default`), `calibrations`, `device_alerts`, `device_diagnostics`,
 `alert_rules`, `users`, `password_resets`.
+
+### Zona waktu
+
+Server **dan** PostgreSQL disetel ke `Asia/Jakarta` (WIB, UTC+7) agar sesuai
+dengan perangkat, yang memakai `setenv("TZ", "WIB-7", 1)` di firmware. Kolom
+`TIMESTAMPTZ` tetap menyimpan instants absolut, jadi tidak ada data yang bergeser
+saat zona waktu diubah.
+
+```bash
+timedatectl set-timezone Asia/Jakarta
+# PostgreSQL punya setelannya sendiri:
+sed -i "s/^timezone = '.*'/timezone = 'Asia\/Jakarta'/" /etc/postgresql/18/main/postgresql.conf
+sed -i "s/^log_timezone = '.*'/log_timezone = 'Asia\/Jakarta'/" /etc/postgresql/18/main/postgresql.conf
+systemctl restart postgresql
+```
+
+Seluruh jalur penerimaan data (MQTT live, MQTT bulk sync, HTTP
+`offline-sync`/`offline-batch`) memakai parser terpusat di
+`backend/src/utils/timestamp.js`:
+
+1. Field `timestamp` (epoch) adalah sumber utama — unambiguous.
+2. Fallback `date` + `hour` + `minute` diinterpretasi eksplisit sebagai WIB
+   (`+07:00`), **bukan** waktu lokal server. Sebelumnya fallback ini memakai
+   waktu lokal server sehingga data meleset 1 jam bila server tidak di WIB.
+3. Epoch yang tampak 7 jam di masa depan (indikasi RTC perangkat menyimpan
+   waktu lokal) dikoreksi otomatis.
 
 ---
 

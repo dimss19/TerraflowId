@@ -41,6 +41,8 @@ module.exports = {
     host: process.env.MQTT_HOST || '0.0.0.0',
     embedded: process.env.EMBEDDED_MQTT !== 'false',
     url: process.env.MQTT_URL || 'mqtt://127.0.0.1:1883',
+    user: process.env.MQTT_USER || '',
+    password: process.env.MQTT_PASS || '',
   },
   
   company: {

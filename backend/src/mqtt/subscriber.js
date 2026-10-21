@@ -11,11 +11,16 @@ function setSocketIO(io) {
 
 function initSubscriber() {
   console.log('[MQTT Subscriber] Connecting to broker at:', config.mqtt.url);
-  mqttClient = mqtt.connect(config.mqtt.url, {
+  const connectOptions = {
     clientId: `terraflow_backend_${Math.random().toString(16).substring(2, 8)}`,
     clean: true,
     reconnectPeriod: 3000,
-  });
+  };
+  // Broker lokal memerlukan kredensial yang sama bila autentikasi diaktifkan
+  if (config.mqtt.user) connectOptions.username = config.mqtt.user;
+  if (config.mqtt.password) connectOptions.password = config.mqtt.password;
+
+  mqttClient = mqtt.connect(config.mqtt.url, connectOptions);
 
   mqttClient.on('connect', () => {
     console.log('[MQTT Subscriber] Connected to broker successfully!');

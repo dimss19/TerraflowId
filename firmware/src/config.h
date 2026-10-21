@@ -68,10 +68,21 @@
 #define WIFI_SSID             "RUANGAN_BAWAH"
 #define WIFI_PASSWORD         "tanyahabib!!"
 
-#define MQTT_BROKER           "broker.emqx.io"
-#define MQTT_PORT             1883
+// Broker MQTT TerraFlow (VPS). Port 80 dipakai bersama HTTP lewat
+// TCP multiplexer karena Security Group hanya membuka port 22 & 80.
+#define MQTT_BROKER           "43.134.53.192"
+#define MQTT_PORT             80
+
+// Kredensial broker TIDAK disimpan di file ini (repo bersifat publik).
+// Salin firmware/src/config_secrets.h.example menjadi
+// firmware/src/config_secrets.h lalu isi nilainya. File tersebut
+// sudah masuk .gitignore.
+#if __has_include("config_secrets.h")
+#include "config_secrets.h"
+#else
 #define MQTT_USER             ""
 #define MQTT_PASS             ""
+#endif
 
 // MQTT Topic Templates
 #define TOPIC_DATA            "terraflow/" DEVICE_ID "/data"

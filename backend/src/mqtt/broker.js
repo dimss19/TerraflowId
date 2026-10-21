@@ -11,9 +11,34 @@ function startBroker() {
     return null;
   }
 
+  // Autentikasi username/password (aktif bila MQTT_USER & MQTT_PASS diisi).
+  // Broker Aedes tanpa autentikasi berarti siapa pun yang bisa mencapai port
+  // broker dapat publish/subscribe seluruh topic.
+  const authRequired = Boolean(config.mqtt.user && config.mqtt.password);
+
   brokerInstance = aedes({
     id: 'TERRAFLOW_AEDES_BROKER',
+    authenticate: (client, username, password, cb) => {
+      if (!authRequired) {
+        return cb(null, true);
+      }
+      const u = username ? username.toString() : '';
+      const p = password ? password.toString() : '';
+      if (u === config.mqtt.user && p === config.mqtt.password) {
+        return cb(null, true);
+      }
+      const err = new Error('Authentication failed: invalid username or password');
+      err.returnCode = 4; // CONNACK: Bad User Name or Password
+      console.warn(`[MQTT Broker] Auth rejected for client ${client.id || 'unknown'} (user: ${u || '-'})`);
+      cb(err, false);
+    },
   });
+
+  if (authRequired) {
+    console.log('[MQTT Broker] Authentication ENABLED (username/password required)');
+  } else {
+    console.warn('[MQTT Broker] Authentication DISABLED - broker terbuka untuk publik!');
+  }
 
   tcpServer = net.createServer(brokerInstance.handle);
 

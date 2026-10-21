@@ -12,6 +12,10 @@ node_modules/
 .jwt_secret
 *.jwt_secret
 
+# Firmware secrets (broker MQTT credentials) - jangan di-commit
+firmware/src/config_secrets.h
+firmware/src/config.h.bak
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

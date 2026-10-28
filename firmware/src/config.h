@@ -34,28 +34,31 @@
 #define PIN_RTC_SCL           9
 #define RTC_I2C_ADDR          0x68
 
-// Serial2 (UART TTL) Interface to A16 Ultrasonic Sensor
-// Terhubung ke Terminal Bawah Board KhursLabs (Pin 1 & Pin 2):
-// - Pin 1 (SDA / GPIO 8) : ESP32 RX2 <- Sensor TX (Kabel Putih)
-// - Pin 2 (SCL / GPIO 9) : ESP32 TX2 -> Sensor RX (Kabel Kuning)
+// Serial2 (UART TTL) Interface to DYP-A1611AU (UART Auto, listen-only)
+// Terhubung ke Terminal Bawah Board KhursLabs:
+// - Pin 1 (SDA / GPIO 8) : ESP32 RX2 <- Sensor TX (Kabel Putih, level ~3.3V)
+// - Kabel Kuning (Sensor RX): pull-up 10k ke VCC sensor (output "terproses").
+//   JANGAN disambung ke GPIO 9 / Terminal SCL (dipakai clock I2C RTC).
 // - Pin 3 (5V)           : Power VCC -> Sensor VCC (Kabel Merah)
 // - Pin 4 (GND)          : Ground    -> Sensor GND (Kabel Hitam)
-// CATATAN: Bus GPIO 8 & 9 digunakan secara dinamis (Time-Multiplexed)
-// antara RTC I2C (0x68) dan pembacaan Sensor UART DYP-A16.
-#define PIN_RS485_TX          9   // ESP32 TX2 (GPIO 9 / Terminal SCL) -> A16 RX (Kuning)
-#define PIN_RS485_RX          8   // ESP32 RX2 (GPIO 8 / Terminal SDA) -> A16 TX (Putih)
+// CATATAN: GPIO 8 dipakai bergantian (Time-Multiplexed) antara SDA RTC I2C (0x68)
+// dan RX UART sensor. Driver sensor memasang ulang UART di setiap siklus sampling.
+#define PIN_RS485_TX          -1  // Tidak dipakai: varian UART Auto tidak butuh trigger
+#define PIN_RS485_RX          8   // ESP32 RX2 (GPIO 8 / Terminal SDA) <- A16 TX (Putih)
 #define PIN_RS485_DE_RE       -1  // Direct UART TTL (tidak memerlukan pin direction)
 
 // Sensor Power Relay / MOSFET Gate (-1: sensor ditenagai langsung dari power rail)
 #define PIN_SENSOR_PWR        -1
 
-// Status Indicators
+// Status Indicators & Hardware Controls
 #define PIN_STATUS_LED        2
+#define PIN_BOOT_BTN          0       // Onboard BOOT Button on GPIO 0 (Active LOW) untuk trigger portal
 
 // ==========================================
 // 3. OPERATING TIMINGS & INTERVALS
 // ==========================================
-#define SAMPLING_INTERVAL_MS  60000   // Default 1 reading per minute
+#define SAMPLING_INTERVAL_MS  900000  // Default 15 menit (900 dtk) untuk mode hemat daya
+#define PORTAL_WINDOW_SEC     180     // Window period 3 menit (180 dtk) Captive Portal saat cold-boot/tombol
 #define HEALTH_CHECK_MS       1000    // Feed watchdog & network loop every 1 second (prevents WDT resets!)
 #define DIAGNOSTICS_MS        3600000 // Hourly diagnostics report (1 hour)
 #define WATCHDOG_TIMEOUT_SEC  30      // Task WDT 30s timeout
@@ -94,8 +97,11 @@
 #define TOPIC_DIAGNOSTICS     "terraflow/" DEVICE_ID "/diagnostics"
 #define TOPIC_CALIB_SET       "terraflow/" DEVICE_ID "/calibration/set"
 #define TOPIC_CALIB_RESP      "terraflow/" DEVICE_ID "/calibration/response"
+#define TOPIC_CONFIG_INTERVAL "terraflow/" DEVICE_ID "/config/interval"
 #define TOPIC_CMD_RESTART     "terraflow/" DEVICE_ID "/command/restart"
 #define TOPIC_CMD_SYNC        "terraflow/" DEVICE_ID "/command/sync_request"
+#define TOPIC_CMD_TEST_MODE   "terraflow/" DEVICE_ID "/command/test_mode"
+#define TOPIC_CMD_TEST_RESP   "terraflow/" DEVICE_ID "/command/test_mode/response"
 
 // ==========================================
 // 5. CALIBRATION DEFAULTS

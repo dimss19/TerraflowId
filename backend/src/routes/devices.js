@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db/connection');
 const { authenticateToken, requireAdmin } = require('./auth');
-const { publishCommand } = require('../mqtt/publisher');
+const { publishCommand, publishSamplingInterval, publishTestMode } = require('../mqtt/publisher');
 
 // ==========================================
 // 1. OPERATOR / ADMIN READ ROUTES
@@ -136,6 +136,89 @@ router.post('/:device_id/sync', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[API Error POST /devices/:device_id/sync]', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengirim perintah sinkronisasi: ' + err.message });
+  }
+});
+
+// POST /api/devices/:device_id/interval - Atur interval sampling pembacaan alat via MQTT (Retain)
+router.post('/:device_id/interval', authenticateToken, async (req, res) => {
+  const { device_id } = req.params;
+  const { sampling_interval_sec } = req.body;
+
+  const interval = parseInt(sampling_interval_sec, 10);
+  if (isNaN(interval) || interval < 15 || interval > 86400) {
+    return res.status(400).json({
+      success: false,
+      error: 'Interval sampling tidak valid (harus antara 15 detik sampai 86400 detik / 24 jam)'
+    });
+  }
+
+  try {
+    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
+    if (devCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
+    }
+
+    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
+      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
+    }
+
+    // 1. Simpan ke database devices
+    await query(
+      'UPDATE devices SET sampling_interval_sec = $1, updated_at = NOW() WHERE device_id = $2',
+      [interval, device_id]
+    );
+
+    // 2. Publikasikan retained message ke MQTT broker
+    await publishSamplingInterval(device_id, interval);
+
+    const intervalText = interval >= 3600 
+      ? `${interval / 3600} Jam` 
+      : interval >= 60 
+        ? `${interval / 60} Menit` 
+        : `${interval} Detik`;
+
+    res.json({
+      success: true,
+      message: `Interval pembacaan alat berhasil disetel ke ${intervalText}. Perangkat akan menerapkan interval ini saat bangun dari Deep Sleep.`,
+      sampling_interval_sec: interval
+    });
+  } catch (err) {
+    console.error('[API Error POST /devices/:device_id/interval]', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui interval sampling: ' + err.message });
+  }
+});
+
+// POST /api/devices/:device_id/test-mode - Toggle test mode (streaming 1 detik)
+router.post('/:device_id/test-mode', authenticateToken, async (req, res) => {
+  const { device_id } = req.params;
+  const { enabled, duration_sec } = req.body;
+
+  try {
+    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
+    if (devCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
+    }
+
+    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
+      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
+    }
+
+    const isEnabled = enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
+    const duration = Math.max(10, Math.min(1800, parseInt(duration_sec, 10) || 300)); // 10s - 30m
+
+    await publishTestMode(device_id, isEnabled, duration);
+
+    res.json({
+      success: true,
+      message: isEnabled 
+        ? `Mode uji cepat 1 detik diaktifkan pada alat ${device_id} (Durasi: ${Math.round(duration / 60)} menit). Data mentah akan dikirim setiap detik.`
+        : `Mode uji dinonaktifkan. Alat ${device_id} kembali ke siklus normal.`,
+      test_mode: isEnabled,
+      duration_sec: duration
+    });
+  } catch (err) {
+    console.error('[API Error POST /devices/:device_id/test-mode]', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengatur mode test: ' + err.message });
   }
 });
 

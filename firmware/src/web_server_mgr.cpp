@@ -128,6 +128,14 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <a href="/logout">Logout</a>
 </nav>
 <div class="m">
+<div id="sleepBox" style="background:#1e3a8a;border:1px solid #3b82f6;border-radius:10px;padding:12px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+<div>
+<div style="font-weight:700;color:#93c5fd;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Mode Portal Lapangan (Window Timer)</div>
+<div style="font-size:13px;color:#f8fafc;margin-top:2px">Masuk Deep Sleep dalam <b id="sleepTimer" style="color:#38bdf8">--</b> dtk (Interval Operasi: <b id="curInterval" style="color:#facc15">--</b>)</div>
+</div>
+<button id="btnSleepNow" onclick="sleepNow()" style="background:#2563eb;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;width:auto;margin:0">Mulai Mode Tidur Sekarang</button>
+</div>
+
 <div class="hdr">
 <div>
 <h1>Monitoring Lapangan (Raw Distance)</h1>
@@ -155,6 +163,14 @@ Status Transmisi: <b id="srcBadge" style="color:#38bdf8">--</b>
 </div>
 <script>
 function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
+
+function sleepNow(){
+  var b=document.getElementById('btnSleepNow');
+  b.disabled=true;b.textContent='Memasuki Deep Sleep...';
+  fetch('/api/sleep',{method:'POST',headers:ah()}).then(function(){
+    alert('Perangkat kini masuk ke Mode Deep Sleep hemat daya. Tekan tombol BOOT atau reset untuk mengakses kembali.');
+  });
+}
 
 function applyStatus(d){
   document.getElementById('devId').textContent=d.device_id||'--';
@@ -198,6 +214,15 @@ function applyStatus(d){
       rtc.textContent='TIDAK TERDETEKSI';
       rtc.className='v bad';
     }
+  }
+
+  if(d.portal_remaining_sec!=null){
+    document.getElementById('sleepTimer').textContent=d.portal_remaining_sec;
+  }
+  if(d.sampling_interval_sec!=null){
+    var s=Number(d.sampling_interval_sec);
+    var txt=s>=3600?(s/3600)+' Jam':s>=60?(s/60)+' Menit':s+' Detik';
+    document.getElementById('curInterval').textContent=txt;
   }
 }
 
@@ -427,10 +452,16 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <label>Nama Stasiun / Lokasi</label>
 <input id="dev_name" maxlength="64" placeholder="e.g. Pos Pantau Jembatan 1">
 
-<h3>2. Sampling Sensor AWLR (Data Mentah / Raw)</h3>
-<div class="hint" style="margin-bottom:10px;color:#94a3b8">Perangkat mentransmisikan data jarak mentah (raw distance) sensor secara presisi via MQTT dan SD Card. Kalibrasi tinggi dudukan dan rumus tinggi air dikelola terpusat di server backend.</div>
-<label>Interval Sampling Sensor (detik)</label>
-<input id="samp_sec" type="number" step="1" placeholder="15">
+<h3>2. Sampling Sensor AWLR & Mode Daya</h3>
+<div class="hint" style="margin-bottom:10px;color:#94a3b8">Interval pembacaan sensor dan transmisi data. ESP32 otomatis menggunakan mode Deep Sleep antar-interval untuk menghemat daya baterai.</div>
+<label>Interval Sampling & Transmisi Telemetri</label>
+<select id="samp_sec" style="width:100%;padding:11px 12px;background:#0f172a;border:1px solid #475569;border-radius:6px;color:#fff;font-size:15px">
+<option value="60">1 Menit (Mode Uji Coba / Kalibrasi)</option>
+<option value="900">15 Menit (Standar Pemantauan AWLR)</option>
+<option value="1800">30 Menit (Mode Hemat Daya)</option>
+<option value="3600">1 Jam (Mode Ultra Hemat Baterai)</option>
+<option value="7200">2 Jam (Siaga Panjang)</option>
+</select>
 
 <h3>3. Koneksi WiFi Router Lapangan</h3>
 <label>WiFi SSID</label>
@@ -520,6 +551,13 @@ WebServerManager::WebServerManager() : server(80), sdLoggerRef(NULL), ntpConfigu
   apActive = false;
   lastStaRetryMs = 0;
   mqttConfigDirty = false;
+  sleepRequested = false;
+  portalStartMs = 0;
+  portalWindowActive = false;
+
+  testModeActive = false;
+  testModeStartMs = 0;
+  testModeDurationSec = 300;
 
   // Defaults
   memset(&settings, 0, sizeof(settings));
@@ -551,6 +589,8 @@ WebServerManager::WebServerManager() : server(80), sdLoggerRef(NULL), ntpConfigu
   telemetry.mqttConnected = false;
   strncpy(telemetry.dataSource, "live", sizeof(telemetry.dataSource) - 1);
   strncpy(telemetry.lastSampleTime, "--", sizeof(telemetry.lastSampleTime) - 1);
+  telemetry.portalRemainingSec = PORTAL_WINDOW_SEC;
+  telemetry.samplingIntervalSec = SAMPLING_INTERVAL_MS / 1000;
 }
 
 void WebServerManager::sha256Hex(const char *input, char *output) {
@@ -635,9 +675,9 @@ void WebServerManager::loadSettings() {
 
   settings.sensorHeightCm = prefs.getFloat("height", DEFAULT_SENSOR_HEIGHT);
   settings.offsetCm = prefs.getFloat("offset", DEFAULT_OFFSET);
-  settings.samplingIntervalSec = prefs.getUInt("samp_sec", 60);
-  if (settings.samplingIntervalSec < 60) {
-    settings.samplingIntervalSec = 60;
+  settings.samplingIntervalSec = prefs.getUInt("samp_sec", SAMPLING_INTERVAL_MS / 1000);
+  if (settings.samplingIntervalSec < 15) {
+    settings.samplingIntervalSec = 15;
   }
 
   String hash = prefs.getString("pass_hash", DEFAULT_PASS_HASH);
@@ -770,6 +810,49 @@ void WebServerManager::updateCalibration(float height, float offset, float slope
   settings.offsetCm = offset;
   settings.slope = slope;
   saveSettings();
+}
+
+void WebServerManager::setSamplingInterval(uint32_t sec) {
+  if (sec < 15) sec = 15;
+  settings.samplingIntervalSec = sec;
+  prefs.begin("terraflow", false);
+  prefs.putUInt("samp_sec", sec);
+  prefs.end();
+  Serial.printf("[SETTINGS] Sampling interval saved to NVS: %lu sec\n", (unsigned long)sec);
+}
+
+int WebServerManager::getRemainingPortalSec() {
+  if (!portalWindowActive) return 0;
+  unsigned long elapsed = (millis() - portalStartMs) / 1000UL;
+  if (elapsed >= PORTAL_WINDOW_SEC) return 0;
+  return (int)(PORTAL_WINDOW_SEC - elapsed);
+}
+
+void WebServerManager::extendPortalWindow(uint32_t seconds) {
+  portalStartMs = millis();
+  portalWindowActive = true;
+}
+
+void WebServerManager::setTestMode(bool active, uint32_t durationSec) {
+  testModeActive = active;
+  if (active) {
+    testModeStartMs = millis();
+    testModeDurationSec = durationSec > 0 ? durationSec : 300;
+    Serial.printf("[TEST MODE] Diaktifkan! Durasi %lu detik. ESP32 streaming tiap detik.\n",
+      (unsigned long)testModeDurationSec);
+  } else {
+    Serial.println("[TEST MODE] Dinonaktifkan.");
+  }
+}
+
+int WebServerManager::getRemainingTestSec() {
+  if (!testModeActive) return 0;
+  unsigned long elapsed = (millis() - testModeStartMs) / 1000UL;
+  if (elapsed >= testModeDurationSec) {
+    testModeActive = false;
+    return 0;
+  }
+  return (int)(testModeDurationSec - elapsed);
 }
 
 void WebServerManager::updateTelemetry(const TelemetrySnapshot &snapshot) {
@@ -952,12 +1035,47 @@ void WebServerManager::setupRoutes() {
     doc["rtc_ok"] = rtcMgr.isPresent();
     doc["rtc_time"] = rtcMgr.getIsoTimestamp();
     doc["rtc_temp"] = rtcMgr.getTemperature();
+    doc["portal_remaining_sec"] = this->getRemainingPortalSec();
+    doc["sampling_interval_sec"] = this->settings.samplingIntervalSec;
+    doc["test_mode"] = this->isTestModeActive();
+    doc["test_remaining_sec"] = this->getRemainingTestSec();
 
     char buf[512];
     serializeJson(doc, buf);
     AsyncWebServerResponse *resp = req->beginResponse(200, "application/json", buf);
     resp->addHeader("Cache-Control", "no-store");
     req->send(resp);
+  });
+
+  // API Sleep Trigger (Manual sleep dari Web Dashboard portal)
+  server.on("/api/sleep", HTTP_POST, [this](AsyncWebServerRequest *req) {
+    if (!this->isSessionValid(req)) {
+      req->send(401, "application/json", "{\"ok\":false,\"msg\":\"Unauthorized\"}");
+      return;
+    }
+    this->requestSleep();
+    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Memasuki Mode Deep Sleep...\"}");
+  });
+
+  // API Test Mode Trigger (Streaming tiap 1 detik seperti sensor_test)
+  server.on("/api/test-mode", HTTP_POST, [this](AsyncWebServerRequest *req) {
+    if (!this->isSessionValid(req)) {
+      req->send(401, "application/json", "{\"ok\":false,\"msg\":\"Unauthorized\"}");
+      return;
+    }
+    bool enable = true;
+    if (req->hasParam("enable", true)) {
+      String v = req->getParam("enable", true)->value();
+      enable = (v == "1" || v == "true");
+    }
+    uint32_t dur = 300;
+    if (req->hasParam("duration", true)) {
+      dur = req->getParam("duration", true)->value().toInt();
+      if (dur < 10) dur = 300;
+    }
+    this->setTestMode(enable, dur);
+    if (enable) this->extendPortalWindow(dur + 60);
+    req->send(200, "application/json", enable ? "{\"ok\":true,\"test_mode\":true,\"msg\":\"Mode uji 1 detik aktif\"}" : "{\"ok\":true,\"test_mode\":false,\"msg\":\"Mode uji dinonaktifkan\"}");
   });
 
   // API Storage: List Files
@@ -1132,7 +1250,7 @@ void WebServerManager::setupRoutes() {
     }
     if (req->hasParam("samp_sec", true)) {
       uint32_t s = req->getParam("samp_sec", true)->value().toInt();
-      if (s >= 5 && s <= 3600) this->settings.samplingIntervalSec = s;
+      if (s >= 15 && s <= 86400) this->settings.samplingIntervalSec = s;
     }
     if (req->hasParam("wf_ssid", true)) {
       String v = req->getParam("wf_ssid", true)->value();
@@ -1217,6 +1335,10 @@ void WebServerManager::begin(SdCardLogger *logger) {
   loadSettings();
   loadSession();
 
+  portalStartMs = millis();
+  portalWindowActive = true;
+  sleepRequested = false;
+
   // Mode WiFi AP+STA tanpa penulisan flash yang aus
   WiFi.persistent(false);
   WiFi.mode(WIFI_AP_STA);
@@ -1246,6 +1368,31 @@ void WebServerManager::begin(SdCardLogger *logger) {
 }
 
 void WebServerManager::loop() {
+  if (testModeActive) {
+    if (getRemainingTestSec() == 0) {
+      testModeActive = false;
+      Serial.println("[TEST MODE] Batas durasi mode uji berakhir. Kembali ke mode normal.");
+    }
+  }
+
+  if (portalWindowActive) {
+    if (WiFi.softAPgetStationNum() > 0) {
+      static unsigned long lastExtendMs = 0;
+      if (millis() - lastExtendMs > 10000) {
+        lastExtendMs = millis();
+        extendPortalWindow(PORTAL_WINDOW_SEC);
+      }
+    } else {
+      if (testModeActive) {
+        // Jangan tidur selama mode test aktif
+      } else if (millis() - portalStartMs >= (PORTAL_WINDOW_SEC * 1000UL)) {
+        portalWindowActive = false;
+        requestSleep();
+        Serial.println("[PORTAL] Window period 3 menit berakhir. Menyiapkan Deep Sleep...");
+      }
+    }
+  }
+
   if (apActive && WiFi.softAPgetStationNum() > 0) {
     dnsServer.processNextRequest();
   }

@@ -6,13 +6,15 @@
 
 /**
  * A16 Ultrasonic Sensor Reading Structure
- * Includes raw, temperature-compensated, and wave-filtered distance.
+ * Sensor DYP-A1611AU (UART Auto) sudah melakukan kompensasi suhu internal,
+ * sehingga jarak dari sensor dipakai apa adanya (hanya difilter median).
  */
 struct A16Reading {
   bool isValid;
-  float rawDistanceCm;          // Direct reading from sensor
-  float filteredDistanceCm;     // Wave-filtered (median) & temperature compensated
-  float temperatureC;           // Ambient temperature used for acoustic compensation
+  bool isBlindSpot;             // Flag khusus: true jika target/air masuk ke zona buta (<= 50 cm)
+  float rawDistanceCm;          // Median jarak dari sensor (tanpa koreksi tambahan)
+  float filteredDistanceCm;     // Jarak yang dipakai sistem (median burst / nilai hold)
+  float temperatureC;           // Suhu board dari RTC DS3231 (informasi saja, tidak dipakai koreksi)
   uint32_t timestamp;           // Reading timestamp (seconds)
   int validSamples;             // Number of valid burst samples accepted in filter
   String errorMsg;              // Error description if invalid
@@ -23,11 +25,11 @@ public:
   SensorA16();
   void begin();
   
-  // Single raw poll (low-level)
+  // Single frame read (low-level, listen-only)
   A16Reading readSingleRaw();
   
-  // High-reliability burst sampling with Moving Median Wave Filter & Temperature Compensation
-  A16Reading readFilteredDistance(int sampleCount = 5);
+  // Burst listen-only sampling dengan Median Wave Filter
+  A16Reading readFilteredDistance(int sampleCount = 9);
   
   // Self-Healing recovery routines
   void reinitBus();
@@ -40,8 +42,11 @@ public:
 private:
   int consecutiveFails;
   float lastValidDistance;
-  uint16_t calculateCRC16(const uint8_t *buffer, uint16_t len);
-  float applyTemperatureCompensation(float rawDistCm, float tempC);
+
+  void attachUart();
+  void flushRx();
+  // Membaca satu frame valid [0xFF, H, L, SUM]. Return true bila frame lolos checksum.
+  bool readFrame(uint16_t &distMm, unsigned long timeoutMs);
 };
 
 #endif // SENSOR_A16_H

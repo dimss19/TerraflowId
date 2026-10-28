@@ -110,6 +110,8 @@ void MqttManager::reconnect() {
     client.subscribe(getTopic("command/restart").c_str());
     client.subscribe(getTopic("command/sync_request").c_str());
     client.subscribe(getTopic("data/bulk/ack").c_str());
+    client.subscribe(getTopic("config/interval").c_str());
+    client.subscribe(getTopic("command/test_mode").c_str());
     
     Serial.printf("[MQTT] Subscribed to commands for '%s'\n", devId.c_str());
   } else {
@@ -132,9 +134,50 @@ void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
   String calibSetTopic = getTopic("calibration/set");
   String restartTopic  = getTopic("command/restart");
   String bulkAckTopic  = getTopic("data/bulk/ack");
+  String intervalTopic = getTopic("config/interval");
+  String testModeTopic = getTopic("command/test_mode");
 
   if (topicStr == bulkAckTopic) {
     handleBulkAck(doc);
+    return;
+  }
+
+  if (topicStr == testModeTopic) {
+    bool enable = doc["test_mode"] | doc["enabled"] | false;
+    uint32_t dur = doc["duration_sec"].is<uint32_t>() ? doc["duration_sec"].as<uint32_t>() : 300;
+    webServerMgr.setTestMode(enable, dur);
+    if (enable) {
+      webServerMgr.extendPortalWindow(dur + 60);
+    }
+    Serial.printf("[MQTT CMD] Test Mode: %s (Durasi: %lu dtk)\n",
+      enable ? "AKTIF (Stream 1 Detik)" : "NONAKTIF", (unsigned long)dur);
+
+    JsonDocument resp;
+    resp["device_id"] = webServerMgr.getEffectiveDeviceId();
+    resp["test_mode"] = enable;
+    resp["duration_sec"] = dur;
+    resp["status"] = enable ? "active" : "standby";
+    char respBuf[256];
+    serializeJson(resp, respBuf);
+    client.publish(getTopic("command/test_mode/response").c_str(), respBuf);
+    return;
+  }
+
+  if (topicStr == intervalTopic) {
+    uint32_t newInterval = 0;
+    if (doc["sampling_interval_sec"].is<uint32_t>()) {
+      newInterval = doc["sampling_interval_sec"].as<uint32_t>();
+    } else if (doc["interval_sec"].is<uint32_t>()) {
+      newInterval = doc["interval_sec"].as<uint32_t>();
+    } else if (doc["interval_min"].is<uint32_t>()) {
+      newInterval = doc["interval_min"].as<uint32_t>() * 60;
+    }
+
+    if (newInterval >= 15 && newInterval <= 86400) {
+      webServerMgr.setSamplingInterval(newInterval);
+      Serial.printf("[MQTT CONFIG] Sampling interval diperbarui dari broker: %lu detik\n",
+        (unsigned long)newInterval);
+    }
     return;
   }
 
@@ -184,12 +227,15 @@ bool MqttManager::publishReading(const LogRecord &record, int readingCount, cons
   doc["device_id"] = devId;
   doc["timestamp"] = record.timestamp;
   doc["raw_distance_cm"] = record.rawDistanceCm;
+  doc["raw_distance_mm"] = (uint32_t)(record.rawDistanceCm * 10.0f);
+  doc["filtered_distance_cm"] = record.filteredDistanceCm;
   doc["water_level_cm"] = record.waterLevelCm;
   doc["temperature_c"] = record.temperatureC;
   doc["signal_quality"] = WiFi.RSSI();
   doc["sd_status"] = "ok";
   doc["reading_count"] = readingCount;
   doc["source"] = source;
+  doc["is_test"] = webServerMgr.isTestModeActive();
 
   char buf[512];
   serializeJson(doc, buf);

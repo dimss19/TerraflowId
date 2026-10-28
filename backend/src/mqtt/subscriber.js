@@ -35,13 +35,15 @@ function initSubscriber() {
       'terraflow/+/diagnostics',
       'terraflow/+/status',
       'terraflow/+/calibration/response',
+      'terraflow/+/command/test_mode/response',
       'terraflow/devices/+/telemetry',
       'terraflow/devices/+/data',
       'terraflow/devices/+/data/bulk',
       'terraflow/devices/+/alert',
       'terraflow/devices/+/diagnostics',
       'terraflow/devices/+/status',
-      'terraflow/devices/+/calibration/response'
+      'terraflow/devices/+/calibration/response',
+      'terraflow/devices/+/command/test_mode/response'
     ];
 
     mqttClient.subscribe(topics, (err) => {
@@ -130,16 +132,26 @@ async function handleMessage(deviceId, subtopic, data) {
     if (ioInstance) {
       ioInstance.emit('calibration:ack', { deviceId, data });
     }
+  } else if (subtopic === 'command/test_mode/response') {
+    console.log(`[MQTT Test Mode Response] Device ${deviceId}:`, data);
+    if (ioInstance) {
+      ioInstance.emit('device:test_mode', { deviceId, data });
+    }
   }
 }
 
 async function handleSingleReading(deviceId, data) {
+  const isTestMode = data.source === 'test' || data.is_test === true;
+
   // Timestamp: field `timestamp` (epoch) menjadi sumber utama, fallback
   // date+jam diinterpretasi sebagai WIB. Lihat utils/timestamp.js.
   let ts = parseTelemetryTimestamp(data) || new Date();
 
-  // Align timestamp to the exact minute (:00 seconds) to ensure exactly 1 record per minute
-  ts = alignToMinute(ts);
+  // Align timestamp ke menit (:00) HANYA untuk mode sampling normal.
+  // Untuk Mode Uji Cepat (1 detik), pertahankan detik presisi agar aliran data real-time tidak tertimpa!
+  if (!isTestMode) {
+    ts = alignToMinute(ts);
+  }
   
   // Aturan perhitungan muka air server-side dari data mentah sensor
   let waterLevel = data.water_level_cm != null ? Number(data.water_level_cm) : null;
@@ -189,17 +201,30 @@ async function handleSingleReading(deviceId, data) {
     data.signal_quality != null ? Number(data.signal_quality) : null,
     data.sd_status || 'ok',
     data.reading_count != null ? Number(data.reading_count) : null,
-    data.source || 'live'
+    data.source || (isTestMode ? 'test' : 'live')
   ];
 
   const res = await query(insertSql, values);
   const savedRow = res.rows[0];
-  console.log(`[MQTT Telemetry] Device: ${deviceId} | Raw: ${rawDist} cm | Level: ${waterLevel} cm | Temp: ${data.temperature_c}°C`);
+  console.log(`[MQTT Telemetry] Device: ${deviceId} | Raw: ${rawDist} cm | Level: ${waterLevel} cm | Temp: ${data.temperature_c}°C | Source: ${data.source || (isTestMode ? 'test' : 'live')}`);
 
-  // Broadcast to Web Dashboard via WebSocket (dual event emission for backwards & forward compatibility)
+  // Broadcast to Web Dashboard via WebSocket
   if (ioInstance && savedRow) {
-    ioInstance.emit('sensor:data', savedRow);
-    ioInstance.emit('telemetry', { device_id: deviceId, data: savedRow });
+    const livePayload = {
+      ...savedRow,
+      raw_distance_mm: data.raw_distance_mm != null ? data.raw_distance_mm : (rawDist != null ? Math.round(rawDist * 10) : null),
+      filtered_distance_cm: data.filtered_distance_cm != null ? Number(data.filtered_distance_cm) : (rawDist != null ? Number(rawDist) : null),
+      valid_samples: data.valid_samples,
+      is_blind_spot: data.is_blind_spot || (rawDist != null && rawDist <= 50.0),
+      is_test: isTestMode
+    };
+
+    ioInstance.emit('sensor:data', livePayload);
+    ioInstance.emit('telemetry', { device_id: deviceId, data: livePayload });
+
+    if (isTestMode) {
+      ioInstance.emit('test:reading', { device_id: deviceId, data: livePayload });
+    }
   }
 
   // Evaluasi rule alert (SENSOR_ANOMALY, dll.) terhadap pembacaan ini

@@ -50,30 +50,30 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+// Helper: buat Serial Number unik berikutnya (format TF-AWLR-YYMM-NNN)
+// Nomor seri diekstrak secara NUMERIK dari digit terakhir, bukan leksikografis,
+// agar urutan tetap benar setelah 999 (mis. '...-1000' > '...-999').
+async function generateNextSerialNumber() {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `TF-AWLR-${yy}${mm}-`;
+
+  const result = await query(
+    `SELECT COALESCE(MAX(substring(device_id FROM '[0-9]+$')::bigint), 0) AS max_seq
+       FROM devices
+      WHERE device_id LIKE $1 AND device_id ~ '[0-9]+$'`,
+    [`${prefix}%`]
+  );
+
+  const nextSeq = (parseInt(result.rows[0]?.max_seq, 10) || 0) + 1;
+  return `${prefix}${String(nextSeq).padStart(3, '0')}`;
+}
+
 // GET /api/devices/generate-sn - Generate recommended unique Serial Number (Admin Only)
 router.get('/generate-sn', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const now = new Date();
-    const yy = String(now.getFullYear()).slice(-2);
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `TF-AWLR-${yy}${mm}-`;
-
-    const result = await query(
-      "SELECT device_id FROM devices WHERE device_id LIKE $1 ORDER BY device_id DESC LIMIT 1",
-      [`${prefix}%`]
-    );
-
-    let nextSeq = 1;
-    if (result.rows.length > 0) {
-      const lastId = result.rows[0].device_id;
-      const parts = lastId.split('-');
-      const lastNum = parseInt(parts[parts.length - 1], 10);
-      if (!isNaN(lastNum)) {
-        nextSeq = lastNum + 1;
-      }
-    }
-
-    const serialNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+    const serialNumber = await generateNextSerialNumber();
     res.json({ success: true, serial_number: serialNumber });
   } catch (err) {
     console.error('[API Error GET /devices/generate-sn]', err.message);
@@ -271,26 +271,14 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   // If device_id is not provided or set to 'AUTO', generate next serial number automatically
   let cleanDeviceId = device_id ? String(device_id).trim().toUpperCase() : '';
   if (!cleanDeviceId || cleanDeviceId === 'AUTO') {
-    const now = new Date();
-    const yy = String(now.getFullYear()).slice(-2);
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `TF-AWLR-${yy}${mm}-`;
-
-    const result = await query(
-      "SELECT device_id FROM devices WHERE device_id LIKE $1 ORDER BY device_id DESC LIMIT 1",
-      [`${prefix}%`]
-    );
-
-    let nextSeq = 1;
-    if (result.rows.length > 0) {
-      const lastId = result.rows[0].device_id;
-      const parts = lastId.split('-');
-      const lastNum = parseInt(parts[parts.length - 1], 10);
-      if (!isNaN(lastNum)) {
-        nextSeq = lastNum + 1;
-      }
+    try {
+      cleanDeviceId = await generateNextSerialNumber();
+    } catch (err) {
+      // Query di sini sengaja dibungkus try: kegagalan DB tidak boleh menjadi
+      // unhandled rejection (Express 4 tidak menangkap error async handler).
+      console.error('[API Error POST /devices] Gagal generate serial number:', err.message);
+      return res.status(500).json({ success: false, error: 'Gagal membuat serial number otomatis' });
     }
-    cleanDeviceId = `${prefix}${String(nextSeq).padStart(3, '0')}`;
   }
   if (!/^[A-Z0-9_-]{3,50}$/.test(cleanDeviceId)) {
     return res.status(400).json({

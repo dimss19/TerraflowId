@@ -49,12 +49,14 @@ export default function TestModeTab({
   // Refs for stable callbacks
   const isLogPausedRef = useRef(false);
   isLogPausedRef.current = isLogPaused;
+  const soundEnabledRef = useRef(false);
+  soundEnabledRef.current = soundEnabled;
   const lastReadingKeyRef = useRef(null);
   const audioCtxRef = useRef(null);
 
   // Sound beep on packet arrival using Web Audio API
   const playBeep = () => {
-    if (!soundEnabled) return;
+    if (!soundEnabledRef.current) return;
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -195,7 +197,7 @@ export default function TestModeTab({
     return () => {
       socket.disconnect();
     };
-  }, [device?.device_id, soundEnabled]);
+  }, [device?.device_id]); // soundEnabled dibaca via Ref agar toggle suara tidak memutus koneksi Socket.IO
 
   // 3. Countdown Timer Tick
   useEffect(() => {

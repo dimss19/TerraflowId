@@ -219,6 +219,24 @@ router.post('/:device_id/interval', authenticateToken, async (req, res) => {
   }
 });
 
+// Test mode in-memory registry: device_id -> { active: boolean, expiresAt: number, duration_sec: number }
+const testModeRegistry = new Map();
+
+function getTestModeStatus(deviceId) {
+  const item = testModeRegistry.get(deviceId);
+  if (!item) return { active: false, remaining_sec: 0, duration_sec: 0 };
+  const now = Date.now();
+  if (now >= item.expiresAt) {
+    testModeRegistry.delete(deviceId);
+    return { active: false, remaining_sec: 0, duration_sec: 0 };
+  }
+  return {
+    active: true,
+    remaining_sec: Math.max(0, Math.round((item.expiresAt - now) / 1000)),
+    duration_sec: item.duration_sec
+  };
+}
+
 // POST /api/devices/:device_id/test-mode - Toggle test mode (streaming 1 detik)
 router.post('/:device_id/test-mode', authenticateToken, async (req, res) => {
   const { device_id } = req.params;
@@ -239,6 +257,16 @@ router.post('/:device_id/test-mode', authenticateToken, async (req, res) => {
 
     await publishTestMode(device_id, isEnabled, duration);
 
+    if (isEnabled) {
+      testModeRegistry.set(device_id, {
+        active: true,
+        expiresAt: Date.now() + duration * 1000,
+        duration_sec: duration
+      });
+    } else {
+      testModeRegistry.delete(device_id);
+    }
+
     res.json({
       success: true,
       message: isEnabled 
@@ -250,6 +278,53 @@ router.post('/:device_id/test-mode', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[API Error POST /devices/:device_id/test-mode]', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengatur mode test: ' + err.message });
+  }
+});
+
+// GET /api/devices/:device_id/test-mode - Ambil status real-time mode uji 1 detik
+router.get('/:device_id/test-mode', authenticateToken, async (req, res) => {
+  const { device_id } = req.params;
+  try {
+    const status = getTestModeStatus(device_id);
+    res.json({
+      success: true,
+      device_id,
+      ...status
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/devices/:device_id/test-readings - Ambil data stream telemetri terbaru untuk mode pengujian
+router.get('/:device_id/test-readings', authenticateToken, async (req, res) => {
+  const { device_id } = req.params;
+  const limit = Math.min(100, Math.max(10, parseInt(req.query.limit, 10) || 50));
+  try {
+    const queryRes = await query(
+      `SELECT id, device_id, timestamp, raw_distance_cm, water_level_cm, 
+              temperature_c, signal_quality, sd_status, reading_count, source
+       FROM readings
+       WHERE device_id = $1
+       ORDER BY timestamp DESC
+       LIMIT $2`,
+      [device_id, limit]
+    );
+
+    const rows = queryRes.rows.map((r) => ({
+      ...r,
+      raw_distance_mm: r.raw_distance_cm != null ? Math.round(Number(r.raw_distance_cm) * 10) : null,
+      filtered_distance_cm: r.raw_distance_cm != null ? Number(r.raw_distance_cm) : null,
+      is_blind_spot: r.raw_distance_cm != null && Number(r.raw_distance_cm) <= 50.0
+    }));
+
+    res.json({
+      success: true,
+      device_id,
+      readings: rows
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -524,3 +599,5 @@ router.delete('/:device_id', authenticateToken, requireAdmin, async (req, res) =
 });
 
 module.exports = router;
+module.exports.testModeRegistry = testModeRegistry;
+module.exports.getTestModeStatus = getTestModeStatus;

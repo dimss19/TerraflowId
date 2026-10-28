@@ -948,6 +948,17 @@ void WebServerManager::extendPortalWindow(uint32_t seconds) {
   portalWindowActive = true;
 }
 
+bool WebServerManager::isTestModeActive() {
+  if (!testModeActive) return false;
+  unsigned long elapsed = (millis() - testModeStartMs) / 1000UL;
+  if (elapsed >= testModeDurationSec) {
+    testModeActive = false;
+    Serial.println("⏱️ [TEST MODE] Durasi pengujian 1 detik telah berakhir. Kembali ke siklus normal.");
+    return false;
+  }
+  return true;
+}
+
 void WebServerManager::setTestMode(bool active, uint32_t durationSec) {
   testModeActive = active;
   if (active) {

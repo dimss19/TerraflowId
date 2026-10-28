@@ -134,6 +134,20 @@ async function handleMessage(deviceId, subtopic, data) {
     }
   } else if (subtopic === 'command/test_mode/response') {
     console.log(`[MQTT Test Mode Response] Device ${deviceId}:`, data);
+    try {
+      const { testModeRegistry } = require('../routes/devices');
+      if (testModeRegistry) {
+        if (data.test_mode) {
+          testModeRegistry.set(deviceId, {
+            active: true,
+            expiresAt: Date.now() + (data.duration_sec || 300) * 1000,
+            duration_sec: data.duration_sec || 300
+          });
+        } else {
+          testModeRegistry.delete(deviceId);
+        }
+      }
+    } catch (_) {}
     if (ioInstance) {
       ioInstance.emit('device:test_mode', { deviceId, data });
     }

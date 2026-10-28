@@ -17,6 +17,7 @@ import MonitoringTab from './MonitoringTab';
 import AnalysisTab from './AnalysisTab';
 import DeviceTab from './DeviceTab';
 import OfflineConversionTab from './OfflineConversionTab';
+import TestModeTab from './TestModeTab';
 
 export default function DeviceDetailView({ 
   device, 
@@ -229,6 +230,30 @@ export default function DeviceDetailView({
               </select>
             </div>
 
+            {currentUser?.role === 'admin' && (
+              <button
+                onClick={() => handleTabChange('test')}
+                className="btn"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  background: currentTab === 'test' ? '#dcfce7' : '#edf2fc',
+                  border: `1px solid ${currentTab === 'test' ? '#86efac' : '#cbd5e1'}`,
+                  color: currentTab === 'test' ? '#15803d' : '#003882',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+                title="Buka Mode Uji 1 Detik untuk melihat aliran telemetri mentah setiap detik"
+              >
+                <Radio size={14} className={currentTab === 'test' ? 'pulse-effect' : ''} />
+                <span>Uji Sensor 1s</span>
+              </button>
+            )}
+
             <button
               onClick={handleRefreshClick}
               disabled={isSpinning}
@@ -263,6 +288,17 @@ export default function DeviceDetailView({
           <span className="tab-icon"><Activity size={16} /></span>
           <span className="tab-label">Analisis &amp; Riwayat</span>
         </button>
+
+        {currentUser?.role === 'admin' && (
+          <button 
+            className={`tab-btn ${currentTab === 'test' ? 'active' : ''}`}
+            onClick={() => handleTabChange('test')}
+            title="Mode Pengujian Sensor 1 Detik (Admin Live Stream)"
+          >
+            <span className="tab-icon"><Radio size={16} /></span>
+            <span className="tab-label">Mode Uji (1s)</span>
+          </button>
+        )}
 
         <button 
           className={`tab-btn ${currentTab === 'device' ? 'active' : ''}`}
@@ -302,6 +338,15 @@ export default function DeviceDetailView({
         <AnalysisTab 
           device={device}
           tidalData={tidalData}
+          onRefresh={onRefresh}
+        />
+      )}
+
+      {currentTab === 'test' && currentUser?.role === 'admin' && (
+        <TestModeTab 
+          device={device}
+          authToken={authToken}
+          currentUser={currentUser}
           onRefresh={onRefresh}
         />
       )}

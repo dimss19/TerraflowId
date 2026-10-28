@@ -84,7 +84,7 @@ public:
   bool isPortalWindowActive() const { return portalWindowActive; }
 
   // Test Mode (Streaming data setiap detik seperti uji laboratorium/lapangan)
-  bool isTestModeActive() const { return testModeActive; }
+  bool isTestModeActive();
   void setTestMode(bool active, uint32_t durationSec = 300);
   int getRemainingTestSec();
 

@@ -176,7 +176,7 @@ void samplingTask(void *pvParameters) {
 
     // 5. Jeda siklus berikutnya: Mode test jeda 1 detik, mode normal tunggu batas menit
     if (inTestMode) {
-      vTaskDelay(pdMS_TO_TICKS(1000));
+      vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1000));
     } else {
       time_t curNow = time(nullptr);
       struct tm curTm;
@@ -188,6 +188,7 @@ void samplingTask(void *pvParameters) {
       } else {
         vTaskDelayUntil(&lastWakeTime, cycleInterval);
       }
+      lastWakeTime = xTaskGetTickCount();
     }
   }
 }

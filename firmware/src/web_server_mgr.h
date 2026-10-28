@@ -25,6 +25,7 @@ struct DeviceSettings {
   float slope;
   uint32_t samplingIntervalSec;
   char passHash[65];
+  bool isProvisioned;
 };
 
 // Struct for live telemetry shared with Web UI
@@ -66,6 +67,8 @@ public:
 
   void loadSettings();
   void saveSettings();
+  void factoryReset();
+  bool isProvisioned() const { return settings.isProvisioned; }
   String getEffectiveDeviceId();
   String getSoftApSsid();
   String getCurrentLogFilename();

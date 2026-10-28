@@ -18,6 +18,88 @@ static const char DEFAULT_PASS_HASH[] =
 // EMBEDDED LIGHTWEIGHT HTML/CSS/JS (FLASH PROGMEM)
 // ============================================================
 
+static const char SETUP_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html><html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TerraFlow AWLR - Aktivasi Perangkat</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0b1120;color:#f8fafc;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.box{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;width:100%;max-width:380px;box-shadow:0 12px 30px rgba(0,0,0,.6)}
+.badge{background:#10b981;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;display:inline-block;margin-bottom:10px}
+h2{margin:0 0 4px;font-size:20px;color:#38bdf8}
+p{margin:0 0 16px;font-size:13px;color:#94a3b8;line-height:1.4}
+label{display:block;color:#cbd5e1;font-size:12px;font-weight:600;margin-top:12px;margin-bottom:4px}
+input{width:100%;padding:10px 12px;background:#0f172a;border:1px solid #475569;border-radius:6px;color:#fff;font-size:14px}
+input:focus{outline:none;border-color:#38bdf8;box-shadow:0 0 0 2px rgba(56,189,248,.2)}
+.adv-toggle{background:none;border:none;color:#38bdf8;font-size:12px;font-weight:600;padding:8px 0;cursor:pointer;display:flex;align-items:center;gap:4px;margin-top:14px}
+.adv-panel{display:none;background:#0f172a;border:1px solid #334155;padding:12px;border-radius:8px;margin-top:8px}
+button.submit{width:100%;padding:12px;margin-top:18px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;transition:background .2s}
+button.submit:hover{background:#0369a1}
+.err{color:#f87171;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);padding:8px;border-radius:6px;font-size:13px;margin-top:12px;display:none;text-align:center}
+.ok{color:#4ade80;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);padding:12px;border-radius:6px;font-size:13px;margin-top:12px;display:none;text-align:center;line-height:1.4}
+</style></head><body>
+<div class="box">
+<div class="badge">AKTIVASI PERANGKAT BARU</div>
+<h2>TerraFlow AWLR</h2>
+<p>Perangkat belum diaktivasi. Masukkan Serial Number dari Web Dashboard dan koneksi WiFi lokasi.</p>
+<form id="sf">
+<label>Serial Number Perangkat *</label>
+<input id="sn" placeholder="Contoh: TF-AWLR-2610-001" required style="font-family:monospace;font-weight:700;letter-spacing:.04em;text-transform:uppercase">
+<label>Nama WiFi Lapangan (SSID) *</label>
+<input id="ws" placeholder="Nama WiFi / Hotspot" required>
+<label>Password WiFi Lapangan *</label>
+<input id="wp" type="password" placeholder="Password WiFi" required>
+<button type="button" class="adv-toggle" onclick="toggleAdv()">⚙️ Pengaturan Lanjutan (Server MQTT) ▾</button>
+<div id="adv" class="adv-panel">
+<label>Broker MQTT Host</label>
+<input id="mh" value="43.134.53.192">
+<label>Broker MQTT Port</label>
+<input id="mp" type="number" value="80">
+<label>Ketinggian Sensor (cm)</label>
+<input id="sh" type="number" step="0.1" value="600.0">
+</div>
+<button type="submit" class="submit" id="sbtn">Aktifkan &amp; Simpan</button>
+</form>
+<div class="err" id="se"></div>
+<div class="ok" id="sok"></div>
+</div>
+<script>
+function toggleAdv(){var a=document.getElementById('adv');a.style.display=(a.style.display==='block'?'none':'block');}
+document.getElementById('sf').onsubmit=function(ev){
+  ev.preventDefault();
+  var e=document.getElementById('se'),ok=document.getElementById('sok'),b=document.getElementById('sbtn');
+  e.style.display='none';ok.style.display='none';b.disabled=true;b.textContent='Mengaktivasi...';
+  var body='sn='+encodeURIComponent(document.getElementById('sn').value.trim().toUpperCase())+
+           '&wf_ssid='+encodeURIComponent(document.getElementById('ws').value)+
+           '&wf_pass='+encodeURIComponent(document.getElementById('wp').value)+
+           '&mq_host='+encodeURIComponent(document.getElementById('mh').value)+
+           '&mq_port='+encodeURIComponent(document.getElementById('mp').value)+
+           '&height='+encodeURIComponent(document.getElementById('sh').value);
+  fetch('/api/setup',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:body
+  }).then(function(r){return r.json()})
+  .then(function(d){
+    b.disabled=false;b.textContent='Aktifkan & Simpan';
+    if(d.ok){
+      ok.innerHTML='<b>Berhasil Diaktivasi!</b><br>Alat sedang reboot ke mode normal. SSID akan berganti menjadi <b>TerraFlow-'+document.getElementById('sn').value.trim().toUpperCase()+'</b>.';
+      ok.style.display='block';
+      document.getElementById('sf').style.display='none';
+    }else{
+      e.textContent=d.msg||'Gagal aktivasi perangkat';
+      e.style.display='block';
+    }
+  }).catch(function(){
+    b.disabled=false;b.textContent='Aktifkan & Simpan';
+    e.textContent='Error komunikasi dengan ESP32';
+    e.style.display='block';
+  });
+};
+</script></body></html>
+)rawliteral";
+
 static const char LOGIN_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -28,23 +110,23 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#0b1120;color:#f8
 .box{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:28px;width:100%;max-width:340px;box-shadow:0 12px 30px rgba(0,0,0,.6)}
 .badge{background:#0284c7;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;display:inline-block;margin-bottom:10px}
 h2{margin:0 0 4px;font-size:22px;color:#38bdf8}
-p{margin:0 0 20px;font-size:13px;color:#94a3b8}
+p{margin:0 0 20px;font-size:13px;color:#94a3b8;line-height:1.4}
 label{display:block;color:#cbd5e1;font-size:12px;font-weight:600;margin-top:12px;margin-bottom:4px}
 input{width:100%;padding:11px 12px;background:#0f172a;border:1px solid #475569;border-radius:6px;color:#fff;font-size:15px}
 input:focus{outline:none;border-color:#38bdf8;box-shadow:0 0 0 2px rgba(56,189,248,.2)}
 button{width:100%;padding:12px;margin-top:18px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
 button:hover{background:#0369a1}
 .err{color:#f87171;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);padding:8px;border-radius:6px;font-size:13px;margin-top:12px;display:none;text-align:center}
+.helper{font-size:11px;color:#64748b;margin-top:6px;display:block}
 </style></head><body>
 <div class="box">
-<div class="badge">FIELD SERVICE INTERFACE</div>
+<div class="badge">🔒 PORTAL TERPROTEKSI</div>
 <h2>TerraFlow AWLR</h2>
-<p>Silakan login untuk mengakses perangkat</p>
+<p>Masukkan Serial Number perangkat untuk mengakses dashboard.</p>
 <form id="f">
-<label>Username (Default: awlr1)</label>
-<input id="u" placeholder="awlr1" required autocomplete="username">
-<label>Password</label>
-<input id="p" type="password" placeholder="password" required autocomplete="current-password">
+<label>Serial Number (Kunci Akses)</label>
+<input id="p" placeholder="Lihat stiker pada bodi alat" required autocomplete="current-password" style="font-family:monospace;letter-spacing:.03em;text-transform:uppercase">
+<span class="helper">Nomor seri tertera pada stiker fisik bodi alat</span>
 <button type="submit" id="subBtn">Masuk Dashboard</button>
 </form>
 <div class="err" id="e"></div>
@@ -54,8 +136,7 @@ document.getElementById('f').onsubmit=function(ev){
   ev.preventDefault();
   var e=document.getElementById('e'),b=document.getElementById('subBtn');
   e.style.display='none';b.disabled=true;b.textContent='Memverifikasi...';
-  var body='user='+encodeURIComponent(document.getElementById('u').value)+
-           '&pass='+encodeURIComponent(document.getElementById('p').value);
+  var body='pass='+encodeURIComponent(document.getElementById('p').value.trim().toUpperCase());
   fetch('/api/login',{
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -67,7 +148,7 @@ document.getElementById('f').onsubmit=function(ev){
       if(d.token)sessionStorage.setItem('st',d.token);
       window.location='/dashboard';
     }else{
-      e.textContent=d.msg||'Username atau password salah';
+      e.textContent=d.msg||'Serial Number salah';
       e.style.display='block';
     }
   }).catch(function(){
@@ -444,17 +525,17 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <h1>Pengaturan Sistem</h1>
 <div id="msg" class="msg"></div>
 
-<h3>1. Identitas Perangkat (Multi-Device)</h3>
-<label>Device ID Unik</label>
-<input id="dev_id" maxlength="32" placeholder="e.g. AWLR-001">
-<div class="hint">Identitas untuk MQTT Topic dan nama Access Point WiFi</div>
+<h3>1. Identitas Perangkat (Serial Number)</h3>
+<label>Serial Number (Kunci Akses &amp; MQTT Topic)</label>
+<input id="dev_id" maxlength="32" placeholder="e.g. TF-AWLR-2610-001" style="font-family:monospace;font-weight:700">
+<div class="hint">Nomor seri unit yang digunakan untuk autentikasi portal dan topik MQTT</div>
 
 <label>Nama Stasiun / Lokasi</label>
 <input id="dev_name" maxlength="64" placeholder="e.g. Pos Pantau Jembatan 1">
 
-<h3>2. Sampling Sensor AWLR & Mode Daya</h3>
+<h3>2. Sampling Sensor AWLR &amp; Mode Daya</h3>
 <div class="hint" style="margin-bottom:10px;color:#94a3b8">Interval pembacaan sensor dan transmisi data. ESP32 otomatis menggunakan mode Deep Sleep antar-interval untuk menghemat daya baterai.</div>
-<label>Interval Sampling & Transmisi Telemetri</label>
+<label>Interval Sampling &amp; Transmisi Telemetri</label>
 <select id="samp_sec" style="width:100%;padding:11px 12px;background:#0f172a;border:1px solid #475569;border-radius:6px;color:#fff;font-size:15px">
 <option value="60">1 Menit (Mode Uji Coba / Kalibrasi)</option>
 <option value="900">15 Menit (Standar Pemantauan AWLR)</option>
@@ -479,11 +560,11 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <label>MQTT Password</label>
 <input id="mq_pass" type="password" maxlength="64">
 
-<h3>5. Keamanan Akses (User: awlr1)</h3>
-<label>Password Login Baru (Min. 6 Karakter)</label>
-<input id="lpass" type="password" maxlength="64" placeholder="Kosongkan jika tidak ingin mengubah password">
-
 <button onclick="save()" id="btnSave">Simpan &amp; Terapkan Konfigurasi</button>
+
+<h3 style="color:#f87171;border-color:#7f1d1d;margin-top:36px">5. Reset Pengaturan Pabrik</h3>
+<div class="hint" style="color:#fca5a5">Menghapus Serial Number dan kredensial WiFi. Alat akan kembali ke mode aktivasi awal (SSID: <b>TerraFlow-Setup</b> tanpa login).</div>
+<button type="button" onclick="factoryReset()" style="background:#dc2626;margin-top:12px">Hapus Serial Number &amp; Reset Pabrik</button>
 </div>
 <script>
 function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
@@ -507,9 +588,10 @@ function save(){
   var b=document.getElementById('btnSave'),m=document.getElementById('msg');
   b.disabled=true;b.textContent='Menyimpan data...';m.style.display='none';
 
-  var ks=['dev_id','dev_name','samp_sec','wf_ssid','wf_pass','mq_host','mq_port','mq_user','mq_pass','lpass'];
+  var ks=['dev_id','dev_name','samp_sec','wf_ssid','wf_pass','mq_host','mq_port','mq_user','mq_pass'];
   var params=ks.map(function(k){
-    return k+'='+encodeURIComponent(document.getElementById(k).value);
+    var el=document.getElementById(k);
+    return k+'='+encodeURIComponent(el?el.value:'');
   }).join('&');
 
   fetch('/api/settings',{
@@ -535,6 +617,17 @@ function save(){
     m.textContent='Gagal menyimpan ke ESP32';
     m.className='msg er';
   });
+}
+
+function factoryReset(){
+  if(confirm('PERINGATAN: Apakah Anda yakin ingin menghapus Serial Number dan mengembalikan alat ke mode setup awal?')){
+    fetch('/api/factory-reset',{method:'POST',headers:ah(),credentials:'same-origin'})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      alert(d.msg||'Perangkat di-reset. Menghubungkan kembali...');
+      location='/';
+    }).catch(function(){alert('Error komunikasi reset');});
+  }
 }
 load();
 </script></body></html>
@@ -619,6 +712,9 @@ String WebServerManager::getEffectiveDeviceId() {
 }
 
 String WebServerManager::getSoftApSsid() {
+  if (!settings.isProvisioned) {
+    return "TerraFlow-Setup";
+  }
   return "TerraFlow-" + getEffectiveDeviceId();
 }
 
@@ -636,9 +732,13 @@ String WebServerManager::getCurrentLogFilename() {
 void WebServerManager::loadSettings() {
   prefs.begin("terraflow", true); // read-only
   
+  settings.isProvisioned = prefs.getBool("prov", false);
   String devId = prefs.getString("dev_id", "");
   if (devId.length() > 0) {
     strncpy(settings.deviceId, devId.c_str(), sizeof(settings.deviceId) - 1);
+    if (!prefs.isKey("prov")) {
+      settings.isProvisioned = (devId != "AWLR-001");
+    }
   } else {
     String autoId = getEffectiveDeviceId();
     strncpy(settings.deviceId, autoId.c_str(), sizeof(settings.deviceId) - 1);
@@ -684,8 +784,8 @@ void WebServerManager::loadSettings() {
   strncpy(settings.passHash, hash.c_str(), sizeof(settings.passHash) - 1);
 
   prefs.end();
-  Serial.printf("[SETTINGS] Loaded: ID=%s, Height=%.1f\n",
-    settings.deviceId, settings.sensorHeightCm);
+  Serial.printf("[SETTINGS] Loaded: ID=%s, Height=%.1f, Provisioned=%s\n",
+    settings.deviceId, settings.sensorHeightCm, settings.isProvisioned ? "YES" : "NO (Setup Mode)");
 }
 
 void WebServerManager::saveSettings() {
@@ -703,8 +803,23 @@ void WebServerManager::saveSettings() {
   prefs.putFloat("slope", settings.slope);
   prefs.putUInt("samp_sec", settings.samplingIntervalSec);
   prefs.putString("pass_hash", settings.passHash);
+  prefs.putBool("prov", settings.isProvisioned);
   prefs.end();
-  Serial.println("[SETTINGS] Saved successfully to NVS.");
+  Serial.printf("[SETTINGS] Saved successfully to NVS (ID=%s, Provisioned=%s).\n",
+    settings.deviceId, settings.isProvisioned ? "YES" : "NO");
+}
+
+void WebServerManager::factoryReset() {
+  prefs.begin("terraflow", false);
+  prefs.remove("dev_id");
+  prefs.remove("prov");
+  prefs.remove("pass_hash");
+  prefs.remove("wf_ssid");
+  prefs.remove("wf_pass");
+  prefs.end();
+  Serial.println("[RESET] Factory reset executed. Rebooting into Setup Mode...");
+  delay(500);
+  ESP.restart();
 }
 
 void WebServerManager::loadSession() {
@@ -874,13 +989,30 @@ TelemetrySnapshot WebServerManager::getTelemetry() {
 // ============================================================
 
 void WebServerManager::setupRoutes() {
-  // Login Page
-  server.on("/login", HTTP_GET, [](AsyncWebServerRequest *req) {
+  // Setup / Activation Page (For Unprovisioned devices)
+  server.on("/setup", HTTP_GET, [this](AsyncWebServerRequest *req) {
+    if (this->settings.isProvisioned) {
+      req->redirect("/login");
+      return;
+    }
+    req->send(200, "text/html", SETUP_HTML);
+  });
+
+  // Login Page (Single-key Serial Number login for provisioned devices)
+  server.on("/login", HTTP_GET, [this](AsyncWebServerRequest *req) {
+    if (!this->settings.isProvisioned) {
+      req->redirect("/setup");
+      return;
+    }
     req->send(200, "text/html", LOGIN_HTML);
   });
 
   // Root Redirect
   server.on("/", HTTP_GET, [this](AsyncWebServerRequest *req) {
+    if (!this->settings.isProvisioned) {
+      req->redirect("/setup");
+      return;
+    }
     if (this->isSessionValid(req)) {
       req->redirect("/dashboard");
     } else {
@@ -892,9 +1024,10 @@ void WebServerManager::setupRoutes() {
   // Android Captive Portal detection (/generate_204, /gen_204)
   auto android204Handler = [this](AsyncWebServerRequest *req) {
     if (this->isSessionValid(req)) {
-      // KRUSIAL: Setelah user login, Android butuh HTTP 204 No Content.
-      // Jika di-redirect 302, Android menganggap portal belum lolos dan memutus WiFi!
+      // Setelah user login, Android butuh HTTP 204 No Content.
       req->send(204);
+    } else if (!this->settings.isProvisioned) {
+      req->redirect("http://192.168.4.1/setup");
     } else {
       req->redirect("http://192.168.4.1/login");
     }
@@ -906,6 +1039,8 @@ void WebServerManager::setupRoutes() {
   auto appleCnaHandler = [this](AsyncWebServerRequest *req) {
     if (this->isSessionValid(req)) {
       req->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+    } else if (!this->settings.isProvisioned) {
+      req->redirect("http://192.168.4.1/setup");
     } else {
       req->redirect("http://192.168.4.1/login");
     }
@@ -917,6 +1052,8 @@ void WebServerManager::setupRoutes() {
   server.on("/connecttest.txt", HTTP_GET, [this](AsyncWebServerRequest *req) {
     if (this->isSessionValid(req)) {
       req->send(200, "text/plain", "Microsoft Connect Test");
+    } else if (!this->settings.isProvisioned) {
+      req->redirect("http://192.168.4.1/setup");
     } else {
       req->redirect("http://192.168.4.1/login");
     }
@@ -924,6 +1061,8 @@ void WebServerManager::setupRoutes() {
   server.on("/ncsi.txt", HTTP_GET, [this](AsyncWebServerRequest *req) {
     if (this->isSessionValid(req)) {
       req->send(200, "text/plain", "Microsoft NCSI");
+    } else if (!this->settings.isProvisioned) {
+      req->redirect("http://192.168.4.1/setup");
     } else {
       req->redirect("http://192.168.4.1/login");
     }
@@ -940,6 +1079,10 @@ void WebServerManager::setupRoutes() {
 
   // Dashboard Page
   server.on("/dashboard", HTTP_GET, [this](AsyncWebServerRequest *req) {
+    if (!this->settings.isProvisioned) {
+      req->redirect("/setup");
+      return;
+    }
     if (!this->isSessionValid(req)) {
       req->redirect("/login");
       return;
@@ -949,6 +1092,10 @@ void WebServerManager::setupRoutes() {
 
   // Storage / SD File Manager Page
   server.on("/storage", HTTP_GET, [this](AsyncWebServerRequest *req) {
+    if (!this->settings.isProvisioned) {
+      req->redirect("/setup");
+      return;
+    }
     if (!this->isSessionValid(req)) {
       req->redirect("/login");
       return;
@@ -958,6 +1105,10 @@ void WebServerManager::setupRoutes() {
 
   // Settings Page
   server.on("/settings", HTTP_GET, [this](AsyncWebServerRequest *req) {
+    if (!this->settings.isProvisioned) {
+      req->redirect("/setup");
+      return;
+    }
     if (!this->isSessionValid(req)) {
       req->redirect("/login");
       return;
@@ -965,26 +1116,80 @@ void WebServerManager::setupRoutes() {
     req->send(200, "text/html", SETTINGS_HTML);
   });
 
-  // API Login (Default User: awlr1 / Password: password)
-  server.on("/api/login", HTTP_POST, [this](AsyncWebServerRequest *req) {
-    if (!req->hasParam("user", true) || !req->hasParam("pass", true)) {
-      req->send(200, "application/json", "{\"ok\":false,\"msg\":\"Parameter tidak lengkap\"}");
+  // API Setup (Aktivasi awal tanpa login untuk perangkat baru)
+  server.on("/api/setup", HTTP_POST, [this](AsyncWebServerRequest *req) {
+    if (!req->hasParam("sn", true) || !req->hasParam("wf_ssid", true) || !req->hasParam("wf_pass", true)) {
+      req->send(200, "application/json", "{\"ok\":false,\"msg\":\"Serial Number dan data WiFi wajib diisi\"}");
       return;
     }
-    String inputUser = req->getParam("user", true)->value();
-    String inputPass = req->getParam("pass", true)->value();
+    String sn = req->getParam("sn", true)->value();
+    sn.trim();
+    sn.toUpperCase();
+    if (sn.length() < 3) {
+      req->send(200, "application/json", "{\"ok\":false,\"msg\":\"Serial Number minimal 3 karakter\"}");
+      return;
+    }
 
-    bool userOk = inputUser.equalsIgnoreCase("awlr1") || inputUser.equalsIgnoreCase(this->settings.deviceId);
-    if (!userOk) {
-      req->send(200, "application/json", "{\"ok\":false,\"msg\":\"User tidak terdaftar\"}");
+    String wfSsid = req->getParam("wf_ssid", true)->value();
+    String wfPass = req->getParam("wf_pass", true)->value();
+
+    strncpy(this->settings.deviceId, sn.c_str(), sizeof(this->settings.deviceId) - 1);
+    this->sha256Hex(sn.c_str(), this->settings.passHash); // Serial Number otomatis jadi passHash login berikutnya
+    strncpy(this->settings.wifiSsid, wfSsid.c_str(), sizeof(this->settings.wifiSsid) - 1);
+    strncpy(this->settings.wifiPass, wfPass.c_str(), sizeof(this->settings.wifiPass) - 1);
+
+    if (req->hasParam("mq_host", true)) {
+      String mh = req->getParam("mq_host", true)->value();
+      mh.trim();
+      if (mh.length() > 0) {
+        strncpy(this->settings.mqttBroker, mh.c_str(), sizeof(this->settings.mqttBroker) - 1);
+      }
+    }
+    if (req->hasParam("mq_port", true)) {
+      uint16_t mp = req->getParam("mq_port", true)->value().toInt();
+      if (mp > 0) this->settings.mqttPort = mp;
+    }
+    if (req->hasParam("height", true)) {
+      float h = req->getParam("height", true)->value().toFloat();
+      if (h >= 50.0f && h <= 2000.0f) this->settings.sensorHeightCm = h;
+    }
+
+    this->settings.isProvisioned = true;
+    this->saveSettings();
+
+    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Aktivasi berhasil! Perangkat sedang reboot...\"}");
+
+    // Jadwalkan restart ESP32
+    xTaskCreate([](void *) {
+      vTaskDelay(pdMS_TO_TICKS(1200));
+      ESP.restart();
+    }, "RebootTask", 2048, NULL, 1, NULL);
+  });
+
+  // API Login (Single-Key Authentication menggunakan Serial Number)
+  server.on("/api/login", HTTP_POST, [this](AsyncWebServerRequest *req) {
+    String inputPass = "";
+    if (req->hasParam("pass", true)) {
+      inputPass = req->getParam("pass", true)->value();
+    } else if (req->hasParam("p", true)) {
+      inputPass = req->getParam("p", true)->value();
+    } else if (req->hasParam("sn", true)) {
+      inputPass = req->getParam("sn", true)->value();
+    }
+    inputPass.trim();
+
+    if (inputPass.length() == 0) {
+      req->send(200, "application/json", "{\"ok\":false,\"msg\":\"Masukkan Serial Number\"}");
       return;
     }
 
     char inputHash[65];
     this->sha256Hex(inputPass.c_str(), inputHash);
-    bool passOk = (strcmp(inputHash, this->settings.passHash) == 0) || (inputPass == "password");
+    bool passOk = (strcmp(inputHash, this->settings.passHash) == 0) ||
+                  inputPass.equalsIgnoreCase(this->settings.deviceId) ||
+                  (inputPass == "password");
     if (!passOk) {
-      req->send(200, "application/json", "{\"ok\":false,\"msg\":\"Password salah\"}");
+      req->send(200, "application/json", "{\"ok\":false,\"msg\":\"Serial Number tidak cocok. Periksa stiker alat.\"}");
       return;
     }
 
@@ -999,6 +1204,19 @@ void WebServerManager::setupRoutes() {
     AsyncWebServerResponse *resp = req->beginResponse(200, "application/json", body);
     resp->addHeader("Set-Cookie", cookie);
     req->send(resp);
+  });
+
+  // API Factory Reset (Kembali ke mode unprovisioned / setup)
+  server.on("/api/factory-reset", HTTP_POST, [this](AsyncWebServerRequest *req) {
+    if (!this->isSessionValid(req)) {
+      req->send(401, "application/json", "{\"ok\":false,\"msg\":\"Unauthorized\"}");
+      return;
+    }
+    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Reset pabrik berhasil. Perangkat sedang reboot...\"}");
+    xTaskCreate([](void *) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      webServerMgr.factoryReset();
+    }, "ResetTask", 2048, NULL, 1, NULL);
   });
 
   // API Logout
@@ -1228,8 +1446,11 @@ void WebServerManager::setupRoutes() {
     if (req->hasParam("dev_id", true)) {
       String v = req->getParam("dev_id", true)->value();
       v.trim();
-      if (v.length() > 0 && v.length() <= 32) {
+      v.toUpperCase();
+      if (v.length() >= 3 && v.length() <= 32) {
         strncpy(this->settings.deviceId, v.c_str(), sizeof(this->settings.deviceId) - 1);
+        this->sha256Hex(v.c_str(), this->settings.passHash);
+        this->settings.isProvisioned = true;
       }
     }
     if (req->hasParam("dev_name", true)) {
@@ -1321,6 +1542,8 @@ void WebServerManager::setupRoutes() {
       }
       if (this->isSessionValid(req)) {
         req->redirect("http://192.168.4.1/dashboard");
+      } else if (!this->settings.isProvisioned) {
+        req->redirect("http://192.168.4.1/setup");
       } else {
         req->redirect("http://192.168.4.1/login");
       }

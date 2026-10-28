@@ -18,7 +18,10 @@ import {
   Compass, 
   Activity,
   User,
-  ExternalLink
+  ExternalLink,
+  Copy,
+  Wifi,
+  Smartphone
 } from 'lucide-react';
 
 export default function DeviceManagementView({ 
@@ -35,6 +38,8 @@ export default function DeviceManagementView({
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null); // null = Add mode, object = Edit mode
+  const [activationGuide, setActivationGuide] = useState(null); // Guide modal after creation
+  const [copiedSN, setCopiedSN] = useState(false);
   const [formData, setFormData] = useState({
     device_id: '',
     name: '',
@@ -105,6 +110,20 @@ export default function DeviceManagementView({
     fetchOperators();
   }, []);
 
+  const fetchNextSerialNumber = async () => {
+    try {
+      const res = await fetch('/api/devices/generate-sn', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const json = await res.json();
+      if (json.success && json.serial_number) {
+        setFormData(prev => ({ ...prev, device_id: json.serial_number }));
+      }
+    } catch (e) {
+      console.warn('Gagal generate serial number otomatis:', e);
+    }
+  };
+
   const openAddModal = () => {
     setEditingDevice(null);
     setFormData({
@@ -119,6 +138,7 @@ export default function DeviceManagementView({
     });
     setModalError(null);
     setIsModalOpen(true);
+    fetchNextSerialNumber();
   };
 
   const openEditModal = (dev) => {
@@ -165,10 +185,13 @@ export default function DeviceManagementView({
       if (json.success) {
         setIsModalOpen(false);
         fetchDevices();
+        if (json.activation_guide) {
+          setActivationGuide(json.activation_guide);
+        }
         if (onActionToast) {
           onActionToast(isEdit 
             ? `Stasiun ${formData.device_id} berhasil diperbarui` 
-            : `Stasiun ${formData.device_id} berhasil didaftarkan`);
+            : `Stasiun ${json.data?.device_id || formData.device_id} berhasil didaftarkan`);
         }
       } else {
         setModalError(json.error || 'Terjadi kesalahan saat menyimpan data');
@@ -633,23 +656,46 @@ export default function DeviceManagementView({
             {/* Form */}
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
-              {/* Field 1: Device ID */}
+              {/* Field 1: Device ID / Serial Number */}
               <div className="form-group">
-                <label className="form-label">
-                  <span>ID PERANGKAT (KODE UNIK MQTT) *</span>
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>SERIAL NUMBER / ID PERANGKAT *</span>
+                  {!editingDevice && (
+                    <button
+                      type="button"
+                      onClick={fetchNextSerialNumber}
+                      style={{
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#1d4ed8',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Generate Serial Number Baru Otomatis"
+                    >
+                      <RefreshCw size={11} />
+                      <span>Generate SN Otomatis</span>
+                    </button>
+                  )}
                   {editingDevice && <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>TIDAK DAPAT DIUBAH</span>}
                 </label>
                 <input
                   type="text"
                   className="form-input mono-text"
-                  placeholder="Contoh: AWLR-002"
+                  placeholder="Contoh: TF-AWLR-2610-001"
                   value={formData.device_id}
                   onChange={(e) => setFormData({ ...formData, device_id: e.target.value.toUpperCase() })}
                   disabled={Boolean(editingDevice)}
                   required
                 />
                 <span className="form-helper">
-                  Digunakan sebagai pengenal topik MQTT (misal: <code>terraflow/{formData.device_id || 'ID'}/data</code>)
+                  Nomor seri fisik perangkat & pengenal topik MQTT (<code>terraflow/{formData.device_id || 'SN'}/data</code>)
                 </span>
               </div>
 
@@ -931,6 +977,140 @@ export default function DeviceManagementView({
                 className="btn btn-danger"
               >
                 Ya, Hapus Stasiun
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Modal Panduan Aktivasi & Checklist Teknisi */}
+      {activationGuide && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setActivationGuide(null); }}>
+          <div className="modal-card" style={{ maxWidth: '540px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '18px',
+              paddingBottom: '14px',
+              borderBottom: '1px solid #e2e8f0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#059669'
+                }}>
+                  <CheckCircle2 size={24} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                    Perangkat Berhasil Didaftarkan!
+                  </h2>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                    Panduan Aktivasi & Checklist Teknisi Lapangan
+                  </span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setActivationGuide(null)} 
+                className="modal-close-btn"
+                title="Tutup dialog"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Serial Number Hero Box */}
+            <div style={{
+              background: '#f8fafc',
+              border: '2px dashed #003882',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              marginBottom: '20px',
+              textAlign: 'center'
+            }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                SERIAL NUMBER / KUNCI AKTIVASI
+              </span>
+              <div style={{
+                fontSize: '1.6rem',
+                fontWeight: 900,
+                color: '#003882',
+                letterSpacing: '0.04em',
+                fontFamily: 'monospace',
+                margin: '6px 0 10px'
+              }}>
+                {activationGuide.serial_number}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(activationGuide.serial_number);
+                  setCopiedSN(true);
+                  setTimeout(() => setCopiedSN(false), 2000);
+                }}
+                className="btn btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '6px 14px', margin: '0 auto' }}
+              >
+                {copiedSN ? <Check size={14} style={{ color: '#16a34a' }} /> : <Copy size={14} />}
+                <span>{copiedSN ? 'Tersalin ke Clipboard!' : 'Salin Serial Number'}</span>
+              </button>
+            </div>
+
+            {/* Checklist Steps */}
+            <div style={{ marginBottom: '22px' }}>
+              <h4 style={{ fontSize: '0.86rem', fontWeight: 700, color: '#334155', marginBottom: '10px' }}>
+                📋 Langkah Aktivasi Lapangan:
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {activationGuide.checklist && activationGuide.checklist.map((step, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    fontSize: '0.82rem',
+                    color: '#475569',
+                    lineHeight: 1.5,
+                    background: '#f1f5f9',
+                    padding: '8px 12px',
+                    borderRadius: '8px'
+                  }}>
+                    <span style={{
+                      background: '#003882',
+                      color: '#fff',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      {idx + 1}
+                    </span>
+                    <span>{step}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setActivationGuide(null)}
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                <span>Mengerti, Tutup Panduan</span>
               </button>
             </div>
           </div>

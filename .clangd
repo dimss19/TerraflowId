@@ -1,11 +1,29 @@
 CompileFlags:
   Remove:
+    - "-mlong-calls"
     - "-mlongcalls"
     - "-fstrict-volatile-bitfields"
     - "-fno-tree-switch-conversion"
     - "-freorder-blocks"
     - "-fno-jump-tables"
+    - "-mtext-section-literals"
+    - "-fstack-protector"
+    - "-mfix-esp32-psram-cache-issue"
   Add:
-    - "-mlong-calls"
-    - "-D__XTENSA__=1"
     - "-Wno-unknown-warning-option"
+    - "-Wno-unused-command-line-argument"
+    - "-ferror-limit=0"
+    - "-D__XTENSA__=1"
+    - "-D_GNU_SOURCE=1"
+    - "-DWITH_POSIX=1"
+    - "-DESP_PLATFORM=1"
+    - "-DARDUINO=10812"
+    - "-DARDUINO_ARCH_ESP32=1"
+    - "-isystemC:/Users/acer/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include"
+    - "-isystemC:/Users/acer/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/sys-include"
+    - "-isystemC:/Users/acer/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/newlib/platform_include"
+
+Diagnostics:
+  Suppress:
+    - "drv_unsupported_opt_for_target"
+    - "pp_file_not_found"

@@ -50,6 +50,37 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/devices/generate-sn - Generate recommended unique Serial Number (Admin Only)
+router.get('/generate-sn', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `TF-AWLR-${yy}${mm}-`;
+
+    const result = await query(
+      "SELECT device_id FROM devices WHERE device_id LIKE $1 ORDER BY device_id DESC LIMIT 1",
+      [`${prefix}%`]
+    );
+
+    let nextSeq = 1;
+    if (result.rows.length > 0) {
+      const lastId = result.rows[0].device_id;
+      const parts = lastId.split('-');
+      const lastNum = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastNum)) {
+        nextSeq = lastNum + 1;
+      }
+    }
+
+    const serialNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+    res.json({ success: true, serial_number: serialNumber });
+  } catch (err) {
+    console.error('[API Error GET /devices/generate-sn]', err.message);
+    res.status(500).json({ success: false, error: 'Gagal membuat serial number' });
+  }
+});
+
 // GET /api/devices/:device_id - Get specific device details
 router.get('/:device_id', authenticateToken, async (req, res) => {
   const { device_id } = req.params;
@@ -228,16 +259,39 @@ router.post('/:device_id/test-mode', authenticateToken, async (req, res) => {
 
 // POST /api/devices - Register new AWLR device (Admin Only)
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
-  const { device_id, name, location, latitude, longitude, sensor_height_cm, is_active, assigned_to } = req.body;
+  let { device_id, name, location, latitude, longitude, sensor_height_cm, is_active, assigned_to } = req.body;
 
-  if (!device_id || !name) {
+  if (!name || String(name).trim().length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'ID Perangkat (device_id) dan Nama Perangkat wajib diisi'
+      error: 'Nama Perangkat wajib diisi'
     });
   }
 
-  const cleanDeviceId = String(device_id).trim().toUpperCase();
+  // If device_id is not provided or set to 'AUTO', generate next serial number automatically
+  let cleanDeviceId = device_id ? String(device_id).trim().toUpperCase() : '';
+  if (!cleanDeviceId || cleanDeviceId === 'AUTO') {
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `TF-AWLR-${yy}${mm}-`;
+
+    const result = await query(
+      "SELECT device_id FROM devices WHERE device_id LIKE $1 ORDER BY device_id DESC LIMIT 1",
+      [`${prefix}%`]
+    );
+
+    let nextSeq = 1;
+    if (result.rows.length > 0) {
+      const lastId = result.rows[0].device_id;
+      const parts = lastId.split('-');
+      const lastNum = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastNum)) {
+        nextSeq = lastNum + 1;
+      }
+    }
+    cleanDeviceId = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+  }
   if (!/^[A-Z0-9_-]{3,50}$/.test(cleanDeviceId)) {
     return res.status(400).json({
       success: false,
@@ -298,10 +352,27 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
       VALUES ($1, $2, 0.00, 1.000000, NOW(), $3, 'Inisialisasi perangkat baru', true)
     `, [cleanDeviceId, parsedHeight, req.user?.username || 'admin']);
 
+    const activationGuide = {
+      serial_number: cleanDeviceId,
+      name: cleanName,
+      setup_ssid: 'TerraFlow-Setup',
+      portal_url: 'http://192.168.4.1',
+      checklist: [
+        'Nyalakan perangkat fisik ESP32 dalam jangkauan',
+        'Hubungkan smartphone/laptop ke WiFi "TerraFlow-Setup" (tanpa password)',
+        'Buka browser ke http://192.168.4.1 (langsung terbuka form aktivasi)',
+        `Ketikkan Serial Number: ${cleanDeviceId}`,
+        'Masukkan SSID dan Password WiFi lokasi stasiun',
+        'Klik "Aktifkan & Simpan" (perangkat akan reboot)',
+        `Setelah aktif, SSID berubah menjadi "TerraFlow-${cleanDeviceId}" dan Serial Number menjadi kunci login portal.`
+      ]
+    };
+
     res.status(201).json({
       success: true,
       message: `Perangkat ${cleanDeviceId} berhasil didaftarkan`,
-      data: insertResult.rows[0]
+      data: insertResult.rows[0],
+      activation_guide: activationGuide
     });
   } catch (err) {
     console.error('[API Error POST /devices]', err.message);

@@ -30,7 +30,8 @@ void SensorA16::attachUart() {
   // agar pin matrix GPIO 8 pasti kembali ke RX2 setelah akses RTC.
   rtcMgr.releaseBus();
   RS485Serial.end();
-  delay(20);
+  pinMode(PIN_RS485_RX, INPUT); // Reset mode pin dari Open-Drain I2C ke digital INPUT
+  delay(10);
   // Listen-only: TX = PIN_RS485_TX (-1 = tidak dipakai). Sensor UART Auto tidak butuh
   // trigger; pin RX sensor (kabel kuning) dipull-up agar output "terproses" (stabil).
   RS485Serial.begin(9600, SERIAL_8N1, PIN_RS485_RX, PIN_RS485_TX);

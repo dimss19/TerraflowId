@@ -76,12 +76,14 @@ bool RtcManager::readDateTime(struct tm &timeinfo) {
   Wire.write((uint8_t)0x00);
   if (Wire.endTransmission() != 0) {
     rtcDetected = false;
+    releaseBus();
     return false;
   }
 
   // Minta 7 byte waktu: detik, menit, jam, hari-minggu, tanggal, bulan, tahun
   uint8_t count = Wire.requestFrom((uint8_t)RTC_I2C_ADDR, (uint8_t)7);
   if (count < 7) {
+    releaseBus();
     return false;
   }
 
@@ -102,6 +104,7 @@ bool RtcManager::readDateTime(struct tm &timeinfo) {
 
   // Validasi batas logis
   if (sec > 59 || min > 59 || hour > 23 || day < 1 || day > 31 || mon < 1 || mon > 12 || year < 2024 || year > 2099) {
+    releaseBus();
     return false;
   }
 
@@ -123,6 +126,7 @@ bool RtcManager::readDateTime(struct tm &timeinfo) {
     lastTemperature = (float)tempMsb + ((tempLsb >> 6) * 0.25f);
   }
 
+  releaseBus();
   rtcDetected = true;
   return true;
 }

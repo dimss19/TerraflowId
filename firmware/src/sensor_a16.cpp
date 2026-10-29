@@ -204,6 +204,7 @@ A16Reading SensorA16::readFilteredDistance(int sampleCount) {
     result.temperatureC = rtcMgr.getTemperature();
     result.timestamp = millis() / 1000;
     result.validSamples = (int)validSamples.size();
+    result.spreadCm = spreadCm;
     result.errorMsg = "";
 
     lastValidDistance = result.filteredDistanceCm;

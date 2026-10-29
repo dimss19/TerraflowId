@@ -217,6 +217,57 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <button id="btnSleepNow" onclick="sleepNow()" style="background:#2563eb;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;width:auto;margin:0">Mulai Mode Tidur Sekarang</button>
 </div>
 
+<!-- KARTU UJI SUDUT & KALIBRASI LAPANGAN (1 MENIT) -->
+<div id="alignCard" style="background:#0f2942;border:1px solid #0284c7;border-radius:12px;padding:16px 20px;margin-bottom:20px;box-shadow:0 4px 14px rgba(0,0,0,0.3)">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+<div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-size:18px">🎯</span>
+<h3 style="margin:0;font-size:15px;color:#38bdf8;font-weight:800">Uji Sudut &amp; Kalibrasi Lapangan (1 Menit)</h3>
+<span id="testBadge" style="display:none;background:#22c55e;color:#0b1120;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">STREAM 1 DETIK</span>
+</div>
+<p style="margin:4px 0 0;font-size:12px;color:#94a3b8">
+Streaming 1Hz untuk memastikan sensor tegak lurus 90&deg; dan mengunci tinggi tiang sensor (H) sebelum alat ditinggalkan.
+</p>
+</div>
+<div style="display:flex;align-items:center;gap:10px">
+<span id="countdown60" style="display:none;font-size:15px;font-weight:800;color:#facc15;font-family:monospace">Sisa: 60s</span>
+<button id="btnTest60" onclick="toggleTest60s()" style="background:#0284c7;color:#fff;border:none;padding:9px 18px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">
+▶ Mulai Uji 1 Menit
+</button>
+</div>
+</div>
+
+<div id="alignResult" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid #1e3a5f">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+<div style="background:#0b1d30;border:1px solid #1e3a5f;border-radius:8px;padding:12px">
+<small style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase">Kondisi Kemiringan Sudut</small>
+<div id="angleStatus" style="font-size:15px;font-weight:800;color:#4ade80;margin-top:4px">MEMERIKSA...</div>
+<small id="angleDesc" style="color:#64748b;font-size:11px;display:block;margin-top:2px">Menunggu sampel...</small>
+</div>
+<div style="background:#0b1d30;border:1px solid #1e3a5f;border-radius:8px;padding:12px">
+<small style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase">Fluktuasi Pantulan (Spread)</small>
+<div id="spreadVal" style="font-size:15px;font-weight:800;color:#38bdf8;margin-top:4px;font-family:monospace">-- cm</div>
+<small id="spreadDesc" style="color:#64748b;font-size:11px;display:block;margin-top:2px">&plusmn; deviasi</small>
+</div>
+<div style="background:#0b1d30;border:1px solid #1e3a5f;border-radius:8px;padding:12px">
+<small style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase">Jarak Rata-Rata (Median)</small>
+<div id="medianDist" style="font-size:15px;font-weight:800;color:#facc15;margin-top:4px;font-family:monospace">-- cm</div>
+<small id="sampleCountText" style="color:#64748b;font-size:11px;display:block;margin-top:2px">0 frame terekam</small>
+</div>
+</div>
+
+<div id="saveHBox" style="margin-top:14px;display:none;background:#064e3b;border:1px solid #059669;border-radius:8px;padding:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+<div style="font-size:12px;color:#a7f3d0">
+&check; <b>Uji 1 Menit Selesai!</b> Jarak rata-rata terukur: <b id="finalH" style="color:#fff">-- cm</b>. Sudut sensor dinyatakan stabil.
+</div>
+<button id="btnSaveH" onclick="saveMeasuredH()" style="background:#10b981;color:#fff;border:none;padding:7px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">
+💾 Simpan Sebagai Tinggi Sensor (H)
+</button>
+</div>
+</div>
+</div>
+
 <div class="hdr">
 <div>
 <h1>Monitoring Lapangan (Raw Distance)</h1>
@@ -305,6 +356,119 @@ function applyStatus(d){
     var txt=s>=3600?(s/3600)+' Jam':s>=60?(s/60)+' Menit':s+' Detik';
     document.getElementById('curInterval').textContent=txt;
   }
+
+  if(d.test_mode){
+    if(!testModeRunning){
+      testModeRunning=true;
+      document.getElementById('btnTest60').textContent='⏹ Hentikan Uji';
+      document.getElementById('btnTest60').style.background='#dc2626';
+      document.getElementById('testBadge').style.display='inline-block';
+      document.getElementById('countdown60').style.display='inline-block';
+      document.getElementById('alignResult').style.display='block';
+    }
+    if(d.test_remaining_sec!=null){
+      document.getElementById('countdown60').textContent='Sisa: '+d.test_remaining_sec+'s';
+    }
+    if(dist!=null&&dist>0){
+      testHistory.push(dist);
+      if(testHistory.length>60)testHistory.shift();
+      var minV=Math.min.apply(null,testHistory);
+      var maxV=Math.max.apply(null,testHistory);
+      var sp=maxV-minV;
+      var sArr=testHistory.slice().sort(function(a,b){return a-b;});
+      var medV=sArr[Math.floor(sArr.length/2)];
+      var aStat=document.getElementById('angleStatus');
+      var aDesc=document.getElementById('angleDesc');
+      if(sp<=0.6){
+        aStat.innerHTML='🟢 TEGAK LURUS (OPTIMAL)';
+        aStat.style.color='#4ade80';
+        aDesc.textContent='Sudut 90° sempurna, pantulan echo maksimal.';
+      }else if(sp<=2.0){
+        aStat.innerHTML='🟡 CUKUP (CEK KEMIRINGAN)';
+        aStat.style.color='#facc15';
+        aDesc.textContent='Ada variasi riak. Arahkan lebih tegak lurus.';
+      }else{
+        aStat.innerHTML='🔴 SUDUT MIRING / MULTI-ECHO';
+        aStat.style.color='#f87171';
+        aDesc.textContent='Variasi tinggi (>2cm). Luruskan posisi bracket sensor!';
+      }
+      document.getElementById('spreadVal').textContent='±'+(sp/2).toFixed(1)+' cm (Δ '+sp.toFixed(1)+'cm)';
+      document.getElementById('medianDist').textContent=medV.toFixed(1)+' cm';
+      document.getElementById('sampleCountText').textContent=testHistory.length+' frame terekam';
+    }
+    if(d.test_remaining_sec===0&&testModeRunning){
+      resetTestUi();
+      if(testHistory.length>5){
+        var sFinal=testHistory.slice().sort(function(a,b){return a-b;});
+        var finalMed=sFinal[Math.floor(sFinal.length/2)];
+        document.getElementById('saveHBox').style.display='flex';
+        document.getElementById('finalH').textContent=finalMed.toFixed(1)+' cm';
+      }
+    }
+  }else if(testModeRunning){
+    resetTestUi();
+    if(testHistory.length>5){
+      var sFinal2=testHistory.slice().sort(function(a,b){return a-b;});
+      var finalMed2=sFinal2[Math.floor(sFinal2.length/2)];
+      document.getElementById('saveHBox').style.display='flex';
+      document.getElementById('finalH').textContent=finalMed2.toFixed(1)+' cm';
+    }
+  }
+}
+
+var testModeRunning=false;
+var testHistory=[];
+function toggleTest60s(){
+  var b=document.getElementById('btnTest60');
+  var en=!testModeRunning;
+  b.disabled=true;
+  fetch('/api/test-mode',{
+    method:'POST',
+    headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
+    body:'enable='+(en?'1':'0')+'&duration=60'
+  }).then(function(r){return r.json();}).then(function(d){
+    b.disabled=false;
+    testModeRunning=en;
+    if(en){
+      testHistory=[];
+      b.textContent='⏹ Hentikan Uji';
+      b.style.background='#dc2626';
+      document.getElementById('testBadge').style.display='inline-block';
+      document.getElementById('countdown60').style.display='inline-block';
+      document.getElementById('alignResult').style.display='block';
+      document.getElementById('saveHBox').style.display='none';
+      stopPoll();
+      pollTimer=setInterval(u,1000);
+    }else{
+      resetTestUi();
+    }
+  }).catch(function(e){b.disabled=false;alert('Error: '+e.message);});
+}
+function resetTestUi(){
+  testModeRunning=false;
+  var b=document.getElementById('btnTest60');
+  b.textContent='▶ Mulai Uji 1 Menit';
+  b.style.background='#0284c7';
+  document.getElementById('testBadge').style.display='none';
+  document.getElementById('countdown60').style.display='none';
+  stopPoll();
+  startPoll();
+}
+function saveMeasuredH(){
+  if(testHistory.length===0)return;
+  var s=testHistory.slice().sort(function(a,b){return a-b;});
+  var med=s[Math.floor(s.length/2)];
+  if(!med||isNaN(med))return;
+  var b=document.getElementById('btnSaveH');
+  b.disabled=true;b.textContent='Menyimpan ke NVS...';
+  fetch('/api/settings',{
+    method:'POST',
+    headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
+    body:'height='+med.toFixed(1)
+  }).then(function(r){return r.json();}).then(function(){
+    b.disabled=false;b.textContent='✅ Berhasil Disimpan di NVS!';
+    setTimeout(function(){b.textContent='💾 Simpan Sebagai Tinggi Sensor (H)';},3500);
+  }).catch(function(e){b.disabled=false;alert('Error: '+e.message);});
 }
 
 var pollTimer=null;
@@ -1268,6 +1432,8 @@ void WebServerManager::setupRoutes() {
     doc["sampling_interval_sec"] = this->settings.samplingIntervalSec;
     doc["test_mode"] = this->isTestModeActive();
     doc["test_remaining_sec"] = this->getRemainingTestSec();
+    doc["spread_cm"] = snap.spreadCm;
+    doc["valid_samples"] = snap.validSamples;
 
     char buf[512];
     serializeJson(doc, buf);

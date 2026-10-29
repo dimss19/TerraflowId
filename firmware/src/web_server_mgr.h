@@ -44,6 +44,8 @@ struct TelemetrySnapshot {
   char lastSampleTime[32];
   int portalRemainingSec;
   uint32_t samplingIntervalSec;
+  float spreadCm;
+  int validSamples;
 };
 
 class WebServerManager {

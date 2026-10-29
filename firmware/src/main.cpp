@@ -170,6 +170,8 @@ void samplingTask(void *pvParameters) {
     snap.readingCount = readingCount;
     snap.wifiConnected = (WiFi.status() == WL_CONNECTED);
     snap.mqttConnected = mqttMgr.isConnected();
+    snap.spreadCm = reading.spreadCm;
+    snap.validSamples = reading.validSamples;
     strncpy(snap.dataSource, dataSource, sizeof(snap.dataSource) - 1);
     snprintf(snap.lastSampleTime, sizeof(snap.lastSampleTime), "%lu s", (unsigned long)(millis() / 1000));
     webServerMgr.updateTelemetry(snap);

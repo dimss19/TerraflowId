@@ -236,6 +236,9 @@ bool MqttManager::publishReading(const LogRecord &record, int readingCount, cons
   doc["reading_count"] = readingCount;
   doc["source"] = source;
   doc["is_test"] = webServerMgr.isTestModeActive();
+  TelemetrySnapshot snap = webServerMgr.getTelemetry();
+  doc["spread_cm"] = snap.spreadCm;
+  doc["valid_samples"] = snap.validSamples;
 
   char buf[512];
   serializeJson(doc, buf);

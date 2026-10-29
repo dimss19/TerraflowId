@@ -17,6 +17,7 @@ struct A16Reading {
   float temperatureC;           // Suhu board dari RTC DS3231 (informasi saja, tidak dipakai koreksi)
   uint32_t timestamp;           // Reading timestamp (seconds)
   int validSamples;             // Number of valid burst samples accepted in filter
+  float spreadCm;               // Sebaran sampel (max - min) untuk analisa sudut & kestabilan
   String errorMsg;              // Error description if invalid
 };
 

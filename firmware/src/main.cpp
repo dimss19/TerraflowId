@@ -38,18 +38,19 @@ void samplingTask(void *pvParameters) {
     if (!inTestMode && intervalSec < 15) intervalSec = 15;
     TickType_t cycleInterval = pdMS_TO_TICKS(intervalSec * 1000);
 
+    // 1. Akuisisi Data Sensor A16 (Fast Sample < 50ms saat mode test persis sensor_test.cpp)
+    CalibrationData calib = mqttMgr.getCalibration();
+    A16Reading reading;
+
     if (inTestMode) {
-      Serial.printf("[TEST MODE 1s #%d] Akuisisi stream cepat tiap detik...\n", readingCount);
+      reading = sensor.readFastSample();
     } else {
       Serial.printf("\n[SIKLUS #%d] Memulai sampling sensor AWLR (Interval: %lu dtk)...\n",
         readingCount, (unsigned long)intervalSec);
+      reading = sensor.readFilteredDistance(9);
     }
 
-    // 1. Akuisisi Data dari Sensor Fisik A16 (3 sampel saat test mode agar responsif tiap detik)
-    A16Reading reading = sensor.readFilteredDistance(inTestMode ? 3 : 9);
     const char *dataSource = inTestMode ? "test" : "none";
-
-    CalibrationData calib = mqttMgr.getCalibration();
     float effectiveDist = 0.0f;
     float waterLevel = 0.0f;
 
@@ -61,14 +62,43 @@ void samplingTask(void *pvParameters) {
       dataSource = "blind_spot";
       effectiveDist = 50.0f;
       waterLevel = calib.sensorHeightCm - (effectiveDist * calib.slope + calib.offsetCm);
-      Serial.println("🚨 [PERINGATAN AWLR] Blind Spot terdeteksi! Muka air berada <= 50 cm dari sensor (Potensi banjir ekstrem / luapan air)!");
-      if (mqttMgr.isConnected()) {
-        mqttMgr.publishAlert("BLIND_SPOT", "CRITICAL", "Muka air terdeteksi masuk ke zona buta (<= 50 cm). Sensor hampir terendam!");
+      if (!inTestMode) {
+        Serial.println("🚨 [PERINGATAN AWLR] Blind Spot terdeteksi! Muka air berada <= 50 cm dari sensor (Potensi banjir ekstrem / luapan air)!");
+        if (mqttMgr.isConnected()) {
+          mqttMgr.publishAlert("BLIND_SPOT", "CRITICAL", "Muka air terdeteksi masuk ke zona buta (<= 50 cm). Sensor hampir terendam!");
+        }
       }
     } else {
       dataSource = "error";
-      Serial.printf("[SENSOR PERINGATAN] Sensor A16 tidak terbaca: %s. Mencatat status menit ini agar kontinuitas data 1 menit tidak putus.\n",
-        reading.errorMsg.c_str());
+      effectiveDist = reading.rawDistanceCm;
+      waterLevel = 0.0f;
+      if (!inTestMode) {
+        Serial.printf("[SENSOR PERINGATAN] Sensor A16 tidak terbaca: %s. Mencatat status menit ini agar kontinuitas data 1 menit tidak putus.\n",
+          reading.errorMsg.c_str());
+      }
+    }
+
+    // Tampilan Serial Monitor Persis seperti sensor_test.cpp saat Mode Uji Aktif
+    if (inTestMode) {
+      uint16_t distMm = (uint16_t)(reading.rawDistanceCm * 10.0f);
+      if (reading.isValid) {
+        Serial.printf("🎯 [OK VALID #%d] Raw: [%02X %02X %02X %02X] -> JARAK: %5u mm (%6.1f cm) | %5.2f meter | TMA: %6.1f cm\n",
+          readingCount,
+          reading.rawHex[0], reading.rawHex[1], reading.rawHex[2], reading.rawHex[3],
+          distMm, reading.rawDistanceCm, reading.rawDistanceCm / 100.0f, waterLevel);
+      } else if (reading.isBlindSpot) {
+        Serial.printf("🚨 [BLIND SPOT TERDETEKSI! #%d] Raw: [%02X %02X %02X %02X] -> Jarak: %u mm (%.1f cm) (Objek/Air <= 50 cm di Zona Buta!)\n",
+          readingCount,
+          reading.rawHex[0], reading.rawHex[1], reading.rawHex[2], reading.rawHex[3],
+          distMm, reading.rawDistanceCm);
+      } else if (reading.errorMsg == "NO_ECHO") {
+        Serial.printf("⚠️ [FRAME VALID | NO ECHO #%d] Raw: [%02X %02X %02X %02X] -> Jarak: 0 mm (Target terlalu jauh/miring)\n",
+          readingCount,
+          reading.rawHex[0], reading.rawHex[1], reading.rawHex[2], reading.rawHex[3]);
+      } else {
+        Serial.printf("❌ [A16 TIMEOUT #%d] Tidak ada frame valid dari sensor pada GPIO 8! (Memeriksa wiring sensor...)\n",
+          readingCount);
+      }
     }
 
     LogRecord record;
@@ -136,24 +166,28 @@ void samplingTask(void *pvParameters) {
     record.temperatureC = reading.temperatureC;
     record.isSent = false;
 
-    // 2. Simpan ke Kartu MicroSD (Offline-First)
-    String filename = webServerMgr.getCurrentLogFilename();
-    sdLogger.appendRecord(filename, record);
+    // 2. Simpan ke Kartu MicroSD (Hanya saat mode normal untuk performa instan mode uji)
+    if (!inTestMode) {
+      String filename = webServerMgr.getCurrentLogFilename();
+      sdLogger.appendRecord(filename, record);
+    }
 
     // 3. Publikasikan Telemetri via MQTT
     if (mqttMgr.isConnected()) {
       bool ok = mqttMgr.publishReading(record, readingCount, dataSource);
-      if (ok) {
+      if (ok && !inTestMode) {
         record.isSent = true;
+        String filename = webServerMgr.getCurrentLogFilename();
         sdLogger.markRecordSent(filename, record.timestamp);
         Serial.printf("[TELEMETRI TERKIRIM] Level: %.1f cm | Jarak: %.1f cm | Suhu: %.1f°C | Sumber: %s | Jam: %s\n",
           waterLevel, reading.rawDistanceCm, reading.temperatureC, dataSource, record.time);
       }
 
-      if (sdLogger.getPendingCount() > 0) {
+      if (!inTestMode && sdLogger.getPendingCount() > 0) {
         mqttMgr.triggerBulkSync(sdLogger);
       }
-    } else {
+    } else if (!inTestMode) {
+      String filename = webServerMgr.getCurrentLogFilename();
       Serial.printf("[OFFLINE] MQTT tidak terhubung. Disimpan ke SD Card %s (%d antrean pending)\n",
         filename.c_str(), sdLogger.getPendingCount());
     }
@@ -485,12 +519,31 @@ void setup() {
 
   Serial.printf("[SYSTEM] TerraFlow AWLR running for Device '%s' with Multi-Device Unified Firmware.\n",
     webServerMgr.getEffectiveDeviceId().c_str());
+  Serial.println("💡 [TIPS] Tekan 't' di Serial Monitor kapan saja untuk mulai pengujian 1 detik (seperti sensor_test.cpp)!");
 }
 
 void loop() {
   feedWatchdog();
+
+  // Monitor perintah serial interaktif (seperti tools/sensor_test.cpp)
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == 't' || c == 'T') {
+      Serial.println("\n⚡ [SERIAL CMD] Mengaktifkan Mode Uji Cepat 1 Detik (Durasi 60 detik)...");
+      webServerMgr.setTestMode(true, 60);
+    } else if (c == 'q' || c == 'Q') {
+      Serial.println("\n⏹️ [SERIAL CMD] Menghentikan Mode Uji Cepat, kembali ke siklus normal...");
+      webServerMgr.setTestMode(false);
+    } else if (c == '?' || c == 'h' || c == 'H') {
+      Serial.println("\n--- BANTUAN PERINTAH SERIAL TERRAFLOW ---");
+      Serial.println("  't' : Mulai mode pengujian 1 detik seperti sensor_test.cpp (60 dtk)");
+      Serial.println("  'q' : Hentikan mode pengujian (kembali ke siklus normal)");
+      Serial.println("----------------------------------------");
+    }
+  }
+
   if (webServerMgr.isSleepRequested()) {
     enterDeepSleep();
   }
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  vTaskDelay(pdMS_TO_TICKS(50));
 }

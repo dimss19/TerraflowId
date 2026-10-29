@@ -17,7 +17,7 @@ constexpr unsigned long A16_FRAME_TIMEOUT_MS = 1500;
 constexpr unsigned long A16_BURST_BUDGET_MS = 6000;
 }
 
-SensorA16::SensorA16() : consecutiveFails(0), lastValidDistance(0.0f) {}
+SensorA16::SensorA16() : consecutiveFails(0), lastValidDistance(0.0f), uartActive(false) {}
 
 void SensorA16::flushRx() {
   while (RS485Serial.available()) {
@@ -35,8 +35,9 @@ void SensorA16::attachUart() {
   // Listen-only: TX = PIN_RS485_TX (-1 = tidak dipakai). Sensor UART Auto tidak butuh
   // trigger; pin RX sensor (kabel kuning) dipull-up agar output "terproses" (stabil).
   RS485Serial.begin(9600, SERIAL_8N1, PIN_RS485_RX, PIN_RS485_TX);
-  delay(20);
+  delay(15);
   flushRx();
+  uartActive = true;
 }
 
 void SensorA16::begin() {
@@ -69,9 +70,9 @@ void SensorA16::powerCycle() {
   reinitBus();
 }
 
-bool SensorA16::readFrame(uint16_t &distMm, unsigned long timeoutMs) {
+bool SensorA16::readFrame(uint16_t &distMm, unsigned long timeoutMs, uint8_t *outHex) {
   // Sliding window 4 byte: tahan terhadap mulai membaca di tengah frame
-  uint8_t win[4];
+  uint8_t win[4] = {0, 0, 0, 0};
   int filled = 0;
   unsigned long start = millis();
 
@@ -90,6 +91,9 @@ bool SensorA16::readFrame(uint16_t &distMm, unsigned long timeoutMs) {
       if (filled == 4 && win[0] == 0xFF &&
           (uint8_t)(win[0] + win[1] + win[2]) == win[3]) {
         distMm = ((uint16_t)win[1] << 8) | win[2];
+        if (outHex) {
+          memcpy(outHex, win, 4);
+        }
         return true;
       }
     }
@@ -107,10 +111,12 @@ A16Reading SensorA16::readSingleRaw() {
   reading.temperatureC = rtcMgr.getTemperature();
   reading.timestamp = millis() / 1000;
   reading.validSamples = 0;
+  reading.spreadCm = 0.0f;
   reading.errorMsg = "";
+  memset(reading.rawHex, 0, 4);
 
   uint16_t distMm = 0;
-  if (!readFrame(distMm, A16_FRAME_TIMEOUT_MS)) {
+  if (!readFrame(distMm, A16_FRAME_TIMEOUT_MS, reading.rawHex)) {
     reading.errorMsg = "TIDAK_ADA_FRAME_VALID";
     return reading;
   }
@@ -118,9 +124,9 @@ A16Reading SensorA16::readSingleRaw() {
   if (distMm == 0) {
     reading.errorMsg = "NO_ECHO";
   } else if (distMm <= A16_MIN_MM) {
-    // Sensor clamp di 500 mm (0x01F4) atau mengeluarkan angka lebih kecil saat objek di zona buta
     reading.isBlindSpot = true;
     reading.rawDistanceCm = distMm / 10.0f;
+    reading.filteredDistanceCm = 50.0f;
     reading.errorMsg = "BLIND_SPOT (<=50cm)";
   } else if (distMm > A16_MAX_MM) {
     reading.errorMsg = "OUT_OF_MAX_RANGE (>1500cm)";
@@ -133,12 +139,109 @@ A16Reading SensorA16::readSingleRaw() {
   return reading;
 }
 
+A16Reading SensorA16::readFastSample() {
+  if (!uartActive) {
+    attachUart();
+  }
+
+  A16Reading reading;
+  reading.isValid = false;
+  reading.isBlindSpot = false;
+  reading.rawDistanceCm = 0.0f;
+  reading.filteredDistanceCm = 0.0f;
+  reading.temperatureC = rtcMgr.getTemperature();
+  reading.timestamp = millis() / 1000;
+  reading.validSamples = 0;
+  reading.spreadCm = 0.0f;
+  reading.errorMsg = "TIDAK_ADA_FRAME_VALID";
+  memset(reading.rawHex, 0, 4);
+
+  uint8_t win[4] = {0, 0, 0, 0};
+  int filled = 0;
+  uint16_t latestDistMm = 0;
+  bool foundValid = false;
+  uint8_t latestHex[4] = {0, 0, 0, 0};
+
+  unsigned long start = millis();
+  // Mode Real-Time mengirimkan frame otomatis setiap ~100-300 ms.
+  // Tunggu maksimal 350 ms untuk mendapatkan frame paling segar dari kabel sensor.
+  while (millis() - start < 350) {
+    while (RS485Serial.available()) {
+      uint8_t b = (uint8_t)RS485Serial.read();
+      if (filled < 4) {
+        win[filled++] = b;
+      } else {
+        win[0] = win[1];
+        win[1] = win[2];
+        win[2] = win[3];
+        win[3] = b;
+      }
+
+      if (filled == 4 && win[0] == 0xFF) {
+        uint8_t expectedChecksum = (uint8_t)(win[0] + win[1] + win[2]);
+        uint8_t actualChecksum = win[3];
+        if (expectedChecksum == actualChecksum) {
+          latestDistMm = ((uint16_t)win[1] << 8) | win[2];
+          memcpy(latestHex, win, 4);
+          foundValid = true;
+        }
+      }
+    }
+    // Jika sudah menemukan frame valid dan buffer serial sudah terkuras habis
+    if (foundValid && !RS485Serial.available()) {
+      break;
+    }
+    delay(2);
+  }
+
+  if (!foundValid) {
+    consecutiveFails++;
+    return reading;
+  }
+
+  consecutiveFails = 0;
+  memcpy(reading.rawHex, latestHex, 4);
+  float distCm = latestDistMm / 10.0f;
+  reading.rawDistanceCm = distCm;
+
+  if (latestDistMm == 0) {
+    reading.errorMsg = "NO_ECHO";
+  } else if (latestDistMm <= A16_MIN_MM) {
+    reading.isBlindSpot = true;
+    reading.filteredDistanceCm = 50.0f;
+    reading.errorMsg = "BLIND_SPOT";
+  } else if (latestDistMm > A16_MAX_MM) {
+    reading.errorMsg = "OUT_OF_MAX_RANGE";
+  } else {
+    reading.isValid = true;
+    reading.filteredDistanceCm = distCm;
+    reading.validSamples = 1;
+    lastValidDistance = distCm;
+    reading.errorMsg = "";
+
+    // Simpan ke riwayat geser 10 sampel untuk hitung jitter / fluktuasi sudut
+    fastHistory.push_back(distCm);
+    if (fastHistory.size() > 10) {
+      fastHistory.erase(fastHistory.begin());
+    }
+    if (fastHistory.size() >= 2) {
+      float minD = *std::min_element(fastHistory.begin(), fastHistory.end());
+      float maxD = *std::max_element(fastHistory.begin(), fastHistory.end());
+      reading.spreadCm = maxD - minD;
+    }
+  }
+
+  return reading;
+}
+
 A16Reading SensorA16::readFilteredDistance(int sampleCount) {
   if (sampleCount < 1) sampleCount = 9;
   const int minValid = std::max(1, sampleCount / 3);
 
-  // Pastikan UART terpasang di GPIO 8 (bisa diambil alih RTC sejak siklus lalu)
-  attachUart();
+  // Pastikan UART terpasang di GPIO 8 jika belum aktif
+  if (!uartActive) {
+    attachUart();
+  }
 
   std::vector<float> validSamples;
   validSamples.reserve(sampleCount);

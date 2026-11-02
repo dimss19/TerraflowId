@@ -61,8 +61,8 @@ void MqttManager::loop() {
   if (WiFi.status() == WL_CONNECTED) {
     if (!client.connected()) {
       unsigned long now = millis();
-      if (now - lastReconnectAttempt > 10000) {
-        lastReconnectAttempt = now;
+      if (lastReconnectAttempt == 0 || now - lastReconnectAttempt > 5000) {
+        lastReconnectAttempt = (now == 0) ? 1 : now;
         reconnect();
       }
     } else {

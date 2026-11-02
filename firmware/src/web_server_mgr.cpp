@@ -4,6 +4,9 @@
 #include <time.h>
 #include <esp_wifi.h>
 #include "rtc_mgr.h"
+#include "mqtt_client.h"
+
+extern MqttManager mqttMgr;
 
 // Singleton instance
 WebServerManager webServerMgr;
@@ -379,8 +382,16 @@ function applyStatus(d){
   }
 
   var mq=document.getElementById('mq');
-  mq.textContent=d.mqtt_ok?'ONLINE':'OFFLINE';
-  mq.className='v '+(d.mqtt_ok?'ok':'bad');
+  if(d.mqtt_ok){
+    mq.textContent='ONLINE';
+    mq.className='v ok';
+  }else if(!d.wifi_ok){
+    mq.textContent='OFFLINE (No WiFi)';
+    mq.className='v warn';
+  }else{
+    mq.textContent='OFFLINE';
+    mq.className='v bad';
+  }
 
   var rtc=document.getElementById('rtc');
   if(rtc){
@@ -1417,6 +1428,15 @@ void WebServerManager::setupRoutes() {
       uint16_t mp = req->getParam("mq_port", true)->value().toInt();
       if (mp > 0) this->settings.mqttPort = mp;
     }
+    if (strcmp(this->settings.mqttBroker, "43.134.53.192") == 0 && this->settings.mqttPort == 1883) {
+      this->settings.mqttPort = 80;
+    }
+    if (strlen(this->settings.mqttUser) == 0) {
+      strncpy(this->settings.mqttUser, MQTT_USER, sizeof(this->settings.mqttUser) - 1);
+    }
+    if (strlen(this->settings.mqttPass) == 0) {
+      strncpy(this->settings.mqttPass, MQTT_PASS, sizeof(this->settings.mqttPass) - 1);
+    }
     if (req->hasParam("height", true)) {
       float h = req->getParam("height", true)->value().toFloat();
       if (h >= 50.0f && h <= 2000.0f) this->settings.sensorHeightCm = h;
@@ -1515,7 +1535,7 @@ void WebServerManager::setupRoutes() {
     doc["sd_ok"] = (this->sdLoggerRef && this->sdLoggerRef->isReady()) ? true : snap.sdCardOk;
     doc["pending_logs"] = (this->sdLoggerRef) ? this->sdLoggerRef->getPendingCount() : snap.pendingLogs;
     doc["wifi_ok"] = (WiFi.status() == WL_CONNECTED);
-    doc["mqtt_ok"] = snap.mqttConnected;
+    doc["mqtt_ok"] = mqttMgr.isConnected() || snap.mqttConnected;
     doc["source"] = snap.dataSource;
     doc["timestamp"] = snap.lastSampleTime;
     doc["token"] = this->sessionToken;

@@ -1,5 +1,8 @@
 #include "rtc_mgr.h"
 #include "config.h"
+#include "sensor_a16.h"
+
+extern SensorA16 sensor;
 
 // Singleton instance
 RtcManager rtcMgr;
@@ -27,6 +30,7 @@ void RtcManager::releaseBus() {
   // Lepaskan peripheral I2C agar GPIO 8 & 9 bisa digunakan UART jika diperlukan
   Wire.end();
   busAcquired = false;
+  sensor.markUartDirty();
   delay(5);
 }
 

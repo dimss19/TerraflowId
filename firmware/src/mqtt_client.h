@@ -33,6 +33,7 @@ public:
   bool publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount, int brownoutCount = 0);
   
   void triggerBulkSync(SdCardLogger &sdLogger);
+  bool isBulkSyncPending() const { return pendingBulk.active; }
   CalibrationData getCalibration() const;
 
 private:

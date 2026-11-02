@@ -403,10 +403,15 @@ std::vector<SdFileInfo> SdCardLogger::listDataFiles() {
   if (dir && dir.isDirectory()) {
     File entry = dir.openNextFile();
     while (entry && result.size() < 64) {
-      SdFileInfo info;
       String fn = String(entry.name());
       int sl = fn.lastIndexOf('/');
       if (sl >= 0) fn = fn.substring(sl + 1);
+      if (fn.startsWith(".") || (!entry.isDirectory() && !fn.endsWith(".csv"))) {
+        entry.close();
+        entry = dir.openNextFile();
+        continue;
+      }
+      SdFileInfo info;
       strncpy(info.name, fn.c_str(), sizeof(info.name) - 1);
       info.name[sizeof(info.name) - 1] = '\0';
       info.size = entry.size();

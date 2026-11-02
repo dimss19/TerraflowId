@@ -44,6 +44,7 @@ public:
   int getConsecutiveFailures() const { return consecutiveFails; }
   void resetFailureCount() { consecutiveFails = 0; }
   float getLastValidDistance() const { return lastValidDistance; }
+  void markUartDirty() { uartActive = false; }
 
 private:
   int consecutiveFails;

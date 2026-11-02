@@ -217,15 +217,20 @@ void samplingTask(void *pvParameters) {
     } else {
       time_t curNow = time(nullptr);
       struct tm curTm;
+      int secUntilNext = intervalSec;
       if (curNow > 1700000000 && localtime_r(&curNow, &curTm)) {
         time_t nextAligned = ((curNow / intervalSec) + 1) * intervalSec;
-        int secUntilNext = (int)(nextAligned - curNow);
+        secUntilNext = (int)(nextAligned - curNow);
         if (secUntilNext <= 0 || secUntilNext > (int)intervalSec) secUntilNext = intervalSec;
         Serial.printf("[SINKRONISASI JADWAL] Menunggu %d detik menuju siklus berikutnya (Interval: %lu dtk)...\n",
           secUntilNext, (unsigned long)intervalSec);
-        vTaskDelay(pdMS_TO_TICKS(secUntilNext * 1000));
-      } else {
-        vTaskDelayUntil(&lastWakeTime, cycleInterval);
+      }
+      // Tunggu dalam potongan 200ms agar responsif seketika jika mode uji diaktifkan
+      int waitMs = secUntilNext * 1000;
+      while (waitMs > 0 && !webServerMgr.isTestModeActive()) {
+        int chunk = (waitMs > 200) ? 200 : waitMs;
+        vTaskDelay(pdMS_TO_TICKS(chunk));
+        waitMs -= chunk;
       }
       lastWakeTime = xTaskGetTickCount();
     }
@@ -527,6 +532,19 @@ void setup() {
 
   webServerMgr.begin(&sdLogger);
   mqttMgr.begin();
+
+  // Telemetri awal agar portal langsung memiliki data awal sebelum pembacaan sensor pertama
+  TelemetrySnapshot initSnap;
+  memset(&initSnap, 0, sizeof(initSnap));
+  initSnap.signalRssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
+  initSnap.sdCardOk = sdLogger.isReady();
+  initSnap.pendingLogs = sdLogger.getPendingCount();
+  initSnap.wifiConnected = (WiFi.status() == WL_CONNECTED);
+  initSnap.mqttConnected = mqttMgr.isConnected();
+  initSnap.temperatureC = rtcMgr.isPresent() ? rtcMgr.getTemperature() : 0.0f;
+  strncpy(initSnap.dataSource, "standby", sizeof(initSnap.dataSource) - 1);
+  snprintf(initSnap.lastSampleTime, sizeof(initSnap.lastSampleTime), "Standby");
+  webServerMgr.updateTelemetry(initSnap);
 
   xTaskCreatePinnedToCore(
     samplingTask,

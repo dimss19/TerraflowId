@@ -23,10 +23,10 @@ CalibrationData MqttManager::getCalibration() const {
 
 void MqttManager::begin() {
   DeviceSettings &s = webServerMgr.getSettings();
-  wifiClient.setTimeout(10);
+  wifiClient.setTimeout(10000); // 10.000 ms (Stream::setTimeout menggunakan milidetik)
   client.setServer(s.mqttBroker, s.mqttPort);
   client.setBufferSize(2048); // Expand buffer for JSON bulk payloads
-  client.setSocketTimeout(10);
+  client.setSocketTimeout(10); // 10 detik (PubSubClient::setSocketTimeout menggunakan detik)
 
   client.setCallback([this](char *topic, byte *payload, unsigned int length) {
     this->handleMessage(topic, payload, length);

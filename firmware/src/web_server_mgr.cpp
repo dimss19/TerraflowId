@@ -333,33 +333,40 @@ function applyStatus(d){
 
   // Tampilkan Jarak Mentah (Raw Distance) di Kartu Utama / Hero Card
   var rawDist=d.distance!=null?Number(d.distance):null;
+  var dist=rawDist;
   var heroEl=document.getElementById('rawHeroVal');
-  var isBlind=Boolean(d.is_blind_spot)||(rawDist!=null&&rawDist<=50.0);
+  var isBlind=Boolean(d.is_blind_spot)||(rawDist!=null&&rawDist>0&&rawDist<=50.0);
 
-  if(rawDist!=null){
+  if(rawDist!=null&&rawDist>0){
     if(isBlind){
       heroEl.innerHTML='50.0<span>cm</span> <small style="display:block;font-size:16px;color:#f87171;font-weight:700;margin-top:4px">🚨 BLIND SPOT (&le;50 cm)</small>';
     } else {
       heroEl.innerHTML=rawDist.toFixed(1)+'<span>cm</span>';
     }
+  } else if(d.source==='error'){
+    heroEl.innerHTML='ERROR<span>sensor</span>';
   } else {
     heroEl.innerHTML='--<span>cm</span>';
   }
 
   // Tampilkan Filter Gelombang & TMA terhitung di sub-info
   var fDist=d.filtered_distance!=null?Number(d.filtered_distance):null;
-  if(fDist!=null){document.getElementById('filtDist').textContent=fDist.toFixed(1)+' cm';}
+  if(fDist!=null&&fDist>0){document.getElementById('filtDist').textContent=fDist.toFixed(1)+' cm';}
   var tma=d.water_level!=null?Number(d.water_level):null;
   if(tma!=null){document.getElementById('tmaSub').textContent=tma.toFixed(1)+' cm';}
   document.getElementById('srcBadge').textContent=(d.source||'--').toUpperCase();
 
   var tmp=document.getElementById('tmp');
-  if(d.temperature_c!=null){tmp.textContent=Number(d.temperature_c).toFixed(1)+' °C';}
+  var tVal=d.temperature_c!=null&&Number(d.temperature_c)>0?Number(d.temperature_c):(d.rtc_temp!=null&&Number(d.rtc_temp)>0?Number(d.rtc_temp):null);
+  if(tVal!=null){tmp.textContent=tVal.toFixed(1)+' °C';}
 
   var sig=document.getElementById('sig');
-  if(d.rssi!=null){
+  if(d.wifi_ok&&d.rssi!=null&&d.rssi!=0){
     sig.textContent=d.rssi+' dBm';
     sig.className='v '+(d.rssi>-70?'ok':d.rssi>-85?'warn':'bad');
+  }else{
+    sig.textContent='AP LOKAL (AKTIF)';
+    sig.className='v ok';
   }
 
   var sd=document.getElementById('sd');
@@ -407,8 +414,8 @@ function applyStatus(d){
     if(d.test_remaining_sec!=null){
       document.getElementById('countdown60').textContent='Sisa: '+d.test_remaining_sec+'s';
     }
-    if(dist!=null&&dist>0){
-      testHistory.push(dist);
+    if(rawDist!=null&&rawDist>0){
+      testHistory.push(rawDist);
       if(testHistory.length>60)testHistory.shift();
       var minV=Math.min.apply(null,testHistory);
       var maxV=Math.max.apply(null,testHistory);
@@ -1502,12 +1509,12 @@ void WebServerManager::setupRoutes() {
     doc["water_level"] = snap.waterLevelCm;
     doc["distance"] = snap.rawDistanceCm;
     doc["filtered_distance"] = snap.filteredDistanceCm;
-    doc["is_blind_spot"] = (strcmp(snap.dataSource, "blind_spot") == 0) || (snap.rawDistanceCm <= 50.0f);
-    doc["temperature_c"] = snap.temperatureC;
-    doc["rssi"] = snap.signalRssi;
-    doc["sd_ok"] = snap.sdCardOk;
-    doc["pending_logs"] = snap.pendingLogs;
-    doc["wifi_ok"] = snap.wifiConnected;
+    doc["is_blind_spot"] = (strcmp(snap.dataSource, "blind_spot") == 0) || (snap.rawDistanceCm > 0.0f && snap.rawDistanceCm <= 50.0f);
+    doc["temperature_c"] = (snap.temperatureC > 0.0f) ? snap.temperatureC : (rtcMgr.isPresent() ? rtcMgr.getTemperature() : 0.0f);
+    doc["rssi"] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : snap.signalRssi;
+    doc["sd_ok"] = (this->sdLoggerRef && this->sdLoggerRef->isReady()) ? true : snap.sdCardOk;
+    doc["pending_logs"] = (this->sdLoggerRef) ? this->sdLoggerRef->getPendingCount() : snap.pendingLogs;
+    doc["wifi_ok"] = (WiFi.status() == WL_CONNECTED);
     doc["mqtt_ok"] = snap.mqttConnected;
     doc["source"] = snap.dataSource;
     doc["timestamp"] = snap.lastSampleTime;
@@ -1522,7 +1529,7 @@ void WebServerManager::setupRoutes() {
     doc["spread_cm"] = snap.spreadCm;
     doc["valid_samples"] = snap.validSamples;
 
-    char buf[512];
+    char buf[1024];
     serializeJson(doc, buf);
     AsyncWebServerResponse *resp = req->beginResponse(200, "application/json", buf);
     resp->addHeader("Cache-Control", "no-store");
@@ -1693,7 +1700,7 @@ void WebServerManager::setupRoutes() {
     doc["mq_port"] = this->settings.mqttPort;
     doc["mq_user"] = this->settings.mqttUser;
 
-    char buf[512];
+    char buf[1024];
     serializeJson(doc, buf);
     AsyncWebServerResponse *resp = req->beginResponse(200, "application/json", buf);
     resp->addHeader("Cache-Control", "no-store");

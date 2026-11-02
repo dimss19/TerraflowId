@@ -180,7 +180,7 @@ nav a.a{background:#334155;color:#38bdf8;border-left:3px solid #38bdf8;font-weig
 .chip{background:#1e293b;border:1px solid #334155;padding:6px 12px;border-radius:20px;font-size:12px;color:#94a3b8}
 .chip b{color:#38bdf8}
 .hero{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;text-align:center;margin-bottom:20px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
-.hero .label{font-size:13px;font-weight:600;letter-spacing:1px;color:#94a3b8;text-transform:uppercase}
+.hero .label{font-size:13px;font-weight:700;letter-spacing:1px;color:#38bdf8;text-transform:uppercase}
 .hero .val{font-size:clamp(44px,11vw,68px);font-weight:800;color:#38bdf8;line-height:1.1;margin:8px 0}
 .hero .val span{font-size:.45em;font-weight:600;color:#64748b;margin-left:4px}
 .hero .sub{font-size:13px;color:#94a3b8}
@@ -270,18 +270,19 @@ Streaming 1Hz untuk memastikan sensor tegak lurus 90&deg; dan mengunci tinggi ti
 
 <div class="hdr">
 <div>
-<h1>Monitoring Lapangan (Raw Distance)</h1>
+<h1>Monitoring Lapangan AWLR</h1>
 <small style="color:#64748b" id="lastTs">Update terakhir: --</small>
 </div>
 <div class="chip">Perangkat: <b id="devId">--</b></div>
 </div>
 
 <div class="hero">
-<div class="label">Jarak Sensor A16 (Raw Distance)</div>
-<div class="val" id="dist">--<span>cm</span></div>
+<div class="label" id="rawHeroLabel">JARAK MENTAH SENSOR KE OBJEK (RAW DISTANCE)</div>
+<div class="val" id="rawHeroVal">--<span>cm</span></div>
 <div class="sub">
 Filter Gelombang: <b id="filtDist" style="color:#cbd5e1">-- cm</b> &nbsp;|&nbsp; 
-Status Transmisi: <b id="srcBadge" style="color:#38bdf8">--</b>
+TMA (H - D): <b id="tmaSub" style="color:#38bdf8">-- cm</b> &nbsp;|&nbsp; 
+Sumber: <b id="srcBadge" style="color:#38bdf8">--</b>
 </div>
 </div>
 
@@ -290,7 +291,7 @@ Status Transmisi: <b id="srcBadge" style="color:#38bdf8">--</b>
 <div class="card"><small>Kekuatan Sinyal WiFi</small><div class="v" id="sig">-- dBm</div></div>
 <div class="card"><small>Penyimpanan MicroSD</small><div class="v" id="sd">--</div></div>
 <div class="card"><small>Koneksi MQTT Broker</small><div class="v" id="mq">--</div></div>
-<div class="card"><small>RTC DS3231 (0x68)</small><div class="v" id="rtc">--</div></div>
+<div class="card"><small>RTC DS3231 (0x68)</small><div class="v" id="rtc">--</div><button id="btnSyncRtc" onclick="syncRtcFromBrowser()" style="margin-top:6px;background:#0284c7;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600;width:auto">🕒 Sinkronkan Jam HP</button></div>
 </div>
 </div>
 <script>
@@ -304,15 +305,52 @@ function sleepNow(){
   });
 }
 
+function syncRtcFromBrowser(){
+  var b=document.getElementById('btnSyncRtc');
+  if(!b)return;
+  b.disabled=true;b.textContent='Menyinkronkan...';
+  var ep=Math.floor(Date.now()/1000);
+  fetch('/api/rtc/sync',{
+    method:'POST',
+    headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
+    body:'epoch='+ep
+  }).then(function(r){return r.json();})
+  .then(function(d){
+    b.disabled=false;
+    b.textContent=d.ok?'✅ Jam Tersinkron':'❌ Gagal';
+    setTimeout(function(){b.textContent='🕒 Sinkronkan Jam HP';},3000);
+    u();
+  }).catch(function(){
+    b.disabled=false;b.textContent='❌ Error';
+    setTimeout(function(){b.textContent='🕒 Sinkronkan Jam HP';},3000);
+  });
+}
+
 function applyStatus(d){
   document.getElementById('devId').textContent=d.device_id||'--';
   document.getElementById('devBadge').textContent=d.device_id||'AWLR';
   document.getElementById('lastTs').textContent='Update: '+(d.timestamp||'--');
-  var dist=d.distance!=null?Number(d.distance):null;
-  if(dist!=null){document.getElementById('dist').innerHTML=dist.toFixed(1)+'<span>cm</span>';}
-  else{document.getElementById('dist').innerHTML='--<span>cm</span>';}
+
+  // Tampilkan Jarak Mentah (Raw Distance) di Kartu Utama / Hero Card
+  var rawDist=d.distance!=null?Number(d.distance):null;
+  var heroEl=document.getElementById('rawHeroVal');
+  var isBlind=Boolean(d.is_blind_spot)||(rawDist!=null&&rawDist<=50.0);
+
+  if(rawDist!=null){
+    if(isBlind){
+      heroEl.innerHTML='50.0<span>cm</span> <small style="display:block;font-size:16px;color:#f87171;font-weight:700;margin-top:4px">🚨 BLIND SPOT (&le;50 cm)</small>';
+    } else {
+      heroEl.innerHTML=rawDist.toFixed(1)+'<span>cm</span>';
+    }
+  } else {
+    heroEl.innerHTML='--<span>cm</span>';
+  }
+
+  // Tampilkan Filter Gelombang & TMA terhitung di sub-info
   var fDist=d.filtered_distance!=null?Number(d.filtered_distance):null;
   if(fDist!=null){document.getElementById('filtDist').textContent=fDist.toFixed(1)+' cm';}
+  var tma=d.water_level!=null?Number(d.water_level):null;
+  if(tma!=null){document.getElementById('tmaSub').textContent=tma.toFixed(1)+' cm';}
   document.getElementById('srcBadge').textContent=(d.source||'--').toUpperCase();
 
   var tmp=document.getElementById('tmp');
@@ -701,32 +739,48 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <div class="hint" style="margin-bottom:10px;color:#94a3b8">Interval pembacaan sensor dan transmisi data. ESP32 otomatis menggunakan mode Deep Sleep antar-interval untuk menghemat daya baterai.</div>
 <label>Interval Sampling &amp; Transmisi Telemetri</label>
 <select id="samp_sec" style="width:100%;padding:11px 12px;background:#0f172a;border:1px solid #475569;border-radius:6px;color:#fff;font-size:15px">
-<option value="60">1 Menit (Mode Uji Coba / Kalibrasi)</option>
+<option value="15">15 Detik (Pengujian Cepat / Kalibrasi)</option>
+<option value="30">30 Detik (Pengujian Responsif)</option>
+<option value="60">1 Menit (Mode Uji Coba)</option>
 <option value="900">15 Menit (Standar Pemantauan AWLR)</option>
 <option value="1800">30 Menit (Mode Hemat Daya)</option>
 <option value="3600">1 Jam (Mode Ultra Hemat Baterai)</option>
 <option value="7200">2 Jam (Siaga Panjang)</option>
 </select>
 
-<h3>3. Koneksi WiFi Router Lapangan</h3>
-<label>WiFi SSID</label>
-<input id="wf_ssid" maxlength="32">
-<label>WiFi Password</label>
-<input id="wf_pass" type="password" maxlength="64" placeholder="Wajib isi ulang saat ganti SSID">
+<h3>3. Dimensi Fisik &amp; Kalibrasi Sensor AWLR</h3>
+<label>Tinggi Tiang Sensor dari Dasar Sungai (H dalam cm)</label>
+<input id="height" type="number" step="0.1" placeholder="600.0">
+<div class="hint">Tinggi sensor dari datum/dasar sungai. Rumus TMA: Level Air = H - (Jarak Sensor * Slope + Offset).</div>
 
-<h3>4. Koneksi MQTT Broker</h3>
+<label>Offset Kalibrasi (cm)</label>
+<input id="offset" type="number" step="0.1" placeholder="0.0">
+<div class="hint">Koreksi penambahan/pengurangan jarak (default: 0.0)</div>
+
+<label>Faktor Kalibrasi Sensor (Slope)</label>
+<input id="slope" type="number" step="0.0001" placeholder="1.0">
+<div class="hint">Faktor pengali skala sensor ultrasonic (default: 1.0)</div>
+
+<h3>4. Koneksi WiFi Router Lapangan</h3>
+<label>WiFi SSID</label>
+<input id="wf_ssid" maxlength="32" placeholder="Nama SSID WiFi Router">
+<label>WiFi Password</label>
+<input id="wf_pass" type="password" maxlength="64" placeholder="Kosongkan jika tidak ingin mengubah password">
+<div class="hint" style="margin-top:2px;color:#94a3b8">Bila WiFi tidak memiliki password: <label style="display:inline;font-weight:normal;color:#cbd5e1;cursor:pointer"><input type="checkbox" id="wf_open" style="width:auto;vertical-align:middle;margin-right:4px"> Open WiFi (Tanpa Password)</label></div>
+
+<h3>5. Koneksi MQTT Broker</h3>
 <label>Broker IP / Hostname</label>
-<input id="mq_host" maxlength="64">
+<input id="mq_host" maxlength="64" placeholder="43.134.53.192">
 <label>Broker Port</label>
-<input id="mq_port" type="number" placeholder="1883">
+<input id="mq_port" type="number" placeholder="80">
 <label>MQTT Username</label>
-<input id="mq_user" maxlength="32">
+<input id="mq_user" maxlength="32" placeholder="terraflow">
 <label>MQTT Password</label>
-<input id="mq_pass" type="password" maxlength="64">
+<input id="mq_pass" type="password" maxlength="64" placeholder="Kosongkan jika tidak ingin mengubah password">
 
 <button onclick="save()" id="btnSave">Simpan &amp; Terapkan Konfigurasi</button>
 
-<h3 style="color:#f87171;border-color:#7f1d1d;margin-top:36px">5. Reset Pengaturan Pabrik</h3>
+<h3 style="color:#f87171;border-color:#7f1d1d;margin-top:36px">6. Reset Pengaturan Pabrik</h3>
 <div class="hint" style="color:#fca5a5">Menghapus Serial Number dan kredensial WiFi. Alat akan kembali ke mode aktivasi awal (SSID: <b>TerraFlow-Setup</b> tanpa login).</div>
 <button type="button" onclick="factoryReset()" style="background:#dc2626;margin-top:12px">Hapus Serial Number &amp; Reset Pabrik</button>
 </div>
@@ -740,10 +794,13 @@ function load(){
     if(!d)return;
     document.getElementById('dev_id').value=d.dev_id||'';
     document.getElementById('dev_name').value=d.dev_name||'';
-    document.getElementById('samp_sec').value=d.samp_sec!=null?d.samp_sec:15;
+    document.getElementById('height').value=d.height!=null?d.height:600.0;
+    document.getElementById('offset').value=d.offset!=null?d.offset:0.0;
+    document.getElementById('slope').value=d.slope!=null?d.slope:1.0;
+    document.getElementById('samp_sec').value=d.samp_sec!=null?d.samp_sec:900;
     document.getElementById('wf_ssid').value=d.wf_ssid||'';
     document.getElementById('mq_host').value=d.mq_host||'';
-    document.getElementById('mq_port').value=d.mq_port||1883;
+    document.getElementById('mq_port').value=d.mq_port||80;
     document.getElementById('mq_user').value=d.mq_user||'';
   }).catch(function(){});
 }
@@ -752,17 +809,21 @@ function save(){
   var b=document.getElementById('btnSave'),m=document.getElementById('msg');
   b.disabled=true;b.textContent='Menyimpan data...';m.style.display='none';
 
-  var ks=['dev_id','dev_name','samp_sec','wf_ssid','wf_pass','mq_host','mq_port','mq_user','mq_pass'];
+  var ks=['dev_id','dev_name','samp_sec','height','offset','slope','wf_ssid','wf_pass','mq_host','mq_port','mq_user','mq_pass'];
   var params=ks.map(function(k){
     var el=document.getElementById(k);
     return k+'='+encodeURIComponent(el?el.value:'');
-  }).join('&');
+  });
+  if(document.getElementById('wf_open')&&document.getElementById('wf_open').checked){
+    params.push('wf_open=1');
+  }
+  var body=params.join('&');
 
   fetch('/api/settings',{
     method:'POST',
     headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
     credentials:'same-origin',
-    body:params
+    body:body
   }).then(function(r){
     if(r.status===401){location='/login';return null;}
     return r.json();
@@ -894,51 +955,75 @@ String WebServerManager::getCurrentLogFilename() {
 }
 
 void WebServerManager::loadSettings() {
-  prefs.begin("terraflow", true); // read-only
+  if (!prefs.begin("terraflow", true)) { // read-only
+    Serial.println("[SETTINGS WARN] NVS namespace 'terraflow' belum ada atau gagal dibuka read-only.");
+  }
   
   settings.isProvisioned = prefs.getBool("prov", false);
   String devId = prefs.getString("dev_id", "");
   if (devId.length() > 0) {
     strncpy(settings.deviceId, devId.c_str(), sizeof(settings.deviceId) - 1);
+    settings.deviceId[sizeof(settings.deviceId) - 1] = '\0';
     if (!prefs.isKey("prov")) {
       settings.isProvisioned = (devId != "AWLR-001");
     }
   } else {
     String autoId = getEffectiveDeviceId();
     strncpy(settings.deviceId, autoId.c_str(), sizeof(settings.deviceId) - 1);
+    settings.deviceId[sizeof(settings.deviceId) - 1] = '\0';
   }
 
   String devName = prefs.getString("dev_name", SYSTEM_NAME);
   strncpy(settings.deviceName, devName.c_str(), sizeof(settings.deviceName) - 1);
+  settings.deviceName[sizeof(settings.deviceName) - 1] = '\0';
 
   String ssid = prefs.getString("wf_ssid", "");
   if (ssid.length() == 0 || ssid == "passwordnyarahasia") {
     ssid = WIFI_SSID;
   }
   strncpy(settings.wifiSsid, ssid.c_str(), sizeof(settings.wifiSsid) - 1);
+  settings.wifiSsid[sizeof(settings.wifiSsid) - 1] = '\0';
 
   String pass = prefs.getString("wf_pass", "");
-  if (pass.length() == 0 || pass == "qwertyuiop") {
+  if (pass == "qwertyuiop") {
+    pass = WIFI_PASSWORD;
+  } else if (pass.length() == 0 && !prefs.isKey("wf_pass")) {
+    // Hanya gunakan fallback WIFI_PASSWORD bila key wf_pass belum pernah disimpan sama sekali
     pass = WIFI_PASSWORD;
   }
   strncpy(settings.wifiPass, pass.c_str(), sizeof(settings.wifiPass) - 1);
+  settings.wifiPass[sizeof(settings.wifiPass) - 1] = '\0';
 
   String mqHost = prefs.getString("mq_host", "");
   if (mqHost.length() == 0 || mqHost == "192.168.110.29" || mqHost == "192.168.18.121") {
     mqHost = MQTT_BROKER;
   }
   strncpy(settings.mqttBroker, mqHost.c_str(), sizeof(settings.mqttBroker) - 1);
+  settings.mqttBroker[sizeof(settings.mqttBroker) - 1] = '\0';
 
   settings.mqttPort = prefs.getUShort("mq_port", MQTT_PORT);
+  // Auto-correct port 1883 ke port 80 bila menggunakan broker VPS TerraFlow (43.134.53.192)
+  if (strcmp(settings.mqttBroker, "43.134.53.192") == 0 && settings.mqttPort == 1883) {
+    settings.mqttPort = 80;
+  }
 
-  String mqUser = prefs.getString("mq_user", MQTT_USER);
+  String mqUser = prefs.getString("mq_user", "");
+  if (mqUser.length() == 0) {
+    mqUser = MQTT_USER;
+  }
   strncpy(settings.mqttUser, mqUser.c_str(), sizeof(settings.mqttUser) - 1);
+  settings.mqttUser[sizeof(settings.mqttUser) - 1] = '\0';
 
-  String mqPass = prefs.getString("mq_pass", MQTT_PASS);
+  String mqPass = prefs.getString("mq_pass", "");
+  if (mqPass.length() == 0) {
+    mqPass = MQTT_PASS;
+  }
   strncpy(settings.mqttPass, mqPass.c_str(), sizeof(settings.mqttPass) - 1);
+  settings.mqttPass[sizeof(settings.mqttPass) - 1] = '\0';
 
   settings.sensorHeightCm = prefs.getFloat("height", DEFAULT_SENSOR_HEIGHT);
   settings.offsetCm = prefs.getFloat("offset", DEFAULT_OFFSET);
+  settings.slope = prefs.getFloat("slope", DEFAULT_SLOPE);
   settings.samplingIntervalSec = prefs.getUInt("samp_sec", SAMPLING_INTERVAL_MS / 1000);
   if (settings.samplingIntervalSec < 15) {
     settings.samplingIntervalSec = 15;
@@ -946,14 +1031,19 @@ void WebServerManager::loadSettings() {
 
   String hash = prefs.getString("pass_hash", DEFAULT_PASS_HASH);
   strncpy(settings.passHash, hash.c_str(), sizeof(settings.passHash) - 1);
+  settings.passHash[sizeof(settings.passHash) - 1] = '\0';
 
   prefs.end();
-  Serial.printf("[SETTINGS] Loaded: ID=%s, Height=%.1f, Provisioned=%s\n",
-    settings.deviceId, settings.sensorHeightCm, settings.isProvisioned ? "YES" : "NO (Setup Mode)");
+  Serial.printf("[SETTINGS] Loaded: ID=%s, SSID=%s, Broker=%s:%d, Height=%.1f, Provisioned=%s\n",
+    settings.deviceId, settings.wifiSsid, settings.mqttBroker, settings.mqttPort,
+    settings.sensorHeightCm, settings.isProvisioned ? "YES" : "NO (Setup Mode)");
 }
 
 void WebServerManager::saveSettings() {
-  prefs.begin("terraflow", false); // read-write
+  if (!prefs.begin("terraflow", false)) { // read-write
+    Serial.println("[SETTINGS ERROR] Gagal membuka NVS namespace 'terraflow' untuk penulisan!");
+    return;
+  }
   prefs.putString("dev_id", settings.deviceId);
   prefs.putString("dev_name", settings.deviceName);
   prefs.putString("wf_ssid", settings.wifiSsid);
@@ -969,19 +1059,15 @@ void WebServerManager::saveSettings() {
   prefs.putString("pass_hash", settings.passHash);
   prefs.putBool("prov", settings.isProvisioned);
   prefs.end();
-  Serial.printf("[SETTINGS] Saved successfully to NVS (ID=%s, Provisioned=%s).\n",
-    settings.deviceId, settings.isProvisioned ? "YES" : "NO");
+  Serial.printf("[SETTINGS] Saved successfully to NVS (ID=%s, SSID=%s, Broker=%s:%d, Provisioned=%s).\n",
+    settings.deviceId, settings.wifiSsid, settings.mqttBroker, settings.mqttPort, settings.isProvisioned ? "YES" : "NO");
 }
 
 void WebServerManager::factoryReset() {
   prefs.begin("terraflow", false);
-  prefs.remove("dev_id");
-  prefs.remove("prov");
-  prefs.remove("pass_hash");
-  prefs.remove("wf_ssid");
-  prefs.remove("wf_pass");
+  prefs.clear(); // Bersihkan seluruh namespace terraflow (dev_id, prov, pass_hash, wifi, mqtt, dll)
   prefs.end();
-  Serial.println("[RESET] Factory reset executed. Rebooting into Setup Mode...");
+  Serial.println("[RESET] Factory reset executed. Seluruh kredensial & SN dibersihkan. Rebooting into Setup Mode...");
   delay(500);
   ESP.restart();
 }
@@ -1416,6 +1502,7 @@ void WebServerManager::setupRoutes() {
     doc["water_level"] = snap.waterLevelCm;
     doc["distance"] = snap.rawDistanceCm;
     doc["filtered_distance"] = snap.filteredDistanceCm;
+    doc["is_blind_spot"] = (strcmp(snap.dataSource, "blind_spot") == 0) || (snap.rawDistanceCm <= 50.0f);
     doc["temperature_c"] = snap.temperatureC;
     doc["rssi"] = snap.signalRssi;
     doc["sd_ok"] = snap.sdCardOk;
@@ -1626,6 +1713,7 @@ void WebServerManager::setupRoutes() {
       v.toUpperCase();
       if (v.length() >= 3 && v.length() <= 32) {
         strncpy(this->settings.deviceId, v.c_str(), sizeof(this->settings.deviceId) - 1);
+        this->settings.deviceId[sizeof(this->settings.deviceId) - 1] = '\0';
         this->sha256Hex(v.c_str(), this->settings.passHash);
         this->settings.isProvisioned = true;
       }
@@ -1635,6 +1723,7 @@ void WebServerManager::setupRoutes() {
       v.trim();
       if (v.length() > 0) {
         strncpy(this->settings.deviceName, v.c_str(), sizeof(this->settings.deviceName) - 1);
+        this->settings.deviceName[sizeof(this->settings.deviceName) - 1] = '\0';
       }
     }
     if (req->hasParam("height", true)) {
@@ -1650,24 +1739,35 @@ void WebServerManager::setupRoutes() {
       uint32_t s = req->getParam("samp_sec", true)->value().toInt();
       if (s >= 15 && s <= 86400) this->settings.samplingIntervalSec = s;
     }
+
+    bool wifiChanged = false;
     if (req->hasParam("wf_ssid", true)) {
       String v = req->getParam("wf_ssid", true)->value();
       v.trim();
-      if (v.length() > 0) {
+      if (v.length() > 0 && strcmp(this->settings.wifiSsid, v.c_str()) != 0) {
         strncpy(this->settings.wifiSsid, v.c_str(), sizeof(this->settings.wifiSsid) - 1);
+        this->settings.wifiSsid[sizeof(this->settings.wifiSsid) - 1] = '\0';
+        wifiChanged = true;
       }
     }
     if (req->hasParam("wf_pass", true)) {
       String v = req->getParam("wf_pass", true)->value();
       if (v.length() > 0) {
         strncpy(this->settings.wifiPass, v.c_str(), sizeof(this->settings.wifiPass) - 1);
+        this->settings.wifiPass[sizeof(this->settings.wifiPass) - 1] = '\0';
+        wifiChanged = true;
+      } else if (req->hasParam("wf_open", true)) {
+        this->settings.wifiPass[0] = '\0';
+        wifiChanged = true;
       }
     }
+
     if (req->hasParam("mq_host", true)) {
       String v = req->getParam("mq_host", true)->value();
       v.trim();
       if (v.length() > 0) {
         strncpy(this->settings.mqttBroker, v.c_str(), sizeof(this->settings.mqttBroker) - 1);
+        this->settings.mqttBroker[sizeof(this->settings.mqttBroker) - 1] = '\0';
         this->mqttConfigDirty = true;
       }
     }
@@ -1678,15 +1778,26 @@ void WebServerManager::setupRoutes() {
         this->mqttConfigDirty = true;
       }
     }
+    // Auto-correct port broker VPS 43.134.53.192 bila diset ke 1883
+    if (strcmp(this->settings.mqttBroker, "43.134.53.192") == 0 && this->settings.mqttPort == 1883) {
+      this->settings.mqttPort = 80;
+      this->mqttConfigDirty = true;
+    }
+
     if (req->hasParam("mq_user", true)) {
       String v = req->getParam("mq_user", true)->value();
-      strncpy(this->settings.mqttUser, v.c_str(), sizeof(this->settings.mqttUser) - 1);
-      this->mqttConfigDirty = true;
+      v.trim();
+      if (v.length() > 0) {
+        strncpy(this->settings.mqttUser, v.c_str(), sizeof(this->settings.mqttUser) - 1);
+        this->settings.mqttUser[sizeof(this->settings.mqttUser) - 1] = '\0';
+        this->mqttConfigDirty = true;
+      }
     }
     if (req->hasParam("mq_pass", true)) {
       String v = req->getParam("mq_pass", true)->value();
       if (v.length() > 0) {
         strncpy(this->settings.mqttPass, v.c_str(), sizeof(this->settings.mqttPass) - 1);
+        this->settings.mqttPass[sizeof(this->settings.mqttPass) - 1] = '\0';
         this->mqttConfigDirty = true;
       }
     }
@@ -1699,12 +1810,17 @@ void WebServerManager::setupRoutes() {
 
     this->saveSettings();
 
-    AsyncWebServerResponse *resp = req->beginResponse(200, "application/json",
-      "{\"ok\":true,\"msg\":\"Konfigurasi tersimpan. ESP32 me-restart...\",\"restart\":true}");
-    req->send(resp);
+    // Terapkan WiFi baru seketika tanpa perlu reboot jika credential berubah
+    if (wifiChanged && strlen(this->settings.wifiSsid) > 0) {
+      Serial.printf("[WiFi] Menerapkan WiFi STA baru: %s\n", this->settings.wifiSsid);
+      WiFi.disconnect(false);
+      WiFi.begin(this->settings.wifiSsid, this->settings.wifiPass);
+      this->lastStaRetryMs = millis();
+    }
 
-    delay(1500);
-    ESP.restart();
+    AsyncWebServerResponse *resp = req->beginResponse(200, "application/json",
+      "{\"ok\":true,\"msg\":\"Konfigurasi tersimpan dan diterapkan!\",\"restart\":false}");
+    req->send(resp);
   });
 
   // Catch-all handler for captive portal redirection
@@ -1815,17 +1931,11 @@ void WebServerManager::loop() {
     }
   } else if (strlen(settings.wifiSsid) > 0) {
     unsigned long now = millis();
-    if (now - lastStaRetryMs > 45000) {
+    if (now - lastStaRetryMs > 25000) {
       lastStaRetryMs = now;
-      int activeClients = WiFi.softAPgetStationNum();
-      // HANYA scan/retry koneksi STA jika TIDAK ADA client yang sedang terhubung ke SoftAP Captive Portal.
-      // Ini mencegah radio ESP32 melompat kanal dan menjamin koneksi login captive portal stabil 100%!
-      if (activeClients == 0) {
-        Serial.println("[WiFi] Re-attempting STA connection (0 AP clients active)...");
-        WiFi.begin(settings.wifiSsid, settings.wifiPass);
-      } else {
-        Serial.printf("[WiFi] Menunda retry STA: %d client aktif di Captive Portal.\n", activeClients);
-      }
+      ntpConfigured = false;
+      Serial.println("[WiFi] Re-attempting STA connection to router...");
+      WiFi.begin(settings.wifiSsid, settings.wifiPass);
     }
   }
 }

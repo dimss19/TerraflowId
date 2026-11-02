@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <esp_sleep.h>
 #include <esp_wifi.h>
+#include <nvs_flash.h>
 #include "config.h"
 #include "sensor_a16.h"
 #include "sdcard_logger.h"
@@ -217,10 +218,12 @@ void samplingTask(void *pvParameters) {
       time_t curNow = time(nullptr);
       struct tm curTm;
       if (curNow > 1700000000 && localtime_r(&curNow, &curTm)) {
-        int secUntilNextMin = 60 - curTm.tm_sec;
-        if (secUntilNextMin <= 0) secUntilNextMin = 60;
-        Serial.printf("[SINKRONISASI MENIT] Menunggu %d detik menuju awal menit berikutnya (:00)...\n", secUntilNextMin);
-        vTaskDelay(pdMS_TO_TICKS(secUntilNextMin * 1000));
+        time_t nextAligned = ((curNow / intervalSec) + 1) * intervalSec;
+        int secUntilNext = (int)(nextAligned - curNow);
+        if (secUntilNext <= 0 || secUntilNext > (int)intervalSec) secUntilNext = intervalSec;
+        Serial.printf("[SINKRONISASI JADWAL] Menunggu %d detik menuju siklus berikutnya (Interval: %lu dtk)...\n",
+          secUntilNext, (unsigned long)intervalSec);
+        vTaskDelay(pdMS_TO_TICKS(secUntilNext * 1000));
       } else {
         vTaskDelayUntil(&lastWakeTime, cycleInterval);
       }
@@ -299,6 +302,9 @@ void healthTask(void *pvParameters) {
 // DEEP SLEEP & DUTY CYCLE ROUTINES
 // ==========================================
 void enterDeepSleep() {
+  static bool sleepInProgress = false;
+  if (sleepInProgress) return;
+  sleepInProgress = true;
   if (webServerMgr.isTestModeActive()) {
     Serial.println("ℹ️ [SLEEP DITOLAK] Mode Test 1 Detik sedang aktif. Deep sleep ditunda.");
     return;
@@ -425,8 +431,15 @@ void executeScheduledSamplingCycle() {
           sdLogger.markRecordSent(filename, record.timestamp);
           Serial.printf("[MQTT] Data terkirim: Level=%.1f cm | Jarak=%.1f cm\n", waterLevel, reading.rawDistanceCm);
         }
-        if (sdLogger.getPendingCount() > 0) {
-          mqttMgr.triggerBulkSync(sdLogger);
+        // Kirim semua buffer offline di MicroSD hingga tuntas atau batas 15 detik
+        unsigned long syncStart = millis();
+        while (mqttMgr.isConnected() && (mqttMgr.isBulkSyncPending() || sdLogger.getPendingCount() > 0) && (millis() - syncStart < 15000)) {
+          mqttMgr.loop();
+          if (!mqttMgr.isBulkSyncPending() && sdLogger.getPendingCount() > 0) {
+            mqttMgr.triggerBulkSync(sdLogger);
+          }
+          delay(50);
+          feedWatchdog();
         }
 
         // Beri waktu 2.5 dtk untuk mendengarkan pesan MQTT retained (seperti config/interval)
@@ -467,12 +480,30 @@ void setup() {
   bootStats = handleBootReason();
   initWatchdog();
 
+  // Inisialisasi NVS Flash (Self-healing bila partition corrupt / full)
+  esp_err_t nvs_err = nvs_flash_init();
+  if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    nvs_flash_init();
+  }
+
+  // Jika tombol BOOT (GPIO 0) ditahan saat menyalakan alat (Cold boot/Power-on):
+  // Bersihkan seluruh NVS (Factory Reset Clean State)
+  pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
+  if (digitalRead(PIN_BOOT_BTN) == LOW) {
+    Serial.println("\n⚠️ [NVS CLEAN DETECTED] Tombol BOOT ditahan saat startup!");
+    Serial.println("   Membersihkan seluruh NVS & Serial Number...");
+    nvs_flash_erase();
+    nvs_flash_init();
+    Serial.println("   ✅ NVS Bersih total. Masuk ke Setup Mode murni.\n");
+    delay(500);
+  }
+
   // 2. Load settings NVS awal
   webServerMgr.loadSettings();
 
   // 3. Evaluasi penyebab bangun (Wake Reason)
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-  pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
 
   // Jika bangun murni karena timer Deep Sleep DAN tombol BOOT tidak sedang ditahan:
   if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER && digitalRead(PIN_BOOT_BTN) == HIGH) {

@@ -1443,10 +1443,10 @@ export default function TestModeTab({
                       </td>
                       <td style={{ padding: '7px 14px' }}>
                         {isBlind ? (
-                          <span style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.72rem' }}>🚨 BLIND SPOT</span>
+                          <span style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.72rem' }}>BLIND SPOT</span>
                         ) : (
                           <span style={{ color: '#16a34a', fontWeight: 700, fontSize: '0.72rem' }}>
-                            ✅ NORMAL {row.spread_cm != null ? `(±${Number(row.spread_cm).toFixed(1)} cm)` : ''}
+                            NORMAL {row.spread_cm != null ? `(±${Number(row.spread_cm).toFixed(1)} cm)` : ''}
                           </span>
                         )}
                       </td>

@@ -13,7 +13,7 @@ public:
   // Lifecycle
   bool begin();
   bool isPresent() const { return rtcDetected; }
-  float getTemperature() const { return lastTemperature; }
+  float getTemperature() const;
 
   // Bus arbitrase (Time-multiplexing dengan UART Sensor pada GPIO 8 & 9)
   void acquireBus();

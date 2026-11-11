@@ -5,6 +5,7 @@
 #include <esp_wifi.h>
 #include "rtc_mgr.h"
 #include "mqtt_client.h"
+#include "sensor_a16.h"
 
 extern MqttManager mqttMgr;
 
@@ -53,7 +54,7 @@ button.submit:hover{background:#0369a1}
 <input id="ws" placeholder="Nama WiFi / Hotspot" required>
 <label>Password WiFi Lapangan *</label>
 <input id="wp" type="password" placeholder="Password WiFi" required>
-<button type="button" class="adv-toggle" onclick="toggleAdv()">⚙️ Pengaturan Lanjutan (Server MQTT) ▾</button>
+<button type="button" class="adv-toggle" onclick="toggleAdv()">Pengaturan Lanjutan (Server MQTT) ▾</button>
 <div id="adv" class="adv-panel">
 <label>Broker MQTT Host</label>
 <input id="mh" value="43.134.53.192">
@@ -123,7 +124,7 @@ button:hover{background:#0369a1}
 .helper{font-size:11px;color:#64748b;margin-top:6px;display:block}
 </style></head><body>
 <div class="box">
-<div class="badge">🔒 PORTAL TERPROTEKSI</div>
+<div class="badge">PORTAL TERPROTEKSI</div>
 <h2>TerraFlow AWLR</h2>
 <p>Masukkan Serial Number perangkat untuk mengakses dashboard.</p>
 <form id="f">
@@ -225,7 +226,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
 <div>
 <div style="display:flex;align-items:center;gap:8px">
-<span style="font-size:18px">🎯</span>
+<span style="font-size:18px"></span>
 <h3 style="margin:0;font-size:15px;color:#38bdf8;font-weight:800">Uji Sudut &amp; Kalibrasi Lapangan (1 Menit)</h3>
 <span id="testBadge" style="display:none;background:#22c55e;color:#0b1120;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">STREAM 1 DETIK</span>
 </div>
@@ -265,8 +266,25 @@ Streaming 1Hz untuk memastikan sensor tegak lurus 90&deg; dan mengunci tinggi ti
 &check; <b>Uji 1 Menit Selesai!</b> Jarak rata-rata terukur: <b id="finalH" style="color:#fff">-- cm</b>. Sudut sensor dinyatakan stabil.
 </div>
 <button id="btnSaveH" onclick="saveMeasuredH()" style="background:#10b981;color:#fff;border:none;padding:7px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">
-💾 Simpan Sebagai Tinggi Sensor (H)
+ Simpan Sebagai Tinggi Sensor (H)
 </button>
+</div>
+</div>
+</div>
+
+<!-- KARTU SAKELAR DAYA SENSOR A16 (ADMIN) -->
+<div id="pwrCard" style="background:#0f2236;border:1px solid #0284c7;border-radius:12px;padding:14px 18px;margin-bottom:18px;box-shadow:0 4px 14px rgba(0,0,0,0.25)">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+<div>
+<div style="display:flex;align-items:center;gap:8px">
+<h3 style="margin:0;font-size:14px;color:#38bdf8;font-weight:700">Sakelar Daya Sensor A16 (P-MOSFET GPIO 9)</h3>
+<span id="pwrBadge" style="background:#22c55e;color:#0b1120;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">DAYA AKTIF</span>
+</div>
+<small style="color:#94a3b8;font-size:12px;display:block;margin-top:2px">Kendali manual pemutus daya sensor via GPIO 9 untuk verifikasi switching &amp; pengujian lapangan.</small>
+</div>
+<div style="display:flex;gap:8px">
+<button id="btnPwrOn" onclick="setSensorPower(1)" style="background:#16a34a;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">Nyalakan Sensor</button>
+<button id="btnPwrOff" onclick="setSensorPower(0)" style="background:#dc2626;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">Matikan Sensor</button>
 </div>
 </div>
 </div>
@@ -294,7 +312,7 @@ Sumber: <b id="srcBadge" style="color:#38bdf8">--</b>
 <div class="card"><small>Kekuatan Sinyal WiFi</small><div class="v" id="sig">-- dBm</div></div>
 <div class="card"><small>Penyimpanan MicroSD</small><div class="v" id="sd">--</div></div>
 <div class="card"><small>Koneksi MQTT Broker</small><div class="v" id="mq">--</div></div>
-<div class="card"><small>RTC DS3231 (0x68)</small><div class="v" id="rtc">--</div><button id="btnSyncRtc" onclick="syncRtcFromBrowser()" style="margin-top:6px;background:#0284c7;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600;width:auto">🕒 Sinkronkan Jam HP</button></div>
+<div class="card"><small>Jam Sistem (WIB)</small><div class="v" id="rtc">--</div><button id="btnSyncRtc" onclick="syncRtcFromBrowser()" style="margin-top:6px;background:#0284c7;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600;width:auto">Sinkronkan Jam HP</button></div>
 </div>
 </div>
 <script>
@@ -306,6 +324,37 @@ function sleepNow(){
   fetch('/api/sleep',{method:'POST',headers:ah()}).then(function(){
     alert('Perangkat kini masuk ke Mode Deep Sleep hemat daya. Tekan tombol BOOT atau reset untuk mengakses kembali.');
   });
+}
+
+function setSensorPower(st){
+  var b1=document.getElementById('btnPwrOn'),b2=document.getElementById('btnPwrOff');
+  if(b1)b1.disabled=true;if(b2)b2.disabled=true;
+  fetch('/api/sensor/power',{
+    method:'POST',
+    headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
+    body:'state='+(st?'1':'0')
+  }).then(function(r){return r.json();})
+  .then(function(d){
+    if(b1)b1.disabled=false;if(b2)b2.disabled=false;
+    if(d&&d.sensor_power!=null)updatePwrBadge(d.sensor_power);
+    u();
+  }).catch(function(){
+    if(b1)b1.disabled=false;if(b2)b2.disabled=false;
+  });
+}
+
+function updatePwrBadge(isOn){
+  var b=document.getElementById('pwrBadge');
+  if(!b)return;
+  if(isOn){
+    b.textContent='DAYA AKTIF';
+    b.style.background='#22c55e';
+    b.style.color='#0b1120';
+  }else{
+    b.textContent='DAYA MATI';
+    b.style.background='#dc2626';
+    b.style.color='#fff';
+  }
 }
 
 function syncRtcFromBrowser(){
@@ -320,12 +369,12 @@ function syncRtcFromBrowser(){
   }).then(function(r){return r.json();})
   .then(function(d){
     b.disabled=false;
-    b.textContent=d.ok?'✅ Jam Tersinkron':'❌ Gagal';
-    setTimeout(function(){b.textContent='🕒 Sinkronkan Jam HP';},3000);
+    b.textContent=d.ok?'Jam Tersinkron':'Gagal';
+    setTimeout(function(){b.textContent='Sinkronkan Jam HP';},3000);
     u();
   }).catch(function(){
-    b.disabled=false;b.textContent='❌ Error';
-    setTimeout(function(){b.textContent='🕒 Sinkronkan Jam HP';},3000);
+    b.disabled=false;b.textContent='Error';
+    setTimeout(function(){b.textContent='Sinkronkan Jam HP';},3000);
   });
 }
 
@@ -333,6 +382,7 @@ function applyStatus(d){
   document.getElementById('devId').textContent=d.device_id||'--';
   document.getElementById('devBadge').textContent=d.device_id||'AWLR';
   document.getElementById('lastTs').textContent='Update: '+(d.timestamp||'--');
+  if(d.sensor_power!=null)updatePwrBadge(d.sensor_power);
 
   // Tampilkan Jarak Mentah (Raw Distance) di Kartu Utama / Hero Card
   var rawDist=d.distance!=null?Number(d.distance):null;
@@ -340,9 +390,11 @@ function applyStatus(d){
   var heroEl=document.getElementById('rawHeroVal');
   var isBlind=Boolean(d.is_blind_spot)||(rawDist!=null&&rawDist>0&&rawDist<=50.0);
 
-  if(rawDist!=null&&rawDist>0){
+  if(d.sensor_power===false){
+    heroEl.innerHTML='0.0<span>cm (MATI)</span>';
+  } else if(rawDist!=null&&rawDist>0){
     if(isBlind){
-      heroEl.innerHTML='50.0<span>cm</span> <small style="display:block;font-size:16px;color:#f87171;font-weight:700;margin-top:4px">🚨 BLIND SPOT (&le;50 cm)</small>';
+      heroEl.innerHTML='50.0<span>cm</span> <small style="display:block;font-size:16px;color:#f87171;font-weight:700;margin-top:4px">BLIND SPOT (&le;50 cm)</small>';
     } else {
       heroEl.innerHTML=rawDist.toFixed(1)+'<span>cm</span>';
     }
@@ -416,7 +468,7 @@ function applyStatus(d){
   if(d.test_mode){
     if(!testModeRunning){
       testModeRunning=true;
-      document.getElementById('btnTest60').textContent='⏹ Hentikan Uji';
+      document.getElementById('btnTest60').textContent=' Hentikan Uji';
       document.getElementById('btnTest60').style.background='#dc2626';
       document.getElementById('testBadge').style.display='inline-block';
       document.getElementById('countdown60').style.display='inline-block';
@@ -436,15 +488,15 @@ function applyStatus(d){
       var aStat=document.getElementById('angleStatus');
       var aDesc=document.getElementById('angleDesc');
       if(sp<=0.6){
-        aStat.innerHTML='🟢 TEGAK LURUS (OPTIMAL)';
+        aStat.innerHTML=' TEGAK LURUS (OPTIMAL)';
         aStat.style.color='#4ade80';
         aDesc.textContent='Sudut 90° sempurna, pantulan echo maksimal.';
       }else if(sp<=2.0){
-        aStat.innerHTML='🟡 CUKUP (CEK KEMIRINGAN)';
+        aStat.innerHTML=' CUKUP (CEK KEMIRINGAN)';
         aStat.style.color='#facc15';
         aDesc.textContent='Ada variasi riak. Arahkan lebih tegak lurus.';
       }else{
-        aStat.innerHTML='🔴 SUDUT MIRING / MULTI-ECHO';
+        aStat.innerHTML=' SUDUT MIRING / MULTI-ECHO';
         aStat.style.color='#f87171';
         aDesc.textContent='Variasi tinggi (>2cm). Luruskan posisi bracket sensor!';
       }
@@ -487,7 +539,7 @@ function toggleTest60s(){
     testModeRunning=en;
     if(en){
       testHistory=[];
-      b.textContent='⏹ Hentikan Uji';
+      b.textContent=' Hentikan Uji';
       b.style.background='#dc2626';
       document.getElementById('testBadge').style.display='inline-block';
       document.getElementById('countdown60').style.display='inline-block';
@@ -522,8 +574,8 @@ function saveMeasuredH(){
     headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
     body:'height='+med.toFixed(1)
   }).then(function(r){return r.json();}).then(function(){
-    b.disabled=false;b.textContent='✅ Berhasil Disimpan di NVS!';
-    setTimeout(function(){b.textContent='💾 Simpan Sebagai Tinggi Sensor (H)';},3500);
+    b.disabled=false;b.textContent='Berhasil Disimpan di NVS!';
+    setTimeout(function(){b.textContent=' Simpan Sebagai Tinggi Sensor (H)';},3500);
   }).catch(function(e){b.disabled=false;alert('Error: '+e.message);});
 }
 
@@ -766,6 +818,13 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <option value="7200">2 Jam (Siaga Panjang)</option>
 </select>
 
+<label style="margin-top:14px">Uji Fisik Sakelar Daya Sensor (P-MOSFET GPIO 9)</label>
+<div style="display:flex;gap:8px;margin-top:6px">
+<button type="button" onclick="setSensorPower(1)" style="background:#16a34a;margin-top:0;padding:10px 14px;font-size:13px;flex:1">Nyalakan Sensor</button>
+<button type="button" onclick="setSensorPower(0)" style="background:#dc2626;margin-top:0;padding:10px 14px;font-size:13px;flex:1">Matikan Sensor</button>
+</div>
+<div id="pwrSettingsStatus" class="hint" style="color:#38bdf8;margin-top:6px">Status daya sensor: Memeriksa...</div>
+
 <h3>3. Dimensi Fisik &amp; Kalibrasi Sensor AWLR</h3>
 <label>Tinggi Tiang Sensor dari Dasar Sungai (H dalam cm)</label>
 <input id="height" type="number" step="0.1" placeholder="600.0">
@@ -872,7 +931,34 @@ function factoryReset(){
     }).catch(function(){alert('Error komunikasi reset');});
   }
 }
+
+function setSensorPower(st){
+  var el=document.getElementById('pwrSettingsStatus');
+  if(el)el.textContent='Mengubah daya sensor...';
+  fetch('/api/sensor/power',{
+    method:'POST',
+    headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
+    body:'state='+(st?'1':'0')
+  }).then(function(r){return r.json();})
+  .then(function(d){
+    if(el)el.textContent='Status daya sensor: '+(d.sensor_power?'AKTIF':'MATI');
+  }).catch(function(){
+    if(el)el.textContent='Error mengubah daya sensor';
+  });
+}
+
+function checkPwrStatus(){
+  fetch('/api/status',{headers:ah(),credentials:'same-origin'}).then(function(r){return r.json();})
+  .then(function(d){
+    var el=document.getElementById('pwrSettingsStatus');
+    if(el&&d&&d.sensor_power!=null){
+      el.textContent='Status daya sensor saat ini: '+(d.sensor_power?'AKTIF':'MATI');
+    }
+  }).catch(function(){});
+}
+
 load();
+checkPwrStatus();
 </script></body></html>
 )rawliteral";
 
@@ -1221,7 +1307,7 @@ bool WebServerManager::isTestModeActive() {
   unsigned long elapsed = (millis() - testModeStartMs) / 1000UL;
   if (elapsed >= testModeDurationSec) {
     testModeActive = false;
-    Serial.println("⏱️ [TEST MODE] Durasi pengujian 1 detik telah berakhir. Kembali ke siklus normal.");
+    Serial.println("[TEST MODE] Durasi pengujian 1 detik telah berakhir. Kembali ke siklus normal.");
     return false;
   }
   return true;
@@ -1539,7 +1625,7 @@ void WebServerManager::setupRoutes() {
     doc["source"] = snap.dataSource;
     doc["timestamp"] = snap.lastSampleTime;
     doc["token"] = this->sessionToken;
-    doc["rtc_ok"] = rtcMgr.isPresent();
+    doc["rtc_ok"] = (time(nullptr) > 1700000000);
     doc["rtc_time"] = rtcMgr.getIsoTimestamp();
     doc["rtc_temp"] = rtcMgr.getTemperature();
     doc["portal_remaining_sec"] = this->getRemainingPortalSec();
@@ -1548,6 +1634,7 @@ void WebServerManager::setupRoutes() {
     doc["test_remaining_sec"] = this->getRemainingTestSec();
     doc["spread_cm"] = snap.spreadCm;
     doc["valid_samples"] = snap.validSamples;
+    doc["sensor_power"] = sensor.isPowered();
 
     char buf[1024];
     serializeJson(doc, buf);
@@ -1585,6 +1672,30 @@ void WebServerManager::setupRoutes() {
     this->setTestMode(enable, dur);
     if (enable) this->extendPortalWindow(dur + 60);
     req->send(200, "application/json", enable ? "{\"ok\":true,\"test_mode\":true,\"msg\":\"Mode uji 1 detik aktif\"}" : "{\"ok\":true,\"test_mode\":false,\"msg\":\"Mode uji dinonaktifkan\"}");
+  });
+
+  // API Sensor Manual Power Control (Admin Switch GPIO 9)
+  server.on("/api/sensor/power", HTTP_POST, [this](AsyncWebServerRequest *req) {
+    if (!this->isSessionValid(req)) {
+      req->send(401, "application/json", "{\"ok\":false,\"msg\":\"Unauthorized\"}");
+      return;
+    }
+    bool turnOn = true;
+    if (req->hasParam("state", true)) {
+      String v = req->getParam("state", true)->value();
+      turnOn = (v == "1" || v == "true" || v == "on");
+    }
+    if (turnOn) {
+      sensor.powerOn();
+    } else {
+      sensor.powerOff();
+    }
+    this->extendPortalWindow(180);
+    char buf[128];
+    snprintf(buf, sizeof(buf), "{\"ok\":true,\"sensor_power\":%s,\"msg\":\"Daya sensor %s\"}",
+      sensor.isPowered() ? "true" : "false",
+      sensor.isPowered() ? "DINYALAKAN" : "DIMATIKAN");
+    req->send(200, "application/json", buf);
   });
 
   // API Storage: List Files
@@ -1695,7 +1806,7 @@ void WebServerManager::setupRoutes() {
       snprintf(buf, sizeof(buf), "{\"ok\":%s,\"time\":\"%s\",\"msg\":\"%s\"}",
         ok ? "true" : "false",
         rtcMgr.getIsoTimestamp().c_str(),
-        ok ? "Jam RTC berhasil disinkronkan dari browser" : "Gagal menulis ke chip RTC");
+        ok ? "Jam sistem berhasil disinkronkan dari browser" : "Gagal menyinkronkan jam sistem");
       req->send(200, "application/json", buf);
     } else {
       req->send(400, "application/json", "{\"ok\":false,\"msg\":\"Epoch invalid\"}");

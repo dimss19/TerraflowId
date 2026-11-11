@@ -27,6 +27,8 @@ class SensorA16 {
 public:
   SensorA16();
   void begin();
+  void powerOn();
+  void powerOff();
   
   // Single frame read (low-level, listen-only)
   A16Reading readSingleRaw();
@@ -45,11 +47,13 @@ public:
   void resetFailureCount() { consecutiveFails = 0; }
   float getLastValidDistance() const { return lastValidDistance; }
   void markUartDirty() { uartActive = false; }
+  bool isPowered() const { return powerState; }
 
 private:
   int consecutiveFails;
   float lastValidDistance;
   bool uartActive;
+  bool powerState;
   std::vector<float> fastHistory;
 
   void attachUart();
@@ -57,5 +61,7 @@ private:
   // Membaca satu frame valid [0xFF, H, L, SUM]. Return true bila frame lolos checksum.
   bool readFrame(uint16_t &distMm, unsigned long timeoutMs, uint8_t *outHex = nullptr);
 };
+
+extern SensorA16 sensor;
 
 #endif // SENSOR_A16_H

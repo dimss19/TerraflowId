@@ -9,6 +9,15 @@ RtcManager rtcMgr;
 
 RtcManager::RtcManager() : rtcDetected(false), busAcquired(false), lastTemperature(25.0f) {}
 
+float RtcManager::getTemperature() const {
+#if defined(ENABLE_ONBOARD_RTC) && !ENABLE_ONBOARD_RTC
+  return temperatureRead();
+#else
+  return lastTemperature;
+#endif
+}
+
+
 uint8_t RtcManager::bcdToDec(uint8_t val) {
   return ((val / 16 * 10) + (val % 16));
 }
@@ -18,30 +27,49 @@ uint8_t RtcManager::decToBcd(uint8_t val) {
 }
 
 void RtcManager::acquireBus() {
+#if defined(ENABLE_ONBOARD_RTC) && !ENABLE_ONBOARD_RTC
+  return;
+#else
+  if (PIN_RTC_SDA < 0 || PIN_RTC_SCL < 0) return;
   if (busAcquired) return;
-  // Inisialisasi I2C Wire pada GPIO 8 (SDA) dan GPIO 9 (SCL)
   Wire.begin(PIN_RTC_SDA, PIN_RTC_SCL, 100000);
   busAcquired = true;
   delay(5);
+#endif
 }
 
 void RtcManager::releaseBus() {
+#if defined(ENABLE_ONBOARD_RTC) && !ENABLE_ONBOARD_RTC
+  return;
+#else
+  if (PIN_RTC_SDA < 0 || PIN_RTC_SCL < 0) return;
   if (!busAcquired) return;
-  // Lepaskan peripheral I2C agar GPIO 8 & 9 bisa digunakan UART jika diperlukan
   Wire.end();
   busAcquired = false;
   sensor.markUartDirty();
   delay(5);
+#endif
 }
 
 bool RtcManager::probeDevice() {
+#if defined(ENABLE_ONBOARD_RTC) && !ENABLE_ONBOARD_RTC
+  return false;
+#else
+  if (PIN_RTC_SDA < 0 || PIN_RTC_SCL < 0) return false;
   acquireBus();
   Wire.beginTransmission(RTC_I2C_ADDR);
   uint8_t err = Wire.endTransmission();
   return (err == 0);
+#endif
 }
 
 bool RtcManager::begin() {
+#if defined(ENABLE_ONBOARD_RTC) && !ENABLE_ONBOARD_RTC
+  Serial.println("[RTC] Onboard RTC dinonaktifkan di config.h (GPIO 9 dialokasikan untuk PIN_SENSOR_PWR).");
+  Serial.println("[RTC] Waktu sistem disinkronkan otomatis via NTP / jaringan / MQTT.");
+  rtcDetected = false;
+  return false;
+#else
   Serial.println("[RTC] Inisialisasi bus I2C Onboard RTC (DS3231/DS1307)...");
   Serial.printf("      - Pin SDA : GPIO %d\n", PIN_RTC_SDA);
   Serial.printf("      - Pin SCL : GPIO %d\n", PIN_RTC_SCL);
@@ -51,7 +79,7 @@ bool RtcManager::begin() {
 
   if (probeDevice()) {
     rtcDetected = true;
-    Serial.println("[RTC] ✅ Chip RTC onboard ditemukan dan merespons pada alamat 0x68!");
+    Serial.println("[RTC] Chip RTC onboard ditemukan dan merespons pada alamat 0x68!");
 
     // Coba baca dan sinkronkan waktu ke sistem ESP32
     struct tm tmNow;
@@ -61,15 +89,16 @@ bool RtcManager::begin() {
       Serial.printf("[RTC] Waktu RTC saat ini: %s (T=%.1f°C)\n", buf, lastTemperature);
       syncSystemTime();
     } else {
-      Serial.println("[RTC] ⚠️ RTC terdeteksi namun pembacaan register waktu belum valid.");
+      Serial.println("[RTC] RTC terdeteksi namun pembacaan register waktu belum valid.");
     }
   } else {
     rtcDetected = false;
-    Serial.println("[RTC] ⚠️ RTC onboard tidak merespons pada 0x68 (Mungkin sensor UART aktif di terminal).");
+    Serial.println("[RTC] RTC onboard tidak merespons pada 0x68 (Mungkin sensor UART aktif di terminal).");
   }
 
   releaseBus();
   return rtcDetected;
+#endif
 }
 
 bool RtcManager::readDateTime(struct tm &timeinfo) {
@@ -163,6 +192,16 @@ bool RtcManager::setDateTime(const struct tm &timeinfo) {
 }
 
 bool RtcManager::setEpochTime(time_t epochSec) {
+#if defined(ENABLE_ONBOARD_RTC) && !ENABLE_ONBOARD_RTC
+  if (epochSec > 1700000000) {
+    struct timeval tv = { .tv_sec = epochSec, .tv_usec = 0 };
+    settimeofday(&tv, nullptr);
+    Serial.printf("[TIME SYNC] Jam internal ESP32 disinkronkan ke Epoch %lu via Web Portal.\n",
+      (unsigned long)epochSec);
+    return true;
+  }
+  return false;
+#else
   struct tm timeinfo;
   if (localtime_r(&epochSec, &timeinfo)) {
     bool ok = setDateTime(timeinfo);
@@ -173,6 +212,7 @@ bool RtcManager::setEpochTime(time_t epochSec) {
     return ok;
   }
   return false;
+#endif
 }
 
 bool RtcManager::syncSystemTime() {

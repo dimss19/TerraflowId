@@ -55,7 +55,14 @@ void samplingTask(void *pvParameters) {
     float effectiveDist = 0.0f;
     float waterLevel = 0.0f;
 
-    if (reading.isValid) {
+    if (!sensor.isPowered()) {
+      dataSource = "power_off";
+      effectiveDist = 0.0f;
+      waterLevel = 0.0f;
+      if (!inTestMode) {
+        Serial.println("[SENSOR] Sakelar daya sensor dimatikan secara manual.");
+      }
+    } else if (reading.isValid) {
       dataSource = inTestMode ? "test" : ((reading.validSamples > 0) ? "live" : "hold");
       effectiveDist = (reading.filteredDistanceCm > 0.0f) ? reading.filteredDistanceCm : reading.rawDistanceCm;
       waterLevel = calib.sensorHeightCm - (effectiveDist * calib.slope + calib.offsetCm);
@@ -64,7 +71,7 @@ void samplingTask(void *pvParameters) {
       effectiveDist = 50.0f;
       waterLevel = calib.sensorHeightCm - (effectiveDist * calib.slope + calib.offsetCm);
       if (!inTestMode) {
-        Serial.println("🚨 [PERINGATAN AWLR] Blind Spot terdeteksi! Muka air berada <= 50 cm dari sensor (Potensi banjir ekstrem / luapan air)!");
+        Serial.println("[PERINGATAN AWLR] Blind Spot terdeteksi! Muka air berada <= 50 cm dari sensor (Potensi banjir ekstrem / luapan air)!");
         if (mqttMgr.isConnected()) {
           mqttMgr.publishAlert("BLIND_SPOT", "CRITICAL", "Muka air terdeteksi masuk ke zona buta (<= 50 cm). Sensor hampir terendam!");
         }
@@ -83,21 +90,21 @@ void samplingTask(void *pvParameters) {
     if (inTestMode) {
       uint16_t distMm = (uint16_t)(reading.rawDistanceCm * 10.0f);
       if (reading.isValid) {
-        Serial.printf("🎯 [OK VALID #%d] Raw: [%02X %02X %02X %02X] -> JARAK: %5u mm (%6.1f cm) | %5.2f meter | TMA: %6.1f cm\n",
+        Serial.printf("[OK VALID #%d] Raw: [%02X %02X %02X %02X] -> JARAK: %5u mm (%6.1f cm) | %5.2f meter | TMA: %6.1f cm\n",
           readingCount,
           reading.rawHex[0], reading.rawHex[1], reading.rawHex[2], reading.rawHex[3],
           distMm, reading.rawDistanceCm, reading.rawDistanceCm / 100.0f, waterLevel);
       } else if (reading.isBlindSpot) {
-        Serial.printf("🚨 [BLIND SPOT TERDETEKSI! #%d] Raw: [%02X %02X %02X %02X] -> Jarak: %u mm (%.1f cm) (Objek/Air <= 50 cm di Zona Buta!)\n",
+        Serial.printf("[BLIND SPOT TERDETEKSI! #%d] Raw: [%02X %02X %02X %02X] -> Jarak: %u mm (%.1f cm) (Objek/Air <= 50 cm di Zona Buta!)\n",
           readingCount,
           reading.rawHex[0], reading.rawHex[1], reading.rawHex[2], reading.rawHex[3],
           distMm, reading.rawDistanceCm);
       } else if (reading.errorMsg == "NO_ECHO") {
-        Serial.printf("⚠️ [FRAME VALID | NO ECHO #%d] Raw: [%02X %02X %02X %02X] -> Jarak: 0 mm (Target terlalu jauh/miring)\n",
+        Serial.printf("[FRAME VALID | NO ECHO #%d] Raw: [%02X %02X %02X %02X] -> Jarak: 0 mm (Target terlalu jauh/miring)\n",
           readingCount,
           reading.rawHex[0], reading.rawHex[1], reading.rawHex[2], reading.rawHex[3]);
       } else {
-        Serial.printf("❌ [A16 TIMEOUT #%d] Tidak ada frame valid dari sensor pada GPIO 8! (Memeriksa wiring sensor...)\n",
+        Serial.printf("[A16 TIMEOUT #%d] Tidak ada frame valid dari sensor pada GPIO 8! (Memeriksa wiring sensor...)\n",
           readingCount);
       }
     }
@@ -135,29 +142,15 @@ void samplingTask(void *pvParameters) {
         record.minute = (uint8_t)alignedTm.tm_min;
         record.timestamp = (uint32_t)minAligned;
       } else {
-        struct tm rtcTm;
-        if (rtcMgr.readDateTime(rtcTm)) {
-          time_t epoch = mktime(&rtcTm);
-          time_t minAligned = (epoch / 60) * 60;
-          struct tm alignedTm;
-          localtime_r(&minAligned, &alignedTm);
-          strftime(record.date, sizeof(record.date), "%Y-%m-%d", &alignedTm);
-          strftime(record.time, sizeof(record.time), "%H:%M:00", &alignedTm);
-          record.minute = (uint8_t)alignedTm.tm_min;
-          record.timestamp = (uint32_t)minAligned;
-          struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
-          settimeofday(&tv, nullptr);
-        } else {
-          uint32_t upSec = millis() / 1000;
-          uint32_t upAligned = (upSec / 60) * 60;
-          uint32_t upMin = (upAligned / 60) % 60;
-          uint32_t upHour = (upAligned / 3600) % 24;
-          uint32_t upDay = 1 + (upAligned / 86400);
-          snprintf(record.date, sizeof(record.date), "1970-01-%02u", upDay > 31 ? 31 : upDay);
-          snprintf(record.time, sizeof(record.time), "%02u:%02u:00", upHour, upMin);
-          record.minute = (uint8_t)upMin;
-          record.timestamp = upAligned;
-        }
+        uint32_t upSec = millis() / 1000;
+        uint32_t upAligned = (upSec / 60) * 60;
+        uint32_t upMin = (upAligned / 60) % 60;
+        uint32_t upHour = (upAligned / 3600) % 24;
+        uint32_t upDay = 1 + (upAligned / 86400);
+        snprintf(record.date, sizeof(record.date), "1970-01-%02u", upDay > 31 ? 31 : upDay);
+        snprintf(record.time, sizeof(record.time), "%02u:%02u:00", upHour, upMin);
+        record.minute = (uint8_t)upMin;
+        record.timestamp = upAligned;
       }
     }
 
@@ -311,17 +304,20 @@ void enterDeepSleep() {
   if (sleepInProgress) return;
   sleepInProgress = true;
   if (webServerMgr.isTestModeActive()) {
-    Serial.println("ℹ️ [SLEEP DITOLAK] Mode Test 1 Detik sedang aktif. Deep sleep ditunda.");
+    Serial.println("[SLEEP DITOLAK] Mode Test 1 Detik sedang aktif. Deep sleep ditunda.");
     return;
   }
   feedWatchdog();
   uint32_t intervalSec = webServerMgr.getSettings().samplingIntervalSec;
   if (intervalSec < 15) intervalSec = 15;
 
-  Serial.printf("\n💤 [SLEEP] Menyiapkan Deep Sleep selama %lu detik (%lu menit)...\n",
+  Serial.printf("\n[SLEEP] Menyiapkan Deep Sleep selama %lu detik (%lu menit)...\n",
     (unsigned long)intervalSec, (unsigned long)(intervalSec / 60));
   Serial.println("   (Tekan tombol BOOT pada GPIO 0 atau reset untuk membuka kembali Web Portal)");
   Serial.flush();
+
+  // Matikan daya sensor A16 dan kunci pin power LOW selama Deep Sleep
+  sensor.powerOff();
 
   if (webServerMgr.isApActive()) {
     webServerMgr.stopSoftAP();
@@ -342,14 +338,13 @@ void executeScheduledSamplingCycle() {
   if (intervalSec < 15) intervalSec = 15;
 
   Serial.printf("\n==================================================\n");
-  Serial.printf("⚡ [FAST DUTY CYCLE #%d] Bangun dari Deep Sleep (Interval: %lu dtk)\n",
+  Serial.printf("[FAST DUTY CYCLE #%d] Bangun dari Deep Sleep (Interval: %lu dtk)\n",
     persistentReadingCount, (unsigned long)intervalSec);
   Serial.printf("==================================================\n");
 
   feedWatchdog();
-  rtcMgr.begin();
   sdLogger.begin();
-  sensor.begin();
+  sensor.powerOn();
 
   A16Reading reading = sensor.readFilteredDistance(9);
   const char *dataSource = "none";
@@ -382,19 +377,15 @@ void executeScheduledSamplingCycle() {
     record.minute = (uint8_t)alignedTm.tm_min;
     record.timestamp = (uint32_t)minAligned;
   } else {
-    struct tm rtcTm;
-    if (rtcMgr.readDateTime(rtcTm)) {
-      time_t epoch = mktime(&rtcTm);
-      time_t minAligned = (epoch / 60) * 60;
-      struct tm alignedTm;
-      localtime_r(&minAligned, &alignedTm);
-      strftime(record.date, sizeof(record.date), "%Y-%m-%d", &alignedTm);
-      strftime(record.time, sizeof(record.time), "%H:%M:00", &alignedTm);
-      record.minute = (uint8_t)alignedTm.tm_min;
-      record.timestamp = (uint32_t)minAligned;
-      struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
-      settimeofday(&tv, nullptr);
-    }
+    uint32_t upSec = millis() / 1000;
+    uint32_t upAligned = (upSec / 60) * 60;
+    uint32_t upMin = (upAligned / 60) % 60;
+    uint32_t upHour = (upAligned / 3600) % 24;
+    uint32_t upDay = 1 + (upAligned / 86400);
+    snprintf(record.date, sizeof(record.date), "1970-01-%02u", upDay > 31 ? 31 : upDay);
+    snprintf(record.time, sizeof(record.time), "%02u:%02u:00", upHour, upMin);
+    record.minute = (uint8_t)upMin;
+    record.timestamp = upAligned;
   }
 
   record.rawDistanceCm = reading.rawDistanceCm;
@@ -496,11 +487,11 @@ void setup() {
   // Bersihkan seluruh NVS (Factory Reset Clean State)
   pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
   if (digitalRead(PIN_BOOT_BTN) == LOW) {
-    Serial.println("\n⚠️ [NVS CLEAN DETECTED] Tombol BOOT ditahan saat startup!");
+    Serial.println("\n[NVS CLEAN DETECTED] Tombol BOOT ditahan saat startup!");
     Serial.println("   Membersihkan seluruh NVS & Serial Number...");
     nvs_flash_erase();
     nvs_flash_init();
-    Serial.println("   ✅ NVS Bersih total. Masuk ke Setup Mode murni.\n");
+    Serial.println("   NVS Bersih total. Masuk ke Setup Mode murni.\n");
     delay(500);
   }
 
@@ -518,9 +509,9 @@ void setup() {
 
   // Jika sampai sini: Mode Captive Portal Aktif (Cold Boot / Reset / Tombol BOOT ditekan)
   Serial.println("==================================================");
-  Serial.println("🌊 " SYSTEM_NAME);
-  Serial.println("🏢 " COMPANY_NAME);
-  Serial.println("📡 [MODE PORTAL AKTIF] Membuka Captive Portal selama 3 Menit (Window Period)...");
+  Serial.println("" SYSTEM_NAME);
+  Serial.println("" COMPANY_NAME);
+  Serial.println("[MODE PORTAL AKTIF] Membuka Captive Portal selama 3 Menit (Window Period)...");
   Serial.println("==================================================");
 
   rtcMgr.begin();
@@ -568,7 +559,7 @@ void setup() {
 
   Serial.printf("[SYSTEM] TerraFlow AWLR running for Device '%s' with Multi-Device Unified Firmware.\n",
     webServerMgr.getEffectiveDeviceId().c_str());
-  Serial.println("💡 [TIPS] Tekan 't' di Serial Monitor kapan saja untuk mulai pengujian 1 detik (seperti sensor_test.cpp)!");
+  Serial.println("[TIPS] Tekan 't' di Serial Monitor kapan saja untuk mulai pengujian 1 detik (seperti sensor_test.cpp)!");
 }
 
 void loop() {
@@ -578,15 +569,23 @@ void loop() {
   while (Serial.available()) {
     char c = (char)Serial.read();
     if (c == 't' || c == 'T') {
-      Serial.println("\n⚡ [SERIAL CMD] Mengaktifkan Mode Uji Cepat 1 Detik (Durasi 60 detik)...");
+      Serial.println("\n[SERIAL CMD] Mengaktifkan Mode Uji Cepat 1 Detik (Durasi 60 detik)...");
       webServerMgr.setTestMode(true, 60);
     } else if (c == 'q' || c == 'Q') {
-      Serial.println("\n⏹️ [SERIAL CMD] Menghentikan Mode Uji Cepat, kembali ke siklus normal...");
+      Serial.println("\n[SERIAL CMD] Menghentikan Mode Uji Cepat, kembali ke siklus normal...");
       webServerMgr.setTestMode(false);
+    } else if (c == '1' || c == 'p' || c == 'P') {
+      sensor.powerOn();
+      Serial.println("\n[SERIAL CMD] Sakelar Daya Sensor: ON (Aktif)");
+    } else if (c == '0' || c == 'o' || c == 'O') {
+      sensor.powerOff();
+      Serial.println("\n[SERIAL CMD] Sakelar Daya Sensor: OFF (Mati)");
     } else if (c == '?' || c == 'h' || c == 'H') {
       Serial.println("\n--- BANTUAN PERINTAH SERIAL TERRAFLOW ---");
-      Serial.println("  't' : Mulai mode pengujian 1 detik seperti sensor_test.cpp (60 dtk)");
-      Serial.println("  'q' : Hentikan mode pengujian (kembali ke siklus normal)");
+      Serial.println("  't'     : Mulai mode pengujian 1 detik seperti sensor_test.cpp (60 dtk)");
+      Serial.println("  'q'     : Hentikan mode pengujian (kembali ke siklus normal)");
+      Serial.println("  '1'/'p' : Nyalakan daya sensor manual (GPIO 9 HIGH)");
+      Serial.println("  '0'/'o' : Matikan daya sensor manual (GPIO 9 LOW)");
       Serial.println("----------------------------------------");
     }
   }

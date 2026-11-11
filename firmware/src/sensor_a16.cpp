@@ -17,7 +17,7 @@ constexpr unsigned long A16_FRAME_TIMEOUT_MS = 1500;
 constexpr unsigned long A16_BURST_BUDGET_MS = 6000;
 }
 
-SensorA16::SensorA16() : consecutiveFails(0), lastValidDistance(0.0f), uartActive(false) {}
+SensorA16::SensorA16() : consecutiveFails(0), lastValidDistance(0.0f), uartActive(false), powerState(false) {}
 
 void SensorA16::flushRx() {
   while (RS485Serial.available()) {
@@ -40,17 +40,41 @@ void SensorA16::attachUart() {
   uartActive = true;
 }
 
-void SensorA16::begin() {
+void SensorA16::powerOn() {
+  if (PIN_SENSOR_PWR >= 0) {
+    gpio_hold_dis((gpio_num_t)PIN_SENSOR_PWR);
+    pinMode(PIN_SENSOR_PWR, OUTPUT);
+    digitalWrite(PIN_SENSOR_PWR, HIGH);
+    delay(250); // Sensor power stabilization delay
+  }
+  attachUart();
+  powerState = true;
+}
+
+void SensorA16::powerOff() {
+  RS485Serial.flush();
+  RS485Serial.end();
+  pinMode(PIN_RS485_RX, INPUT);
+  uartActive = false;
+
   if (PIN_SENSOR_PWR >= 0) {
     pinMode(PIN_SENSOR_PWR, OUTPUT);
-    digitalWrite(PIN_SENSOR_PWR, HIGH); // Enable sensor power via MOSFET (if present)
+    digitalWrite(PIN_SENSOR_PWR, LOW);
+    gpio_hold_en((gpio_num_t)PIN_SENSOR_PWR);
+    gpio_deep_sleep_hold_en();
   }
+  powerState = false;
+}
 
-  attachUart();
+void SensorA16::begin() {
+  powerOn();
 
   Serial.println("[A16] Inisialisasi Serial2 UART untuk Sensor DYP-A1611AU (UART Auto):");
   Serial.printf("      - ESP32 RX2 (GPIO %d / Terminal SDA) <- Sensor TX (Kabel Putih)\n", PIN_RS485_RX);
-  Serial.println("      - Sensor RX (Kabel Kuning) -> pull-up 10k ke VCC sensor (output terproses)");
+  if (PIN_SENSOR_PWR >= 0) {
+    Serial.printf("      - Sakelar Daya Sensor: GPIO %d (Active HIGH via P-MOSFET)\n", PIN_SENSOR_PWR);
+  }
+  Serial.println("      - Sensor RX (Kabel Kuning) -> pull-up 10k ke VCC Switched sensor (output terproses)");
   Serial.println("      - Baudrate: 9600 8N1, mode listen-only (tanpa trigger)");
 }
 
@@ -115,6 +139,11 @@ A16Reading SensorA16::readSingleRaw() {
   reading.errorMsg = "";
   memset(reading.rawHex, 0, 4);
 
+  if (!powerState) {
+    reading.errorMsg = "SENSOR_POWER_OFF";
+    return reading;
+  }
+
   uint16_t distMm = 0;
   if (!readFrame(distMm, A16_FRAME_TIMEOUT_MS, reading.rawHex)) {
     reading.errorMsg = "TIDAK_ADA_FRAME_VALID";
@@ -140,10 +169,6 @@ A16Reading SensorA16::readSingleRaw() {
 }
 
 A16Reading SensorA16::readFastSample() {
-  if (!uartActive) {
-    attachUart();
-  }
-
   A16Reading reading;
   reading.isValid = false;
   reading.isBlindSpot = false;
@@ -155,6 +180,15 @@ A16Reading SensorA16::readFastSample() {
   reading.spreadCm = 0.0f;
   reading.errorMsg = "TIDAK_ADA_FRAME_VALID";
   memset(reading.rawHex, 0, 4);
+
+  if (!powerState) {
+    reading.errorMsg = "SENSOR_POWER_OFF";
+    return reading;
+  }
+
+  if (!uartActive) {
+    attachUart();
+  }
 
   uint8_t win[4] = {0, 0, 0, 0};
   int filled = 0;
@@ -256,6 +290,11 @@ A16Reading SensorA16::readFilteredDistance(int sampleCount) {
   lastAttempt.validSamples = 0;
   lastAttempt.errorMsg = "TIDAK_ADA_FRAME_VALID";
 
+  if (!powerState) {
+    lastAttempt.errorMsg = "SENSOR_POWER_OFF";
+    return lastAttempt;
+  }
+
   unsigned long burstStart = millis();
   while ((int)validSamples.size() < sampleCount &&
          millis() - burstStart < A16_BURST_BUDGET_MS) {
@@ -288,7 +327,7 @@ A16Reading SensorA16::readFilteredDistance(int sampleCount) {
     blindResult.validSamples = 0;
     blindResult.errorMsg = "BLIND_SPOT";
     consecutiveFails = 0; // Bukan sensor mati/putus, tetapi air/objek terlalu dekat
-    Serial.printf("🚨 [A16 BLIND SPOT TERDETEKSI] %d/%d frame berada pada zona buta (<= 50 cm)! Air/objek terlalu dekat.\n",
+    Serial.printf("[A16 BLIND SPOT TERDETEKSI] %d/%d frame berada pada zona buta (<= 50 cm)! Air/objek terlalu dekat.\n",
       framesBlindSpot, framesTotal);
     return blindResult;
   }

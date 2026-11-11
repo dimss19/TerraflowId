@@ -1066,7 +1066,7 @@ export default function DeviceManagementView({
             {/* Checklist Steps */}
             <div style={{ marginBottom: '22px' }}>
               <h4 style={{ fontSize: '0.86rem', fontWeight: 700, color: '#334155', marginBottom: '10px' }}>
-                📋 Langkah Aktivasi Lapangan:
+                Langkah Aktivasi Lapangan:
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {activationGuide.checklist && activationGuide.checklist.map((step, idx) => (

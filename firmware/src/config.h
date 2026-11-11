@@ -30,8 +30,9 @@
 
 // Onboard Real-Time Clock (DS3231 / DS1307 at 0x68)
 // Terhubung secara internal pada board ke bus I2C (SDA GPIO 8 & SCL GPIO 9)
-#define PIN_RTC_SDA           8
-#define PIN_RTC_SCL           9
+#define ENABLE_ONBOARD_RTC    false
+#define PIN_RTC_SDA           -1
+#define PIN_RTC_SCL           -1
 #define RTC_I2C_ADDR          0x68
 
 // Serial2 (UART TTL) Interface to DYP-A1611AU (UART Auto, listen-only)
@@ -48,7 +49,7 @@
 #define PIN_RS485_DE_RE       -1  // Direct UART TTL (tidak memerlukan pin direction)
 
 // Sensor Power Relay / MOSFET Gate (-1: sensor ditenagai langsung dari power rail)
-#define PIN_SENSOR_PWR        -1
+#define PIN_SENSOR_PWR        9
 
 // Status Indicators & Hardware Controls
 #define PIN_STATUS_LED        2

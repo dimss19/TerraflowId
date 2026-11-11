@@ -956,7 +956,7 @@ export default function DeviceTab({
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginTop: '22px' }}>
           <div style={{ fontSize: '0.8rem', color: '#64748b', maxWidth: '580px' }}>
-            ℹ️ Konfigurasi disimpan di broker dengan status <strong>MQTT Retain</strong>. Begitu perangkat bangun dari Deep Sleep pada siklus berikutnya, interval ini otomatis diterapkan.
+            Konfigurasi disimpan di broker dengan status <strong>MQTT Retain</strong>. Begitu perangkat bangun dari Deep Sleep pada siklus berikutnya, interval ini otomatis diterapkan.
           </div>
 
           <button

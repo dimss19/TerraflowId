@@ -119,31 +119,33 @@ export default function Header({
         {/* Right Section: Connection Status Pill & Admin/Account Dropdown Menu */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
           
-          {/* 1. LIVE / OFFLINE Status Pill */}
-          <div style={{
-            background: statusBadge.bg,
-            color: statusBadge.color,
-            border: `1px solid ${statusBadge.border}`,
-            padding: '6px 14px',
-            borderRadius: '20px',
-            fontSize: '0.78rem',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            transition: 'all 0.25s ease'
-          }}>
-            <span 
-              className={statusBadge.pulse ? 'pulse-dot' : ''} 
-              style={{ 
-                width: '7px', 
-                height: '7px', 
-                borderRadius: '50%', 
-                background: statusBadge.dotBg 
-              }} 
-            />
-            <span>{statusBadge.text}</span>
-          </div>
+          {/* Status Pill: Muncul 'TERPUTUS' bila socket putus, atau saat overview bila tidak sedang membuka perangkat spesifik */}
+          {(!isConnected || !device) && statusBadge && (
+            <div style={{
+              background: statusBadge.bg,
+              color: statusBadge.color,
+              border: `1px solid ${statusBadge.border}`,
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.25s ease'
+            }}>
+              <span 
+                className={statusBadge.pulse ? 'pulse-dot' : ''} 
+                style={{ 
+                  width: '7px', 
+                  height: '7px', 
+                  borderRadius: '50%', 
+                  background: statusBadge.dotBg 
+                }} 
+              />
+              <span>{statusBadge.text}</span>
+            </div>
+          )}
 
           {/* 2. Admin & Account Dropdown Menu */}
           <AdminMenu 

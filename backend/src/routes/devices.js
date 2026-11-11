@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db/connection');
 const { authenticateToken, requireAdmin } = require('./auth');
-const { publishCommand, publishSamplingInterval, publishTestMode } = require('../mqtt/publisher');
+const { publishCommand, publishSamplingInterval, publishTestMode, publishSensorPower, publishSleepCommand } = require('../mqtt/publisher');
 
 // ==========================================
 // 1. OPERATOR / ADMIN READ ROUTES
@@ -293,6 +293,61 @@ router.get('/:device_id/test-mode', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/devices/:device_id/sensor-power - Kontrol manual daya sensor DYP-A16 (High-Side Switch)
+router.post('/:device_id/sensor-power', authenticateToken, async (req, res) => {
+  const { device_id } = req.params;
+  const { power } = req.body;
+
+  try {
+    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
+    if (devCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
+    }
+
+    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
+      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
+    }
+
+    const powerOn = power === true || power === 'true' || power === 1 || power === '1' || power === 'on';
+    await publishSensorPower(device_id, powerOn);
+
+    res.json({
+      success: true,
+      message: `Perintah daya sensor (${powerOn ? 'ON' : 'OFF'}) berhasil dikirim ke perangkat ${device_id}`,
+      power: powerOn
+    });
+  } catch (err) {
+    console.error('[API Error POST /devices/:device_id/sensor-power]', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengirim perintah daya sensor: ' + err.message });
+  }
+});
+
+// POST /api/devices/:device_id/sleep - Perintah masuk Deep Sleep manual untuk pengujian
+router.post('/:device_id/sleep', authenticateToken, async (req, res) => {
+  const { device_id } = req.params;
+
+  try {
+    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
+    if (devCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
+    }
+
+    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
+      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
+    }
+
+    await publishSleepCommand(device_id);
+
+    res.json({
+      success: true,
+      message: `Perintah masuk Deep Sleep berhasil dikirim ke perangkat ${device_id}`
+    });
+  } catch (err) {
+    console.error('[API Error POST /devices/:device_id/sleep]', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengirim perintah deep sleep: ' + err.message });
   }
 });
 

@@ -1,5 +1,6 @@
 #include "mqtt_client.h"
 #include "config.h"
+#include "sensor_a16.h"
 #include <esp_task_wdt.h>
 
 MqttManager::MqttManager() : client(wifiClient), lastReconnectAttempt(0) {
@@ -112,6 +113,8 @@ void MqttManager::reconnect() {
     client.subscribe(getTopic("data/bulk/ack").c_str());
     client.subscribe(getTopic("config/interval").c_str());
     client.subscribe(getTopic("command/test_mode").c_str());
+    client.subscribe(getTopic("command/sensor_power").c_str());
+    client.subscribe(getTopic("command/sleep").c_str());
     
     Serial.printf("[MQTT] Subscribed to commands for '%s'\n", devId.c_str());
   } else {
@@ -131,11 +134,45 @@ void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
   if (err) return;
 
   String topicStr(topic);
-  String calibSetTopic = getTopic("calibration/set");
-  String restartTopic  = getTopic("command/restart");
-  String bulkAckTopic  = getTopic("data/bulk/ack");
-  String intervalTopic = getTopic("config/interval");
-  String testModeTopic = getTopic("command/test_mode");
+  String calibSetTopic    = getTopic("calibration/set");
+  String restartTopic     = getTopic("command/restart");
+  String bulkAckTopic     = getTopic("data/bulk/ack");
+  String intervalTopic    = getTopic("config/interval");
+  String testModeTopic    = getTopic("command/test_mode");
+  String sensorPowerTopic = getTopic("command/sensor_power");
+  String sleepTopic       = getTopic("command/sleep");
+
+  if (topicStr == sensorPowerTopic) {
+    bool enablePower = doc["power"] | (doc["state"].as<int>() == 1);
+    if (enablePower) {
+      sensor.powerOn();
+    } else {
+      sensor.powerOff();
+    }
+    Serial.printf("[MQTT CMD] Sensor Power: %s\n", enablePower ? "ON" : "OFF");
+
+    JsonDocument resp;
+    resp["device_id"] = webServerMgr.getEffectiveDeviceId();
+    resp["power"] = sensor.isPowered();
+    resp["status"] = sensor.isPowered() ? "ON" : "OFF";
+    char respBuf[128];
+    serializeJson(resp, respBuf);
+    client.publish(getTopic("command/sensor_power/response").c_str(), respBuf);
+    return;
+  }
+
+  if (topicStr == sleepTopic) {
+    Serial.println("[MQTT CMD] Deep Sleep command received. Memasuki mode hemat daya...");
+    JsonDocument resp;
+    resp["device_id"] = webServerMgr.getEffectiveDeviceId();
+    resp["status"] = "entering_sleep";
+    char respBuf[128];
+    serializeJson(resp, respBuf);
+    client.publish(getTopic("command/sleep/response").c_str(), respBuf);
+    delay(100);
+    webServerMgr.requestSleep();
+    return;
+  }
 
   if (topicStr == bulkAckTopic) {
     handleBulkAck(doc);

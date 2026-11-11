@@ -115,9 +115,63 @@ function publishTestMode(deviceId, enabled, durationSec = 300) {
   });
 }
 
+/**
+ * Publish sensor power command to device
+ * @param {string} deviceId 
+ * @param {boolean} powerOn 
+ */
+function publishSensorPower(deviceId, powerOn) {
+  const client = getMqttClient();
+  if (!client || !client.connected) {
+    throw new Error('MQTT client is not connected to broker');
+  }
+
+  const topic = `terraflow/${deviceId}/command/sensor_power`;
+  const payload = JSON.stringify({
+    power: Boolean(powerOn),
+    state: powerOn ? 1 : 0,
+    timestamp: Math.floor(Date.now() / 1000)
+  });
+
+  return new Promise((resolve, reject) => {
+    client.publish(topic, payload, { qos: 1 }, (err) => {
+      if (err) return reject(err);
+      console.log(`[MQTT Publisher] Pushed sensor power (${powerOn ? 'ON' : 'OFF'}) to ${topic}`);
+      resolve({ success: true, topic, power: powerOn });
+    });
+  });
+}
+
+/**
+ * Publish deep sleep command to device
+ * @param {string} deviceId 
+ */
+function publishSleepCommand(deviceId) {
+  const client = getMqttClient();
+  if (!client || !client.connected) {
+    throw new Error('MQTT client is not connected to broker');
+  }
+
+  const topic = `terraflow/${deviceId}/command/sleep`;
+  const payload = JSON.stringify({
+    cmd: 'sleep',
+    timestamp: Math.floor(Date.now() / 1000)
+  });
+
+  return new Promise((resolve, reject) => {
+    client.publish(topic, payload, { qos: 1 }, (err) => {
+      if (err) return reject(err);
+      console.log(`[MQTT Publisher] Sent deep sleep command to ${topic}`);
+      resolve({ success: true, topic });
+    });
+  });
+}
+
 module.exports = {
   publishCalibration,
   publishCommand,
   publishSamplingInterval,
   publishTestMode,
+  publishSensorPower,
+  publishSleepCommand
 };

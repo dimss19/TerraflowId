@@ -221,17 +221,16 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 8px;font-size:13px}
 <button id="btnSleepNow" onclick="sleepNow()" style="background:#2563eb;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;width:auto;margin:0">Mulai Mode Tidur Sekarang</button>
 </div>
 
-<!-- KARTU UJI SUDUT & KALIBRASI LAPANGAN (1 MENIT) -->
+<!-- KARTU UJI REAL-TIME STREAM 1 DETIK -->
 <div id="alignCard" style="background:#0f2942;border:1px solid #0284c7;border-radius:12px;padding:16px 20px;margin-bottom:20px;box-shadow:0 4px 14px rgba(0,0,0,0.3)">
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
 <div>
 <div style="display:flex;align-items:center;gap:8px">
-<span style="font-size:18px"></span>
-<h3 style="margin:0;font-size:15px;color:#38bdf8;font-weight:800">Uji Sudut &amp; Kalibrasi Lapangan (1 Menit)</h3>
-<span id="testBadge" style="display:none;background:#22c55e;color:#0b1120;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">STREAM 1 DETIK</span>
+<h3 style="margin:0;font-size:15px;color:#38bdf8;font-weight:800">Uji Real-Time Stream (1 Detik)</h3>
+<span id="testBadge" style="display:none;background:#22c55e;color:#0b1120;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">STREAMING 1s</span>
 </div>
 <p style="margin:4px 0 0;font-size:12px;color:#94a3b8">
-Streaming 1Hz untuk memastikan sensor tegak lurus 90&deg; dan mengunci tinggi tiang sensor (H) sebelum alat ditinggalkan.
+Streaming 1Hz data mentah untuk uji stabilitas pantulan dan kalibrasi tinggi sensor (H).
 </p>
 </div>
 <div style="display:flex;align-items:center;gap:10px">
@@ -243,19 +242,14 @@ Streaming 1Hz untuk memastikan sensor tegak lurus 90&deg; dan mengunci tinggi ti
 </div>
 
 <div id="alignResult" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid #1e3a5f">
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
 <div style="background:#0b1d30;border:1px solid #1e3a5f;border-radius:8px;padding:12px">
-<small style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase">Kondisi Kemiringan Sudut</small>
-<div id="angleStatus" style="font-size:15px;font-weight:800;color:#4ade80;margin-top:4px">MEMERIKSA...</div>
-<small id="angleDesc" style="color:#64748b;font-size:11px;display:block;margin-top:2px">Menunggu sampel...</small>
-</div>
-<div style="background:#0b1d30;border:1px solid #1e3a5f;border-radius:8px;padding:12px">
-<small style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase">Fluktuasi Pantulan (Spread)</small>
+<small style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase">Fluktuasi Pantulan (Deviasi)</small>
 <div id="spreadVal" style="font-size:15px;font-weight:800;color:#38bdf8;margin-top:4px;font-family:monospace">-- cm</div>
-<small id="spreadDesc" style="color:#64748b;font-size:11px;display:block;margin-top:2px">&plusmn; deviasi</small>
+<small id="spreadDesc" style="color:#64748b;font-size:11px;display:block;margin-top:2px">&plusmn; deviasi (Δ max-min)</small>
 </div>
 <div style="background:#0b1d30;border:1px solid #1e3a5f;border-radius:8px;padding:12px">
-<small style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase">Jarak Rata-Rata (Median)</small>
+<small style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase">Jarak Median Terukur</small>
 <div id="medianDist" style="font-size:15px;font-weight:800;color:#facc15;margin-top:4px;font-family:monospace">-- cm</div>
 <small id="sampleCountText" style="color:#64748b;font-size:11px;display:block;margin-top:2px">0 frame terekam</small>
 </div>
@@ -263,10 +257,10 @@ Streaming 1Hz untuk memastikan sensor tegak lurus 90&deg; dan mengunci tinggi ti
 
 <div id="saveHBox" style="margin-top:14px;display:none;background:#064e3b;border:1px solid #059669;border-radius:8px;padding:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
 <div style="font-size:12px;color:#a7f3d0">
-&check; <b>Uji 1 Menit Selesai!</b> Jarak rata-rata terukur: <b id="finalH" style="color:#fff">-- cm</b>. Sudut sensor dinyatakan stabil.
+&check; <b>Uji Selesai!</b> Jarak median terukur: <b id="finalH" style="color:#fff">-- cm</b>.
 </div>
 <button id="btnSaveH" onclick="saveMeasuredH()" style="background:#10b981;color:#fff;border:none;padding:7px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">
- Simpan Sebagai Tinggi Sensor (H)
+Simpan Sebagai Tinggi Sensor (H)
 </button>
 </div>
 </div>
@@ -485,24 +479,12 @@ function applyStatus(d){
       var sp=maxV-minV;
       var sArr=testHistory.slice().sort(function(a,b){return a-b;});
       var medV=sArr[Math.floor(sArr.length/2)];
-      var aStat=document.getElementById('angleStatus');
-      var aDesc=document.getElementById('angleDesc');
-      if(sp<=0.6){
-        aStat.innerHTML=' TEGAK LURUS (OPTIMAL)';
-        aStat.style.color='#4ade80';
-        aDesc.textContent='Sudut 90° sempurna, pantulan echo maksimal.';
-      }else if(sp<=2.0){
-        aStat.innerHTML=' CUKUP (CEK KEMIRINGAN)';
-        aStat.style.color='#facc15';
-        aDesc.textContent='Ada variasi riak. Arahkan lebih tegak lurus.';
-      }else{
-        aStat.innerHTML=' SUDUT MIRING / MULTI-ECHO';
-        aStat.style.color='#f87171';
-        aDesc.textContent='Variasi tinggi (>2cm). Luruskan posisi bracket sensor!';
-      }
-      document.getElementById('spreadVal').textContent='±'+(sp/2).toFixed(1)+' cm (Δ '+sp.toFixed(1)+'cm)';
-      document.getElementById('medianDist').textContent=medV.toFixed(1)+' cm';
-      document.getElementById('sampleCountText').textContent=testHistory.length+' frame terekam';
+      var spEl=document.getElementById('spreadVal');
+      if(spEl)spEl.textContent='±'+(sp/2).toFixed(1)+' cm (Δ '+sp.toFixed(1)+'cm)';
+      var medEl=document.getElementById('medianDist');
+      if(medEl)medEl.textContent=medV.toFixed(1)+' cm';
+      var cntEl=document.getElementById('sampleCountText');
+      if(cntEl)cntEl.textContent=testHistory.length+' frame terekam';
     }
     if(d.test_remaining_sec===0&&testModeRunning){
       resetTestUi();

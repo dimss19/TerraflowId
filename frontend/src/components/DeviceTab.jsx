@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-import TestModeTab from './TestModeTab';
 import { 
   Sliders, 
   Save, 
@@ -28,6 +27,10 @@ import {
   Timer,
   Terminal,
   Trash2,
+  Power,
+  Moon,
+  ToggleLeft,
+  ToggleRight,
   Droplet
 } from 'lucide-react';
 
@@ -203,7 +206,7 @@ export default function DeviceTab({
     }
   };
 
-  const handleRemoteCommand = async (commandName, endpoint) => {
+  const handleRemoteCommand = async (commandName, endpoint, body = null) => {
     setLoadingAction(true);
     try {
       const headers = { 'Content-Type': 'application/json' };
@@ -211,7 +214,8 @@ export default function DeviceTab({
 
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers
+        headers,
+        body: body ? JSON.stringify(body) : undefined
       });
       const json = await res.json();
       if (json.success) {
@@ -256,18 +260,6 @@ export default function DeviceTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-      
-      {/* ========================================================= */}
-      {/* SECTION 0: MONITOR DATA MENTAH & MODE UJI 1 DETIK (ADMIN) */}
-      {/* ========================================================= */}
-      {isAdmin && (
-        <TestModeTab 
-          device={device}
-          authToken={authToken}
-          currentUser={currentUser}
-          onRefresh={onCalibrationUpdated}
-        />
-      )}
 
       {/* ========================================================= */}
       {/* SECTION 1: KALIBRASI SENSOR AWLR (KHUSUS ADMINISTRATOR)   */}
@@ -990,26 +982,56 @@ export default function DeviceTab({
         }}>
           <div>
             <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Konsol Kendali Jarak Jauh (Remote Command)</div>
-            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>Perintah eksekusi langsung ke perangkat saat online</div>
+            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>Perintah eksekusi langsung ke perangkat saat online via MQTT</div>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => handleRemoteCommand('Nyalakan Sensor', `/api/devices/${device.device_id}/sensor-power`, { power: true })}
+              disabled={loadingAction}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#16a34a' }}
+              title="Aktifkan switch daya High-Side P-MOSFET sensor A16"
+            >
+              <Zap size={14} />
+              <span>Nyalakan Sensor (ON)</span>
+            </button>
+            <button
+              onClick={() => handleRemoteCommand('Matikan Sensor', `/api/devices/${device.device_id}/sensor-power`, { power: false })}
+              disabled={loadingAction}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#dc2626' }}
+              title="Putus switch daya High-Side P-MOSFET sensor A16"
+            >
+              <Power size={14} />
+              <span>Matikan Sensor (OFF)</span>
+            </button>
+            <button
+              onClick={() => handleRemoteCommand('Masuk Deep Sleep', `/api/devices/${device.device_id}/sleep`)}
+              disabled={loadingAction}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#2563eb' }}
+              title="Perintahkan perangkat masuk mode hemat daya Deep Sleep segera"
+            >
+              <Moon size={14} />
+              <span>Deep Sleep Sekarang</span>
+            </button>
             <button
               onClick={() => handleRemoteCommand('Restart Perangkat', `/api/devices/${device.device_id}/restart`)}
               disabled={loadingAction}
               className="btn btn-secondary"
-              style={{ fontSize: '0.78rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              style={{ fontSize: '0.78rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
             >
               <RotateCcw size={14} />
-              <span>Restart Alat Lapangan</span>
+              <span>Restart Alat</span>
             </button>
             <button
               onClick={() => handleRemoteCommand('Sinkronisasi SD Card', `/api/devices/${device.device_id}/sync`)}
               disabled={loadingAction}
               className="btn btn-secondary"
-              style={{ fontSize: '0.78rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              style={{ fontSize: '0.78rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
             >
               <HardDriveDownload size={14} />
-              <span>Tarik Log SD Card (Sync)</span>
+              <span>Tarik Log SD (Sync)</span>
             </button>
           </div>
         </div>

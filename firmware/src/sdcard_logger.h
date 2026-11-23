@@ -53,7 +53,28 @@ public:
   int getPendingCount();
   void incrementPending();
   void decrementPending(int count = 1);
-  
+
+  // ------------------------------------------------------------
+  //  Pelaporan kegagalan tulis (untuk troubleshooting lapangan)
+  // ------------------------------------------------------------
+  //  appendRecord() punya 5 jalur `return false` dan sebelumnya hampir
+  //  semuanya senyap - pemanggil mengabaikan nilai kembaliannya, sehingga
+  //  satu sampel bisa hilang tanpa log, tanpa counter, tanpa alert. Di
+  //  lapangan yang terlihat hanya lubang di data, tanpa petunjuk penyebab.
+  uint32_t getWriteFailCount() const { return writeFailCount; }
+  int getConsecutiveErrors() const { return consecutiveErrors; }
+
+  // Kode status singkat untuk payload MQTT. WAJIB <= 10 karakter:
+  // kolom readings.sd_status di Postgres adalah VARCHAR(10) dan insert-nya
+  // tidak di-try/catch, sehingga string lebih panjang memicu error 22001
+  // yang MENGHAPUS seluruh baris telemetri siklus itu tanpa jejak.
+  const char *getSdStatus() const;
+
+  // EKSPERIMENTAL (lihat ENABLE_SD_POWERDOWN_ON_SLEEP di config.h).
+  // Lepaskan bus SPI & isolasi pin kartu sebelum esp_deep_sleep_start().
+  // No-op bila flag di config.h masih false.
+  void prepareForDeepSleep();
+
   float getFreeSpaceMB();
   float getTotalSpaceMB();
   std::vector<LogRecord> getUnsentRecords(const String &filename, int limit = 10);
@@ -67,8 +88,14 @@ private:
   SPIClass spiBus;
   int pendingCount;
   int consecutiveErrors;
+  uint32_t writeFailCount;      // Akumulasi sampel yang gagal ditulis ke MicroSD
+  const char *lastWriteError;   // Kode penyebab kegagalan terakhir (<= 10 karakter)
   SemaphoreHandle_t sdMutex;
   void initDirectories();
+
+  // Catat satu kegagalan tulis + alasannya, lalu kembalikan false agar
+  // bisa dipakai langsung sebagai `return noteWriteFailure("...")`.
+  bool noteWriteFailure(const char *reasonCode, const char *detail);
 
   // Ledger "sudah terkirim" per berkas log (append-only, 1 timestamp per baris)
   String sentLedgerPathFor(const String &filename) const;
@@ -77,5 +104,9 @@ private:
   std::vector<uint32_t> sentLedgerCache;
   String sentLedgerCachedFor;
 };
+
+// Instance global (didefinisikan di main.cpp), mengikuti pola yang sudah
+// dipakai `sensor` (sensor_a16.h) dan `webServerMgr` (web_server_mgr.h).
+extern SdCardLogger sdLogger;
 
 #endif // SDCARD_LOGGER_H

@@ -1,6 +1,6 @@
 #include "sensor_a16.h"
 #include "config.h"
-#include "rtc_mgr.h"
+#include "timekeeping.h"
 #include <algorithm>
 #include <vector>
 
@@ -26,12 +26,12 @@ void SensorA16::flushRx() {
 }
 
 void SensorA16::attachUart() {
-  // GPIO 8 juga dipakai I2C (SDA) RTC. Lepaskan Wire dulu, lalu pasang ulang UART
-  // agar pin matrix GPIO 8 pasti kembali ke RX2 setelah akses RTC.
-  rtcMgr.releaseBus();
+  // Time-multiplexing dengan bus I2C RTC sudah tidak ada lagi: RTC DS3231M
+  // dinonaktifkan dan modul rtc_mgr dihapus, jadi tidak ada pihak lain yang
+  // pernah mengambil GPIO 8. Pemanggilan rtcMgr.releaseBus() (sudah no-op)
+  // dan pinMode(INPUT) + delay(10) untuk "reset mode open-drain I2C" ikut
+  // dibuang - keduanya membatalkan konfigurasi yang tidak mungkin terjadi.
   RS485Serial.end();
-  pinMode(PIN_RS485_RX, INPUT); // Reset mode pin dari Open-Drain I2C ke digital INPUT
-  delay(10);
   // Listen-only: TX = PIN_RS485_TX (-1 = tidak dipakai). Sensor UART Auto tidak butuh
   // trigger; pin RX sensor (kabel kuning) dipull-up agar output "terproses" (stabil).
   RS485Serial.begin(9600, SERIAL_8N1, PIN_RS485_RX, PIN_RS485_TX);
@@ -132,7 +132,7 @@ A16Reading SensorA16::readSingleRaw() {
   reading.isBlindSpot = false;
   reading.rawDistanceCm = 0.0f;
   reading.filteredDistanceCm = 0.0f;
-  reading.temperatureC = rtcMgr.getTemperature();
+  reading.temperatureC = readDieTemperatureC();
   reading.timestamp = millis() / 1000;
   reading.validSamples = 0;
   reading.spreadCm = 0.0f;
@@ -174,7 +174,7 @@ A16Reading SensorA16::readFastSample() {
   reading.isBlindSpot = false;
   reading.rawDistanceCm = 0.0f;
   reading.filteredDistanceCm = 0.0f;
-  reading.temperatureC = rtcMgr.getTemperature();
+  reading.temperatureC = readDieTemperatureC();
   reading.timestamp = millis() / 1000;
   reading.validSamples = 0;
   reading.spreadCm = 0.0f;
@@ -285,7 +285,7 @@ A16Reading SensorA16::readFilteredDistance(int sampleCount) {
   lastAttempt.isBlindSpot = false;
   lastAttempt.rawDistanceCm = 0.0f;
   lastAttempt.filteredDistanceCm = 0.0f;
-  lastAttempt.temperatureC = rtcMgr.getTemperature();
+  lastAttempt.temperatureC = readDieTemperatureC();
   lastAttempt.timestamp = millis() / 1000;
   lastAttempt.validSamples = 0;
   lastAttempt.errorMsg = "TIDAK_ADA_FRAME_VALID";
@@ -322,7 +322,7 @@ A16Reading SensorA16::readFilteredDistance(int sampleCount) {
     blindResult.isBlindSpot = true;
     blindResult.rawDistanceCm = 50.0f;
     blindResult.filteredDistanceCm = 50.0f;
-    blindResult.temperatureC = rtcMgr.getTemperature();
+    blindResult.temperatureC = readDieTemperatureC();
     blindResult.timestamp = millis() / 1000;
     blindResult.validSamples = 0;
     blindResult.errorMsg = "BLIND_SPOT";
@@ -343,7 +343,7 @@ A16Reading SensorA16::readFilteredDistance(int sampleCount) {
     result.isBlindSpot = false;
     result.rawDistanceCm = medianCm;
     result.filteredDistanceCm = medianCm; // Tanpa kompensasi suhu ganda
-    result.temperatureC = rtcMgr.getTemperature();
+    result.temperatureC = readDieTemperatureC();
     result.timestamp = millis() / 1000;
     result.validSamples = (int)validSamples.size();
     result.spreadCm = spreadCm;
@@ -379,7 +379,7 @@ A16Reading SensorA16::readFilteredDistance(int sampleCount) {
     holdResult.isValid = true;
     holdResult.rawDistanceCm = lastValidDistance;
     holdResult.filteredDistanceCm = lastValidDistance;
-    holdResult.temperatureC = rtcMgr.getTemperature();
+    holdResult.temperatureC = readDieTemperatureC();
     holdResult.timestamp = millis() / 1000;
     holdResult.validSamples = 0; // 0 menandakan nilai hold / kontinuitas
     holdResult.errorMsg = "HELD_LAST_VALID";

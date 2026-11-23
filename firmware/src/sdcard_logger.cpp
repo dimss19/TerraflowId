@@ -1,9 +1,83 @@
 #include "sdcard_logger.h"
+#include <driver/rtc_io.h>
+#include <driver/gpio.h>
 #include "config.h"
 
 #include <algorithm>
 
-SdCardLogger::SdCardLogger() : ready(false), spiBus(FSPI), pendingCount(0), consecutiveErrors(0), sdMutex(NULL) {}
+SdCardLogger::SdCardLogger()
+  : ready(false), spiBus(FSPI), pendingCount(0), consecutiveErrors(0),
+    writeFailCount(0), lastWriteError(nullptr), sdMutex(NULL) {}
+
+bool SdCardLogger::noteWriteFailure(const char *reasonCode, const char *detail) {
+  writeFailCount++;
+  lastWriteError = reasonCode;
+  Serial.printf("[SD GAGAL TULIS] %s - %s (total gagal: %lu)\n",
+    reasonCode, detail, (unsigned long)writeFailCount);
+  return false;
+}
+
+const char *SdCardLogger::getSdStatus() const {
+  if (!ready) return "no_card";              // 7 karakter
+  if (lastWriteError) return lastWriteError; // dijamin <= 10 karakter di pemanggil
+  return "ok";                               // 2 karakter
+}
+
+// ============================================================================
+//  EKSPERIMENTAL - pelepasan pin SPI sebelum deep sleep
+// ============================================================================
+//  Diaktifkan lewat ENABLE_SD_POWERDOWN_ON_SLEEP di config.h (default false).
+//
+//  PROSEDUR UJI BENCH SEBELUM DIPAKAI DI LAPANGAN:
+//   1. Set flag ke true, flash, pasang kartu MicroSD berisi data.
+//   2. Biarkan melewati MINIMAL 10 siklus bangun-tidur berturut-turut
+//      (turunkan sampling interval ke 15 detik agar cepat).
+//   3. Pastikan SETIAP siklus menulis baris baru ke /data: periksa
+//      write_fail_count TETAP 0 dan sd_status TETAP "ok" di payload MQTT.
+//      Kegagalan remount akan muncul sebagai sd_status "no_card".
+//   4. Ukur arus jalur baterai saat tidur dengan multimeter mode uA.
+//      Harapan realistis: turun ~73 uA (kebocoran pull-up MISO hilang),
+//      BUKAN turun ke bawah 150 uA - arus standby kartu tidak bisa
+//      dihilangkan dari firmware, lihat catatan di config.h.
+//   5. Bila ada satu saja siklus yang gagal remount, kembalikan flag ke
+//      false. Kehilangan logging jauh lebih mahal daripada 73 uA.
+void SdCardLogger::prepareForDeepSleep() {
+#if defined(ENABLE_SD_POWERDOWN_ON_SLEEP) && ENABLE_SD_POWERDOWN_ON_SLEEP
+  if (sdMutex) {
+    // Jangan pernah melepas bus di tengah penulisan - tunggu sampai bebas.
+    sdLock(2000);
+  }
+
+  SD.end();
+  spiBus.end();
+
+  // rtc_gpio_isolate() memutus pin sepenuhnya selama deep sleep: input dan
+  // output dimatikan, pull-up/pull-down dilepas, lalu state itu di-hold.
+  // Inilah cara yang didokumentasikan Espressif untuk menghilangkan
+  // kebocoran pada pin yang punya pull-up - termasuk pull-up MISO yang
+  // dipasang di begin() dan selama ini tetap aktif sepanjang tidur.
+  const gpio_num_t spiPins[] = {
+    (gpio_num_t)PIN_SD_CS, (gpio_num_t)PIN_SD_MOSI,
+    (gpio_num_t)PIN_SD_SCK, (gpio_num_t)PIN_SD_MISO
+  };
+  for (gpio_num_t pin : spiPins) {
+    if (rtc_gpio_is_valid_gpio(pin)) {
+      rtc_gpio_isolate(pin);
+    } else {
+      // Fallback untuk pin non-RTC: minimal lepas pull-up/pull-down.
+      gpio_pullup_dis(pin);
+      gpio_pulldown_dis(pin);
+    }
+  }
+
+  ready = false;  // Paksa begin() melakukan mount penuh di bangun berikutnya
+
+  if (sdMutex) {
+    sdUnlock();
+  }
+  Serial.println("[SD] Bus SPI dilepas & pin diisolasi untuk deep sleep (mode eksperimental).");
+#endif
+}
 
 bool SdCardLogger::sdLock(uint32_t waitMs) {
   if (!sdMutex) return true;
@@ -22,6 +96,26 @@ void SdCardLogger::sdUnlock() {
 bool SdCardLogger::begin() {
   if (!sdMutex) {
     sdMutex = xSemaphoreCreateRecursiveMutex();
+  }
+
+  // WAJIB PERTAMA: lepaskan hold RTC pada pin SPI.
+  //
+  // prepareForDeepSleep() memakai rtc_gpio_isolate() yang mengunci (hold)
+  // state pin. Tanpa pelepasan di sini, pinMode()/SPI.begin() di bawah tidak
+  // akan berefek dan kartu GAGAL MOUNT SECARA SENYAP di setiap bangun.
+  // Dijalankan tanpa syarat flag: aman dipanggil pada pin yang tidak di-hold,
+  // dan menjaga agar mematikan flag tetap memulihkan perangkat yang sudah
+  // sempat tidur dengan pin terisolasi.
+  const gpio_num_t spiPins[] = {
+    (gpio_num_t)PIN_SD_CS, (gpio_num_t)PIN_SD_MOSI,
+    (gpio_num_t)PIN_SD_SCK, (gpio_num_t)PIN_SD_MISO
+  };
+  for (gpio_num_t pin : spiPins) {
+    if (rtc_gpio_is_valid_gpio(pin)) {
+      rtc_gpio_hold_dis(pin);
+      rtc_gpio_deinit(pin);
+    }
+    gpio_hold_dis(pin);
   }
 
   // Siapkan pin CS dan pull-up MISO untuk kestabilan transmisi SPI
@@ -120,34 +214,47 @@ void SdCardLogger::initDirectories() {
 bool SdCardLogger::appendRecord(const String &filename, const LogRecord &record) {
   if (!ready) {
     autoRecover();
-    if (!ready) return false;
+    if (!ready) {
+      return noteWriteFailure("no_card", "Kartu MicroSD tidak termount & auto-recover gagal");
+    }
   }
 
-  if (!sdLock(1500)) return false;
+  if (!sdLock(1500)) {
+    // Penyebab tersering: getUnsentRecords() menahan mutex selama 1-3 detik
+    // saat memindai seluruh file log, melebihi batas tunggu 1500 ms di sini.
+    return noteWriteFailure("lock_busy", "Timeout menunggu mutex SD (1500 ms)");
+  }
 
   String path = "/data/" + filename;
-  bool isNewFile = !SD.exists(path);
 
   File file = SD.open(path, FILE_APPEND);
   if (!file) {
     consecutiveErrors++;
     Serial.printf("[SD ERROR] Failed to open %s. Errors: %d\n", path.c_str(), consecutiveErrors);
     sdUnlock();
-    
+
     // Attempt auto-recovery
     if (autoRecover()) {
-      if (!sdLock(1500)) return false;
+      if (!sdLock(1500)) {
+        return noteWriteFailure("lock_busy", "Timeout mutex SD setelah auto-recover");
+      }
       file = SD.open(path, FILE_APPEND);
       if (!file) {
         sdUnlock();
-        return false;
+        return noteWriteFailure("open_fail", "SD.open gagal meski remount berhasil");
       }
     } else {
-      return false;
+      return noteWriteFailure("open_fail", "SD.open gagal & auto-recover gagal");
     }
   }
 
   consecutiveErrors = 0;
+  lastWriteError = nullptr;  // Tulis berhasil -> status kembali "ok"
+
+  // Dihitung SETELAH remount: bila kartu baru saja di-remount, berkasnya bisa
+  // benar-benar baru dan header CSV wajib ditulis. Menghitungnya sebelum
+  // autoRecover() (perilaku lama) membuat header hilang pada kasus itu.
+  bool isNewFile = (file.size() == 0);
 
   if (isNewFile) {
     file.println("date,time,minute,timestamp,raw_distance_cm,filtered_distance_cm,water_level_cm,temperature_c,sent");

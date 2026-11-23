@@ -3,7 +3,7 @@
 #include "mbedtls/sha256.h"
 #include <time.h>
 #include <esp_wifi.h>
-#include "rtc_mgr.h"
+#include "timekeeping.h"
 #include "mqtt_client.h"
 #include "sensor_a16.h"
 
@@ -979,19 +979,26 @@ WebServerManager::WebServerManager() : server(80), sdLoggerRef(NULL), ntpConfigu
   settings.samplingIntervalSec = SAMPLING_INTERVAL_MS / 1000;
   strncpy(settings.passHash, DEFAULT_PASS_HASH, sizeof(settings.passHash) - 1);
 
-  // Initial snapshot
+  // Snapshot awal.
+  //
+  // PENTING: jangan pernah mengisi nilai yang TERLIHAT SAH di sini. Versi lama
+  // memasang temperatureC = 25.0, signalRssi = -50, sdCardOk = true, dan
+  // dataSource = "live" sebelum ada satu pun pembacaan - sehingga dashboard
+  // menampilkan "25.0 C, sinyal bagus, SD OK, sumber live" pada alat yang
+  // kartunya tidak terpasang dan sensornya belum pernah dibaca. Nilai netral
+  // (0 / false / "standby") membuat belum-ada-data terbaca sebagai apa adanya.
   memset(&telemetry, 0, sizeof(telemetry));
   telemetry.waterLevelCm = 0.0f;
   telemetry.rawDistanceCm = 0.0f;
   telemetry.filteredDistanceCm = 0.0f;
-  telemetry.temperatureC = 25.0f;
-  telemetry.signalRssi = -50;
-  telemetry.sdCardOk = true;
+  telemetry.temperatureC = 0.0f;
+  telemetry.signalRssi = 0;
+  telemetry.sdCardOk = false;
   telemetry.pendingLogs = 0;
   telemetry.readingCount = 0;
   telemetry.wifiConnected = false;
   telemetry.mqttConnected = false;
-  strncpy(telemetry.dataSource, "live", sizeof(telemetry.dataSource) - 1);
+  strncpy(telemetry.dataSource, "standby", sizeof(telemetry.dataSource) - 1);
   strncpy(telemetry.lastSampleTime, "--", sizeof(telemetry.lastSampleTime) - 1);
   telemetry.portalRemainingSec = PORTAL_WINDOW_SEC;
   telemetry.samplingIntervalSec = SAMPLING_INTERVAL_MS / 1000;
@@ -1598,7 +1605,7 @@ void WebServerManager::setupRoutes() {
     doc["distance"] = snap.rawDistanceCm;
     doc["filtered_distance"] = snap.filteredDistanceCm;
     doc["is_blind_spot"] = (strcmp(snap.dataSource, "blind_spot") == 0) || (snap.rawDistanceCm > 0.0f && snap.rawDistanceCm <= 50.0f);
-    doc["temperature_c"] = (snap.temperatureC > 0.0f) ? snap.temperatureC : (rtcMgr.isPresent() ? rtcMgr.getTemperature() : 0.0f);
+    doc["temperature_c"] = (snap.temperatureC != 0.0f) ? snap.temperatureC : readDieTemperatureC();
     doc["rssi"] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : snap.signalRssi;
     doc["sd_ok"] = (this->sdLoggerRef && this->sdLoggerRef->isReady()) ? true : snap.sdCardOk;
     doc["pending_logs"] = (this->sdLoggerRef) ? this->sdLoggerRef->getPendingCount() : snap.pendingLogs;
@@ -1607,9 +1614,12 @@ void WebServerManager::setupRoutes() {
     doc["source"] = snap.dataSource;
     doc["timestamp"] = snap.lastSampleTime;
     doc["token"] = this->sessionToken;
-    doc["rtc_ok"] = (time(nullptr) > 1700000000);
-    doc["rtc_time"] = rtcMgr.getIsoTimestamp();
-    doc["rtc_temp"] = rtcMgr.getTemperature();
+    // Dinamai "rtc_*" demi kompatibilitas dengan JS dashboard yang sudah ada,
+    // tetapi sumbernya adalah jam sistem ESP32 (NTP atau jam HP teknisi) -
+    // chip RTC DS3231M dinonaktifkan. Field rtc_temp dihapus: nilainya
+    // hardcoded 25.0 C di modul lama, dan kini duplikat dari temperature_c.
+    doc["rtc_ok"] = isSystemTimeValid();
+    doc["rtc_time"] = getIsoTimestamp();
     doc["portal_remaining_sec"] = this->getRemainingPortalSec();
     doc["sampling_interval_sec"] = this->settings.samplingIntervalSec;
     doc["test_mode"] = this->isTestModeActive();
@@ -1783,11 +1793,11 @@ void WebServerManager::setupRoutes() {
     }
     time_t epoch = (time_t)req->getParam("epoch", true)->value().toInt();
     if (epoch > 1700000000) {
-      bool ok = rtcMgr.setEpochTime(epoch);
+      bool ok = setSystemEpoch(epoch);
       char buf[160];
       snprintf(buf, sizeof(buf), "{\"ok\":%s,\"time\":\"%s\",\"msg\":\"%s\"}",
         ok ? "true" : "false",
-        rtcMgr.getIsoTimestamp().c_str(),
+        getIsoTimestamp().c_str(),
         ok ? "Jam sistem berhasil disinkronkan dari browser" : "Gagal menyinkronkan jam sistem");
       req->send(200, "application/json", buf);
     } else {
@@ -2041,14 +2051,13 @@ void WebServerManager::loop() {
       Serial.printf("[WiFi STA] Connected! ESP32 IP: %s (Gateway: %s)\n",
         WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str());
       Serial.println("[NTP] Clock sync initialized via WiFi STA.");
-    } else {
-      // Periodik perbarui chip RTC jika internet aktif (setiap 1 jam)
-      static unsigned long lastRtcSyncMs = 0;
-      if (millis() - lastRtcSyncMs > 3600000UL) {
-        lastRtcSyncMs = millis();
-        rtcMgr.syncFromSystem();
-      }
     }
+    // Blok "perbarui chip RTC setiap 1 jam" dihapus. Dua alasan: (1) timer-nya
+    // TIDAK PERNAH tercapai - window portal maksimum 180 detik dan millis()
+    // reset setiap deep sleep, tapi kondisinya dievaluasi 20x/detik; (2) jalur
+    // yang dipanggilnya (syncFromSystem -> setDateTime) tidak punya guard
+    // ENABLE_ONBOARD_RTC dan melakukan operasi I2C pada pin default Wire,
+    // yaitu GPIO 8 (data sensor) dan GPIO 9 (gate MOSFET daya sensor).
   } else if (strlen(settings.wifiSsid) > 0) {
     unsigned long now = millis();
     if (now - lastStaRetryMs > 25000) {

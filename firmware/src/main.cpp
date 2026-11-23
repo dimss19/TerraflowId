@@ -8,7 +8,7 @@
 #include "mqtt_client.h"
 #include "watchdog_mgr.h"
 #include "web_server_mgr.h"
-#include "rtc_mgr.h"
+#include "timekeeping.h"
 
 // Subsystem Instances
 SensorA16 sensor;
@@ -160,15 +160,26 @@ void samplingTask(void *pvParameters) {
     record.temperatureC = reading.temperatureC;
     record.isSent = false;
 
+    // Penyebab spesifik kegagalan sensor (NO_ECHO / TIMEOUT / checksum) agar
+    // ikut terkirim ke server - sebelumnya hanya dicetak ke Serial.
+    const char *sensorErr = (!reading.isValid && reading.errorMsg.length() > 0)
+                              ? reading.errorMsg.c_str() : nullptr;
+
     // 2. Simpan ke Kartu MicroSD (Hanya saat mode normal untuk performa instan mode uji)
     if (!inTestMode) {
       String filename = webServerMgr.getCurrentLogFilename();
-      sdLogger.appendRecord(filename, record);
+      // Nilai kembalian WAJIB diperiksa: sebelumnya diabaikan, sehingga sampel
+      // yang gagal ditulis hilang tanpa log, tanpa counter, dan tanpa alert.
+      if (!sdLogger.appendRecord(filename, record)) {
+        Serial.printf("[SD GAGAL] Sampel %s TIDAK tersimpan ke %s (status: %s, total gagal: %lu)\n",
+          record.time, filename.c_str(), sdLogger.getSdStatus(),
+          (unsigned long)sdLogger.getWriteFailCount());
+      }
     }
 
     // 3. Publikasikan Telemetri via MQTT
     if (mqttMgr.isConnected()) {
-      bool ok = mqttMgr.publishReading(record, readingCount, dataSource);
+      bool ok = mqttMgr.publishReading(record, readingCount, dataSource, sensorErr);
       if (ok && !inTestMode) {
         record.isSent = true;
         String filename = webServerMgr.getCurrentLogFilename();
@@ -280,16 +291,22 @@ void healthTask(void *pvParameters) {
       enterDeepSleep();
     }
 
-    // 4. Laporan Diagnostik Berkala (1 Jam)
-    if (now - lastHourlyDiagMs > DIAGNOSTICS_MS) {
-      mqttMgr.publishDiagnostics(
-        bootStats.reasonStr,
-        bootStats.bootCount,
-        bootStats.watchdogCount,
-        sdLogger.getPendingCount(),
-        (int)bootStats.brownoutCount
-      );
-      lastHourlyDiagMs = now;
+    // 4. Laporan Diagnostik
+    //
+    // Gate lama (`now - lastHourlyDiagMs > DIAGNOSTICS_MS`, 1 jam) TIDAK PERNAH
+    // tercapai: healthTask hanya hidup di mode portal yang maksimum 180 detik,
+    // dan millis() reset setiap deep sleep. Akibatnya payload diagnostik -
+    // kanal terkaya yang dimiliki alat ini - belum pernah terkirim sekali pun.
+    //
+    // Sekarang: kirim sekali segera setelah MQTT tersambung, lalu berkala.
+    static bool portalDiagSent = false;
+    bool diagDue = (!portalDiagSent && mqttMgr.isConnected()) ||
+                   (portalDiagSent && now - lastHourlyDiagMs > DIAGNOSTICS_MS);
+    if (diagDue && mqttMgr.isConnected()) {
+      if (mqttMgr.publishDiagnostics(bootStats, sdLogger.getPendingCount())) {
+        portalDiagSent = true;
+        lastHourlyDiagMs = now;
+      }
     }
 
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -302,11 +319,21 @@ void healthTask(void *pvParameters) {
 void enterDeepSleep() {
   static bool sleepInProgress = false;
   if (sleepInProgress) return;
-  sleepInProgress = true;
+
+  // PENTING: validasi dilakukan SEBELUM memasang latch.
+  //
+  // Versi lama memasang sleepInProgress = true lebih dulu, lalu `return` dari
+  // cabang mode-uji tanpa meresetnya. Akibatnya satu penolakan tidur saja
+  // membuat enterDeepSleep() menjadi no-op PERMANEN sampai reset manual -
+  // perangkat terjaga ~100 mA tanpa batas dan baterai 3000 mAh habis dalam
+  // ~30 jam. Pemicunya sepele: memakai mode uji satu kali lewat portal,
+  // MQTT, atau perintah serial 't'.
   if (webServerMgr.isTestModeActive()) {
     Serial.println("[SLEEP DITOLAK] Mode Test 1 Detik sedang aktif. Deep sleep ditunda.");
     return;
   }
+
+  sleepInProgress = true;
   feedWatchdog();
   uint32_t intervalSec = webServerMgr.getSettings().samplingIntervalSec;
   if (intervalSec < 15) intervalSec = 15;
@@ -316,8 +343,15 @@ void enterDeepSleep() {
   Serial.println("   (Tekan tombol BOOT pada GPIO 0 atau reset untuk membuka kembali Web Portal)");
   Serial.flush();
 
-  // Matikan daya sensor A16 dan kunci pin power LOW selama Deep Sleep
+  // Matikan daya sensor A16 dan kunci pin power LOW selama Deep Sleep.
+  // Pada jalur duty-cycle sensor sudah dimatikan sejak Fase 2; pemanggilan
+  // ini tetap diperlukan untuk jalur portal dan bersifat idempoten.
   sensor.powerOff();
+
+  // Lepaskan bus SPI MicroSD & isolasi pinnya. No-op kecuali
+  // ENABLE_SD_POWERDOWN_ON_SLEEP di config.h di-set true (default false,
+  // belum teruji pada hardware - baca prosedur uji bench di sdcard_logger.cpp).
+  sdLogger.prepareForDeepSleep();
 
   if (webServerMgr.isApActive()) {
     webServerMgr.stopSoftAP();
@@ -344,9 +378,59 @@ void executeScheduledSamplingCycle() {
 
   feedWatchdog();
   sdLogger.begin();
-  sensor.powerOn();
 
+  // ========================================================================
+  //  FASE 1 - Jaringan & waktu, SEBELUM sensor dinyalakan
+  // ========================================================================
+  //  Urutan lama: sensor ON -> baca -> timestamp -> tulis SD -> WiFi -> MQTT,
+  //  dengan sensor tetap bertenaga sepanjang seluruh fase jaringan (hingga
+  //  37 detik pada 20-30 mA). Urutan baru memberi tiga perbaikan sekaligus:
+  //
+  //   1. Sensor hanya bertenaga ~2 detik, bukan sampai 37 detik.
+  //   2. NTP sudah sempat menyelesaikan sinkronisasi SEBELUM LogRecord
+  //      dibangun, sehingga timestamp-nya benar. Pada urutan lama, record
+  //      selalu memakai jam yang belum terkoreksi.
+  //   3. Burst radio saat asosiasi (350-500 mA) tidak lagi bertumpuk dengan
+  //      arus idle sensor, menurunkan puncak arus - relevan karena firmware
+  //      ini sendiri melacak brownout_count.
+  //
+  //  Fase ini TIDAK boleh menjadi syarat pembacaan sensor: bila WiFi gagal,
+  //  sensor tetap wajib dibaca dan dicatat offline ke MicroSD.
+  DeviceSettings &s = webServerMgr.getSettings();
+  bool wifiUp = false;
+
+  if (strlen(s.wifiSsid) > 0) {
+    Serial.printf("[WiFi] Menghubungkan ke %s...\n", s.wifiSsid);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(s.wifiSsid, s.wifiPass);
+
+    unsigned long wifiStart = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 12000) {
+      delay(200);
+      feedWatchdog();
+    }
+
+    wifiUp = (WiFi.status() == WL_CONNECTED);
+    if (wifiUp) {
+      Serial.printf("[WiFi] Terhubung! IP: %s\n", WiFi.localIP().toString().c_str());
+      // SNTP asinkron: dipicu sekarang, resolusinya berjalan selama fase
+      // sensor di bawah (1.5-6 detik) - tidak menambah waktu blocking.
+      configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");
+    } else {
+      Serial.println("[WiFi] Timeout koneksi. Data akan tersimpan di MicroSD.");
+    }
+  }
+
+  // ========================================================================
+  //  FASE 2 - Akuisisi sensor (jendela daya sensor sesingkat mungkin)
+  // ========================================================================
+  sensor.powerOn();
   A16Reading reading = sensor.readFilteredDistance(9);
+  // Daya sensor dicabut SEGERA setelah pembacaan, tidak menunggu deep sleep.
+  // Inilah tujuan rangkaian pemutus daya P-MOSFET yang dibangun - sebelumnya
+  // firmware tidak memanfaatkannya sampai siklus benar-benar berakhir.
+  sensor.powerOff();
+
   const char *dataSource = "none";
   CalibrationData calib = mqttMgr.getCalibration();
   float effectiveDist = 0.0f;
@@ -364,6 +448,13 @@ void executeScheduledSamplingCycle() {
     dataSource = "error";
   }
 
+  // ========================================================================
+  //  FASE 3 - Bangun record & simpan ke MicroSD
+  // ========================================================================
+  //  Timestamp diambil DI SINI, setelah Fase 1 memicu NTP dan Fase 2 memberi
+  //  SNTP waktu 1.5-6 detik untuk menyelesaikan sinkronisasi. Pada urutan
+  //  lama record dibangun sebelum WiFi tersambung, sehingga selalu memakai
+  //  jam yang belum terkoreksi.
   LogRecord record;
   memset(&record, 0, sizeof(record));
   time_t now = time(nullptr);
@@ -395,38 +486,42 @@ void executeScheduledSamplingCycle() {
   record.isSent = false;
 
   String filename = webServerMgr.getCurrentLogFilename();
-  sdLogger.appendRecord(filename, record);
+  if (!sdLogger.appendRecord(filename, record)) {
+    Serial.printf("[SD GAGAL] Sampel %s TIDAK tersimpan ke %s (status: %s, total gagal: %lu)\n",
+      record.time, filename.c_str(), sdLogger.getSdStatus(),
+      (unsigned long)sdLogger.getWriteFailCount());
+  }
 
-  DeviceSettings &s = webServerMgr.getSettings();
-  if (strlen(s.wifiSsid) > 0) {
-    Serial.printf("[WiFi] Menghubungkan ke %s...\n", s.wifiSsid);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(s.wifiSsid, s.wifiPass);
+  const char *sensorErr = (!reading.isValid && reading.errorMsg.length() > 0)
+                            ? reading.errorMsg.c_str() : nullptr;
 
-    unsigned long wifiStart = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 12000) {
+  // ========================================================================
+  //  FASE 4 - Pengiriman via MQTT (sensor sudah dimatikan sejak Fase 2)
+  // ========================================================================
+  if (wifiUp) {
+    mqttMgr.begin();
+
+    unsigned long mqttStart = millis();
+    while (!mqttMgr.isConnected() && millis() - mqttStart < 8000) {
+      mqttMgr.loop();
       delay(200);
       feedWatchdog();
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.printf("[WiFi] Terhubung! IP: %s\n", WiFi.localIP().toString().c_str());
-      mqttMgr.begin();
-
-      unsigned long mqttStart = millis();
-      while (!mqttMgr.isConnected() && millis() - mqttStart < 8000) {
-        mqttMgr.loop();
-        delay(200);
-        feedWatchdog();
-      }
-
-      if (mqttMgr.isConnected()) {
-        bool ok = mqttMgr.publishReading(record, persistentReadingCount, dataSource);
+    if (mqttMgr.isConnected()) {
+        bool ok = mqttMgr.publishReading(record, persistentReadingCount, dataSource, sensorErr);
         if (ok) {
           record.isSent = true;
           sdLogger.markRecordSent(filename, record.timestamp);
           Serial.printf("[MQTT] Data terkirim: Level=%.1f cm | Jarak=%.1f cm\n", waterLevel, reading.rawDistanceCm);
         }
+
+        // Diagnostik dikirim SEKALI PER BANGUN di sini - inilah satu-satunya
+        // tempat yang benar-benar terjangkau di mode duty-cycle. Dilaporkan
+        // lewat topik `diagnostics` (state), BUKAN `alert` (event), karena
+        // handleAlert di backend tidak punya cooldown/dedup sehingga publish
+        // per siklus akan membanjiri tabel device_alerts 96x/hari per alat.
+        mqttMgr.publishDiagnostics(bootStats, sdLogger.getPendingCount(), sensorErr);
         // Kirim semua buffer offline di MicroSD hingga tuntas atau batas 15 detik
         unsigned long syncStart = millis();
         while (mqttMgr.isConnected() && (mqttMgr.isBulkSyncPending() || sdLogger.getPendingCount() > 0) && (millis() - syncStart < 15000)) {
@@ -438,23 +533,34 @@ void executeScheduledSamplingCycle() {
           feedWatchdog();
         }
 
-        // Beri waktu 2.5 dtk untuk mendengarkan pesan MQTT retained (seperti config/interval)
+        // Jendela mendengarkan pesan retained (config/interval, kalibrasi).
+        //
+        // Versi lama memutar loop ini SELALU penuh 2500 ms tanpa syarat
+        // keluar. Biayanya: 2,5 s x 96 siklus x ~100 mA = ~6,7 mAh/hari,
+        // sekitar 40% dari seluruh anggaran daya aktif - untuk kanal yang
+        // hampir selalu kosong. Pesan retained sendiri sudah dikirim broker
+        // bersama SUBACK, jadi tiba dalam ratusan milidetik pertama.
+        //
+        // Sekarang: plafon 300 ms, dan keluar lebih awal begitu ada perubahan
+        // yang benar-benar terjadi (mode uji / interval diubah dari server).
+        const uint32_t intervalBefore = webServerMgr.getSettings().samplingIntervalSec;
         unsigned long listenStart = millis();
-        while (millis() - listenStart < 2500) {
+        while (millis() - listenStart < 300) {
           mqttMgr.loop();
-          delay(100);
+          if (webServerMgr.isTestModeActive() ||
+              webServerMgr.getSettings().samplingIntervalSec != intervalBefore) {
+            break;  // Perintah sudah diterima, tidak perlu menunggu sisa jendela
+          }
+          delay(25);
           feedWatchdog();
         }
 
-        if (webServerMgr.isTestModeActive()) {
-          Serial.println("[DUTY CYCLE] Mode Test 1 Detik diaktifkan via MQTT! Me-restart ke mode aktif...");
-          delay(200);
-          ESP.restart();
-          return;
-        }
+      if (webServerMgr.isTestModeActive()) {
+        Serial.println("[DUTY CYCLE] Mode Test 1 Detik diaktifkan via MQTT! Me-restart ke mode aktif...");
+        delay(200);
+        ESP.restart();
+        return;
       }
-    } else {
-      Serial.println("[WiFi] Timeout koneksi. Data tersimpan aman di MicroSD.");
     }
   }
 
@@ -514,7 +620,6 @@ void setup() {
   Serial.println("[MODE PORTAL AKTIF] Membuka Captive Portal selama 3 Menit (Window Period)...");
   Serial.println("==================================================");
 
-  rtcMgr.begin();
   sdLogger.begin();
   if (bootStats.isCrashReset) {
     sdLogger.logCrash(bootStats.reasonStr, "Watchdog/Brownout reset detected at startup");
@@ -532,7 +637,7 @@ void setup() {
   initSnap.pendingLogs = sdLogger.getPendingCount();
   initSnap.wifiConnected = (WiFi.status() == WL_CONNECTED);
   initSnap.mqttConnected = mqttMgr.isConnected();
-  initSnap.temperatureC = rtcMgr.isPresent() ? rtcMgr.getTemperature() : 0.0f;
+  initSnap.temperatureC = readDieTemperatureC();
   strncpy(initSnap.dataSource, "standby", sizeof(initSnap.dataSource) - 1);
   snprintf(initSnap.lastSampleTime, sizeof(initSnap.lastSampleTime), "Standby");
   webServerMgr.updateTelemetry(initSnap);

@@ -8,6 +8,7 @@
 #include <vector>
 #include "sdcard_logger.h"
 #include "web_server_mgr.h"
+#include "watchdog_mgr.h"
 
 struct CalibrationData {
   float sensorHeightCm;
@@ -28,9 +29,17 @@ public:
   // True bila kredensial broker tersedia (kosong = broker akan menolak koneksi)
   bool hasCredentials() const;
   
-  bool publishReading(const LogRecord &record, int readingCount, const char *source = "live");
+  // `sensorError` membedakan NO_ECHO / TIMEOUT / checksum gagal - tiga kondisi
+  // dengan tindakan perbaikan BERBEDA di lapangan. Sebelumnya informasi ini
+  // hanya dicetak ke Serial, sehingga secara remote hanya terlihat source="error".
+  bool publishReading(const LogRecord &record, int readingCount, const char *source = "live",
+                      const char *sensorError = nullptr);
   bool publishAlert(const String &code, const String &severity, const String &message, const String &detailsJson = "{}");
-  bool publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount, int brownoutCount = 0);
+
+  // Menerima BootStats utuh, bukan field satu per satu: panic_count dan
+  // wake_count sebelumnya tidak pernah sampai ke payload (panic_count malah
+  // di-hardcode 0) padahal nilainya sudah tersedia di struct ini.
+  bool publishDiagnostics(const BootStats &stats, int pendingCount, const char *sensorError = nullptr);
   
   void triggerBulkSync(SdCardLogger &sdLogger);
   bool isBulkSyncPending() const { return pendingBulk.active; }

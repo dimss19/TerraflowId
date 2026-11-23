@@ -256,7 +256,8 @@ void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
   }
 }
 
-bool MqttManager::publishReading(const LogRecord &record, int readingCount, const char *source) {
+bool MqttManager::publishReading(const LogRecord &record, int readingCount, const char *source,
+                                 const char *sensorError) {
   if (!isConnected()) return false;
 
   String devId = webServerMgr.getEffectiveDeviceId();
@@ -269,16 +270,34 @@ bool MqttManager::publishReading(const LogRecord &record, int readingCount, cons
   doc["water_level_cm"] = record.waterLevelCm;
   doc["temperature_c"] = record.temperatureC;
   doc["signal_quality"] = WiFi.RSSI();
-  doc["sd_status"] = "ok";
+
+  // Status MicroSD yang SEBENARNYA. Sebelumnya di-hardcode "ok", sehingga
+  // kartu yang tidak terpasang pun dilaporkan sehat dan teknisi dikirim
+  // mencari penyebab lain. getSdStatus() dijamin <= 10 karakter.
+  doc["sd_status"] = sdLogger.getSdStatus();
+  doc["write_fail_count"] = sdLogger.getWriteFailCount();
+
   doc["reading_count"] = readingCount;
   doc["source"] = source;
   doc["is_test"] = webServerMgr.isTestModeActive();
+
+  // Penyebab spesifik kegagalan sensor, hanya disertakan bila ada - supaya
+  // payload siklus normal tidak membengkak.
+  if (sensorError && sensorError[0]) {
+    doc["sensor_error"] = sensorError;
+  }
+
   TelemetrySnapshot snap = webServerMgr.getTelemetry();
   doc["spread_cm"] = snap.spreadCm;
   doc["valid_samples"] = snap.validSamples;
 
-  char buf[512];
-  serializeJson(doc, buf);
+  char buf[640];
+  size_t len = serializeJson(doc, buf, sizeof(buf));
+  if (len == 0 || len >= sizeof(buf) - 1) {
+    Serial.printf("[MQTT PERINGATAN] Payload reading terpotong (%u byte)! Data siklus ini tidak dikirim.\n",
+      (unsigned)len);
+    return false;
+  }
   return client.publish(getTopic("data").c_str(), buf);
 }
 
@@ -302,30 +321,55 @@ bool MqttManager::publishAlert(const String &code, const String &severity, const
   return client.publish(getTopic("alert").c_str(), buf);
 }
 
-bool MqttManager::publishDiagnostics(const String &bootReason, int bootCount, int wdtCount, int pendingCount, int brownoutCount) {
+bool MqttManager::publishDiagnostics(const BootStats &stats, int pendingCount, const char *sensorError) {
   if (!isConnected()) return false;
 
   String devId = webServerMgr.getEffectiveDeviceId();
   JsonDocument doc;
   doc["device_id"] = devId;
-  doc["timestamp"] = millis() / 1000;
-  doc["boot_reason"] = bootReason;
+
+  // Epoch sebenarnya, bukan millis()/1000. Nilai lama tidak berguna sebagai
+  // timestamp: di mode duty-cycle millis() reset setiap bangun, sehingga
+  // seluruh baris diagnostik tercatat beberapa detik setelah 1970.
+  time_t now = time(nullptr);
+  doc["timestamp"] = (now > 1700000000) ? (uint32_t)now : 0;
   doc["uptime_sec"] = millis() / 1000;
-  doc["boot_count"] = bootCount;
-  doc["watchdog_count"] = wdtCount;
-  doc["brownout_count"] = brownoutCount;
-  doc["panic_count"] = 0;
+
+  doc["boot_reason"] = stats.reasonStr;
+  doc["boot_count"] = stats.bootCount;   // Boot sebenarnya (tidak lagi dinaikkan tiap wake)
+  doc["wake_count"] = stats.wakeCount;   // Bangun normal dari deep sleep
+  doc["watchdog_count"] = stats.watchdogCount;
+  doc["brownout_count"] = stats.brownoutCount;
+  doc["panic_count"] = stats.panicCount; // Sebelumnya di-hardcode 0
+
   doc["free_heap_bytes"] = esp_get_free_heap_size();
   doc["wifi_rssi"] = WiFi.RSSI();
-  doc["sd_card_ok"] = true;
-  doc["sensor_ok"] = true;
-  doc["demo_mode"] = false;
+
+  // Status nyata, sebelumnya ketiganya di-hardcode. Endpoint diagnostik yang
+  // selalu melaporkan sehat lebih buruk daripada tidak ada diagnostik sama
+  // sekali - ia mengirim teknisi mencari di tempat yang salah.
+  doc["sd_card_ok"] = sdLogger.isReady();
+  doc["sd_status"] = sdLogger.getSdStatus();
+  doc["write_fail_count"] = sdLogger.getWriteFailCount();
+  doc["sensor_ok"] = (sensor.getConsecutiveFailures() == 0);
+  doc["sensor_fail_streak"] = sensor.getConsecutiveFailures();
+  doc["sensor_power_on"] = sensor.isPowered();
+  if (sensorError && sensorError[0]) {
+    doc["sensor_error"] = sensorError;
+  }
+
+  // Suhu die ESP32 - BUKAN suhu ambient. Saat radio aktif nilainya 10-25 C
+  // di atas suhu lingkungan, jadi jangan dipakai untuk analisa hidrologi.
   doc["esp_temp_c"] = temperatureRead();
   doc["pending_unsent"] = pendingCount;
   doc["firmware_version"] = FIRMWARE_VERSION;
 
-  char buf[768];
-  serializeJson(doc, buf);
+  char buf[1024];
+  size_t len = serializeJson(doc, buf, sizeof(buf));
+  if (len == 0 || len >= sizeof(buf) - 1) {
+    Serial.printf("[MQTT PERINGATAN] Payload diagnostik terpotong (%u byte)!\n", (unsigned)len);
+    return false;
+  }
   return client.publish(getTopic("diagnostics").c_str(), buf);
 }
 

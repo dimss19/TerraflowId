@@ -23,36 +23,89 @@
 // 2. HARDWARE PIN DEFINITIONS
 // ==========================================
 // MicroSD Card SPI Interface (KhursLabs ESP32-S3 IoT Logger)
+// Pinout resmi board hanya mengekspos SS/MOSI/SCK/MISO - TIDAK ADA pin
+// kontrol daya kartu. Konsekuensinya penting untuk anggaran daya, lihat
+// catatan pada ENABLE_SD_POWERDOWN_ON_SLEEP di bawah.
 #define PIN_SD_CS             10
 #define PIN_SD_MOSI           11
 #define PIN_SD_MISO           13  // MISO pada GPIO 13 (Sebelumnya terbalik dengan SCK)
 #define PIN_SD_SCK            12  // SCK pada GPIO 12
 
-// Onboard Real-Time Clock (DS3231 / DS1307 at 0x68)
-// Terhubung secara internal pada board ke bus I2C (SDA GPIO 8 & SCL GPIO 9)
+// --------------------------------------------------------------------------
+//  EKSPERIMENTAL - Lepaskan pin SPI MicroSD sebelum deep sleep
+// --------------------------------------------------------------------------
+//  Default MATI. JANGAN diaktifkan di alat lapangan sebelum lolos uji bench
+//  (prosedur ada di komentar SdCardLogger::prepareForDeepSleep).
+//
+//  Apa yang ia perbaiki: pull-up internal pada MISO (dipasang di
+//  SdCardLogger::begin) tetap aktif selama deep sleep. Bila kartu menahan
+//  MISO rendah, 3.3V / 45k = ~73 uA bocor terus-menerus. rtc_gpio_isolate()
+//  memutus keempat pin SPI sehingga kebocoran itu hilang.
+//
+//  Apa yang ia TIDAK perbaiki - penting agar tidak salah harap:
+//  SD.end() TIDAK memutus daya kartu. VDD kartu berasal langsung dari rel
+//  3.3V board tanpa sakelar, dan board ini tidak menyediakan pin kontrol
+//  daya kartu. Jadi arus standby kartu itu sendiri (150-300 uA pada kartu
+//  tipikal) TETAP ADA. Artinya target total < 150 uA kemungkinan besar
+//  TIDAK TERCAPAI pada hardware ini selama kartu MicroSD terpasang -
+//  butuh modifikasi hardware (sakelar daya kartu) untuk menembusnya.
+//
+//  RISIKO: bila kartu gagal remount setelah deep sleep, logging mati total.
+//  Belum teruji pada hardware.
+#define ENABLE_SD_POWERDOWN_ON_SLEEP  false
+
+// ==========================================================================
+//  PERINGATAN HARDWARE - WAJIB DIBACA SEBELUM MENGUBAH ALOKASI PIN
+// ==========================================================================
+//  Sumber: product_gpio_pinout.md (pinout resmi ESP32-S3 IoT Logger RS485).
+//
+//  Blok terminal baut board ini HANYA mengekspos GPIO 8 dan GPIO 9
+//  (selain 5V, GND, A+, B-). Keduanya adalah pin bus I2C untuk chip RTC
+//  DS3231M onboard, jadi keduanya punya RESISTOR PULL-UP FISIK ke 3.3V
+//  di PCB (umumnya 4.7k atau 10k).
+//
+//  Menonaktifkan RTC di software (ENABLE_ONBOARD_RTC = false) TIDAK
+//  menghapus resistor pull-up tersebut - chip DS3231M tetap terpasang.
+//
+//  AKIBAT NYATA pada GPIO 9 (PIN_SENSOR_PWR, sakelar daya sensor):
+//  selama power-on, reset, dan booting - sebelum satu baris firmware pun
+//  jalan - pull-up onboard menarik GPIO 9 ke 3.3V. Lewat R1 1k ke basis
+//  BC547 itu memberi Ib ~456 uA, cukup membuat transistor SATURASI PENUH.
+//  Artinya: SAKELAR DAYA SENSOR MENYALA SENDIRI SETIAP BOOT.
+//
+//  Resistor pull-down R3 100k pada dokumen WIRING-PEMUTUS-DAYA-A16.md
+//  TIDAK cukup melawannya (kalah 10-20x); klaim "terkunci OFF saat reset"
+//  di dokumen itu TIDAK berlaku untuk board ini. R3 harus ~1k.
+//  Riwayat: kombinasi pull-up ini + R2 yang short (0.01 ohm) + regulator
+//  MP1584 5V/3A sudah membakar satu BC547 tanpa perintah software apa pun.
+//
+//  RS485 yang SEBENARNYA ada di GPIO 15 (TX2) dan GPIO 16 (RX2), terhubung
+//  ke terminal A+/B- lewat chip transceiver - dicadangkan untuk PZEM-017.
+//  Makro PIN_RS485_* di bawah SALAH NAMA (sebenarnya jalur UART TTL sensor
+//  di pin I2C); rename ditunda agar diff putaran ini tetap kecil.
+// ==========================================================================
+
+// Onboard Real-Time Clock DS3231M @ 0x68 - DINONAKTIFKAN.
+// GPIO 9 (SCL) dialokasikan ulang sebagai PIN_SENSOR_PWR, sehingga bus I2C
+// tidak bisa dipakai. Konsekuensi yang harus disadari: tidak ada penjaga
+// waktu berbaterai, jadi ketepatan jam sepenuhnya bergantung pada NTP.
 #define ENABLE_ONBOARD_RTC    false
-#define PIN_RTC_SDA           -1
-#define PIN_RTC_SCL           -1
-#define RTC_I2C_ADDR          0x68
 
-// Serial2 (UART TTL) Interface to DYP-A1611AU (UART Auto, listen-only)
-// Terhubung ke Terminal Bawah Board KhursLabs:
-// - Pin 1 (SDA / GPIO 8) : ESP32 RX2 <- Sensor TX (Kabel Putih, level ~3.3V)
-// - Kabel Kuning (Sensor RX): pull-up 10k ke VCC sensor (output "terproses").
-//   JANGAN disambung ke GPIO 9 / Terminal SCL (dipakai clock I2C RTC).
-// - Pin 3 (5V)           : Power VCC -> Sensor VCC (Kabel Merah)
-// - Pin 4 (GND)          : Ground    -> Sensor GND (Kabel Hitam)
-// CATATAN: GPIO 8 dipakai bergantian (Time-Multiplexed) antara SDA RTC I2C (0x68)
-// dan RX UART sensor. Driver sensor memasang ulang UART di setiap siklus sampling.
+// Serial2 (UART TTL) ke DYP-A1611AU (varian UART Auto, listen-only).
+// Terminal baut bawah board KhursLabs:
+// - Pin [8]  (GPIO 8, SDA I2C) : ESP32 RX2 <- Sensor TX (Kabel Putih, ~3.3V)
+// - Pin [9]  (GPIO 9, SCL I2C) : Kontrol sakelar daya, lihat PIN_SENSOR_PWR
+// - Pin [5V]                   : Source P-MOSFET -> Sensor VCC (Kabel Merah)
+// - Pin [GND]                  : Ground -> Sensor GND (Kabel Hitam)
+// Kabel Kuning (RX sensor) disambung lewat R 10k ke VCC_SW (drain MOSFET),
+// BUKAN ke GPIO mana pun - supaya tidak ada back-powering saat sensor mati.
 #define PIN_RS485_TX          -1  // Tidak dipakai: varian UART Auto tidak butuh trigger
-#define PIN_RS485_RX          8   // ESP32 RX2 (GPIO 8 / Terminal SDA) <- A16 TX (Putih)
-#define PIN_RS485_DE_RE       -1  // Direct UART TTL (tidak memerlukan pin direction)
+#define PIN_RS485_RX          8   // ESP32 RX2 (GPIO 8 = SDA I2C!) <- A16 TX (Putih)
 
-// Sensor Power Relay / MOSFET Gate (-1: sensor ditenagai langsung dari power rail)
+// Sakelar daya sensor: GPIO 9 HIGH = sensor menyala (via BC547 -> gate P-MOSFET).
+// Baca blok PERINGATAN HARDWARE di atas sebelum menyentuh pin ini.
 #define PIN_SENSOR_PWR        9
 
-// Status Indicators & Hardware Controls
-#define PIN_STATUS_LED        2
 #define PIN_BOOT_BTN          0       // Onboard BOOT Button on GPIO 0 (Active LOW) untuk trigger portal
 
 // ==========================================
@@ -60,8 +113,7 @@
 // ==========================================
 #define SAMPLING_INTERVAL_MS  900000  // Default 15 menit (900 dtk) untuk mode hemat daya
 #define PORTAL_WINDOW_SEC     180     // Window period 3 menit (180 dtk) Captive Portal saat cold-boot/tombol
-#define HEALTH_CHECK_MS       1000    // Feed watchdog & network loop every 1 second (prevents WDT resets!)
-#define DIAGNOSTICS_MS        3600000 // Hourly diagnostics report (1 hour)
+#define DIAGNOSTICS_MS        3600000 // Jeda laporan diagnostik berkala di mode portal (1 jam)
 #define WATCHDOG_TIMEOUT_SEC  30      // Task WDT 30s timeout
 #define BULK_CHUNK_SIZE       10      // 10 records per bulk sync MQTT chunk
 #define BULK_THROTTLE_MS      200     // Delay between chunks to prevent broker flooding

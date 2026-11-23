@@ -15,7 +15,9 @@ struct A16Reading {
   bool isBlindSpot;             // Flag khusus: true jika target/air masuk ke zona buta (<= 50 cm)
   float rawDistanceCm;          // Median jarak dari sensor (tanpa koreksi tambahan)
   float filteredDistanceCm;     // Jarak yang dipakai sistem (median burst / nilai hold)
-  float temperatureC;           // Suhu board dari RTC DS3231 (informasi saja, tidak dipakai koreksi)
+  float temperatureC;           // Suhu DIE ESP32 (temperatureRead()), BUKAN suhu ambient.
+                                // Saat radio aktif nilainya 10-25 C di atas suhu
+                                // lingkungan - jangan dipakai untuk analisa hidrologi.
   uint32_t timestamp;           // Reading timestamp (seconds)
   int validSamples;             // Number of valid burst samples accepted in filter
   float spreadCm;               // Sebaran sampel (max - min) untuk analisa sudut & kestabilan
@@ -46,8 +48,9 @@ public:
   int getConsecutiveFailures() const { return consecutiveFails; }
   void resetFailureCount() { consecutiveFails = 0; }
   float getLastValidDistance() const { return lastValidDistance; }
-  void markUartDirty() { uartActive = false; }
   bool isPowered() const { return powerState; }
+  // markUartDirty() dihapus: satu-satunya pemanggilnya adalah
+  // RtcManager::releaseBus(), yang ikut hilang bersama modul rtc_mgr.
 
 private:
   int consecutiveFails;

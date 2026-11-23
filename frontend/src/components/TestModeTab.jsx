@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { io } from 'socket.io-client';
+import { listenSocket } from '../lib/socket';
 import { 
   Radio, 
   Play, 
@@ -13,17 +13,12 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Activity, 
-  Cpu, 
   Wifi, 
   Thermometer, 
   ShieldAlert, 
-  Waves,
   Target,
-  Compass,
-  Sliders,
   Save,
   Check,
-  Award,
   CheckSquare,
   Power,
   Moon,
@@ -144,10 +139,7 @@ export default function TestModeTab({
   useEffect(() => {
     if (!device?.device_id) return;
 
-    const socket = io('/', {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
-    });
+    const { on, offAll } = listenSocket();
 
     const matchesThisDev = (id) => {
       if (!id || !device.device_id) return false;
@@ -196,15 +188,14 @@ export default function TestModeTab({
       }
     };
 
-    socket.on('telemetry', handleData);
-    socket.on('sensor:data', handleData);
-    socket.on('test:reading', (res) => {
+    on('sensor:data', handleData);
+    on('test:reading', (res) => {
       if (matchesThisDev(res?.device_id)) {
         handleData(res.data);
       }
     });
 
-    socket.on('device:test_mode', (res) => {
+    on('device:test_mode', (res) => {
       if (matchesThisDev(res?.deviceId || res?.device_id)) {
         const active = Boolean(res.data?.test_mode);
         setIsTestMode(active);
@@ -216,9 +207,7 @@ export default function TestModeTab({
       }
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return offAll;
   }, [device?.device_id]); // soundEnabled dibaca via Ref agar toggle suara tidak memutus koneksi Socket.IO
 
   // 3. Countdown Timer Tick
@@ -359,8 +348,9 @@ export default function TestModeTab({
         headers,
         body: JSON.stringify({
           sensor_height_cm: Number(Number(targetHeight).toFixed(1)),
-          offset_cm: 0,
-          slope: 1.0,
+          // Pertahankan offset & slope yang sudah dikalibrasi di tab Perangkat
+          offset_cm: Number(device?.calibrated_offset) || 0,
+          slope: Number(device?.calibrated_slope) || 1.0,
           notes: `Kalibrasi uji lapangan (Stabilitas pantulan: sebaran ${streamMetrics?.spread?.toFixed(1) || '0'} cm)`,
           applied_by: currentUser?.name || 'Teknisi Lapangan'
         })

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { io } from 'socket.io-client';
+import { listenSocket } from './lib/socket';
 import { 
   AlertTriangle 
 } from 'lucide-react';
@@ -9,8 +9,7 @@ import {
   Route, 
   Navigate, 
   useNavigate, 
-  useParams,
-  useLocation 
+  useParams
 } from 'react-router-dom';
 
 import Header from './components/Header';
@@ -20,6 +19,8 @@ import DeviceOverview from './components/DeviceOverview';
 import DeviceDetailView from './components/DeviceDetailView';
 import DeviceManagementView from './components/DeviceManagementView';
 import UserManagementView from './components/UserManagementView';
+import { toIsoTimestamp } from './lib/device';
+import { authHeaders } from './lib/api';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -128,7 +129,6 @@ export default function App() {
 
 function AppInner() {
   const navigate = useNavigate();
-  const location = useLocation();
 
   // Authentication State
   const [authToken, setAuthToken] = useState(() => {
@@ -218,25 +218,21 @@ function AppInner() {
 
   // Setup Socket.IO for real-time telemetry streaming
   useEffect(() => {
-    const socket = io('/', {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-    });
+    const { socket, on, offAll } = listenSocket();
 
-    socket.on('connect', () => {
+    setIsConnected(socket.connected);
+    on('connect', () => {
       setIsConnected(true);
     });
 
-    socket.on('disconnect', () => {
+    on('disconnect', () => {
       setIsConnected(false);
     });
 
     // Update device freshness dynamically in global state
     const updateDeviceLastSeen = (devId, ts) => {
       if (!devId) return;
-      const seenIso = ts 
-        ? (typeof ts === 'number' && ts < 1e11 ? new Date(ts * 1000).toISOString() : new Date(ts).toISOString()) 
-        : new Date().toISOString();
+      const seenIso = toIsoTimestamp(ts);
       setDevices((prev) => prev.map((d) => {
         if (d.device_id === devId) {
           return { ...d, last_seen: seenIso, is_active: true };
@@ -245,21 +241,13 @@ function AppInner() {
       }));
     };
 
-    socket.on('sensor:data', (data) => {
+    on('sensor:data', (data) => {
       if (data?.device_id) {
         updateDeviceLastSeen(data.device_id, data.timestamp);
       }
     });
 
-    socket.on('telemetry', (payload) => {
-      const dId = payload?.device_id || payload?.data?.device_id;
-      const ts = payload?.data?.timestamp || payload?.timestamp;
-      if (dId) {
-        updateDeviceLastSeen(dId, ts);
-      }
-    });
-
-    socket.on('device:status', (payload) => {
+    on('device:status', (payload) => {
       if (payload?.device_id) {
         setDevices((prev) => prev.map((d) => {
           if (d.device_id === payload.device_id) {
@@ -276,25 +264,14 @@ function AppInner() {
     });
 
     // Alert notification event
-    socket.on('device:alert', (payload) => {
-      const alert = payload?.data || payload;
-      if (alert) {
-        showActionToast(`Peringatan [${alert.alert_code}]: ${alert.message}`);
-        // Refresh device list to update alert badges
-        fetchAllDevices();
-      }
-    });
-
-    socket.on('alert:new', (alert) => {
+    on('alert:new', (alert) => {
       if (alert) {
         showActionToast(`Peringatan [${alert.alert_code}]: ${alert.message}`);
         fetchAllDevices();
       }
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return offAll;
   }, [fetchAllDevices]);
 
   // Stable helper to render LayoutShell inside AppInner
@@ -303,8 +280,6 @@ function AppInner() {
       currentDevice={currentDevice}
       devices={devices}
       isConnected={isConnected}
-      activeAlertsCount={currentDevice ? Number(currentDevice.active_alerts_count) || 0 : 0}
-      onRefresh={fetchAllDevices}
       currentUser={currentUser}
       onLogout={handleLogout}
       onGoToLanding={() => navigate(authToken ? '/dashboard' : '/')}
@@ -443,10 +418,8 @@ function LayoutShell({
   showHero = false,
   devices = [],
   isConnected = false,
-  activeAlertsCount = 0,
   actionMessage = null,
   currentUser = null,
-  onRefresh,
   onLogout,
   onGoToLanding,
   onNavigate
@@ -459,8 +432,6 @@ function LayoutShell({
         device={currentDevice}
         devices={devices}
         isConnected={isConnected}
-        activeAlertsCount={activeAlertsCount}
-        onRefresh={onRefresh}
         currentUser={currentUser}
         onLogout={onLogout}
         onGoToLanding={onGoToLanding}
@@ -550,7 +521,7 @@ function DeviceDetailRouteWrapper({
   const [tidalData, setTidalData] = useState(null);
   const [activeAlertsCount, setActiveAlertsCount] = useState(0);
 
-  const fetchDeviceData = useCallback(async (isSilent = false) => {
+  const fetchDeviceData = useCallback(async () => {
     if (!deviceId) return;
 
     try {
@@ -576,9 +547,9 @@ function DeviceDetailRouteWrapper({
 
       // 2. Fetch latest reading, past 60 readings, and tidal data in parallel
       const [latestRes, histRes, tidalRes] = await Promise.all([
-        fetch(`/api/readings/${deviceId}/latest`),
-        fetch(`/api/readings/${deviceId}?limit=60`),
-        fetch(`/api/readings/${deviceId}/tidal?hours=24`)
+        fetch(`/api/readings/${deviceId}/latest`, { headers: authHeaders(authToken) }),
+        fetch(`/api/readings/${deviceId}?limit=60`, { headers: authHeaders(authToken) }),
+        fetch(`/api/readings/${deviceId}/tidal?hours=24`, { headers: authHeaders(authToken) })
       ]);
       const [latestJson, histJson, tidalJson] = await Promise.all([
         latestRes.json(),
@@ -603,10 +574,7 @@ function DeviceDetailRouteWrapper({
   useEffect(() => {
     if (!deviceId) return;
 
-    const socket = io('/', {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-    });
+    const { on, offAll } = listenSocket();
 
     const matchesThisDevice = (id) => !id || id === deviceId || (id && deviceId && id.replace(/\s+/g, '-') === deviceId.replace(/\s+/g, '-'));
 
@@ -619,26 +587,18 @@ function DeviceDetailRouteWrapper({
         });
 
         // Keep device last_seen updated in real-time so it stays ONLINE while streaming
-        const seenIso = data.timestamp 
-          ? (typeof data.timestamp === 'number' && data.timestamp < 1e11 ? new Date(data.timestamp * 1000).toISOString() : new Date(data.timestamp).toISOString()) 
-          : new Date().toISOString();
+        const seenIso = toIsoTimestamp(data.timestamp);
         setDevice((prev) => prev ? { ...prev, last_seen: seenIso, is_active: true } : prev);
       }
     };
 
-    socket.on('telemetry', (payload) => {
-      if (matchesThisDevice(payload?.device_id)) {
-        handleNewData(payload.data || payload);
-      }
-    });
-
-    socket.on('sensor:data', (data) => {
+    on('sensor:data', (data) => {
       if (matchesThisDevice(data?.device_id)) {
         handleNewData(data);
       }
     });
 
-    socket.on('device:status', (payload) => {
+    on('device:status', (payload) => {
       if (matchesThisDevice(payload?.device_id)) {
         const isOnline = payload.status === 'online';
         setDevice((prev) => prev ? {
@@ -649,9 +609,7 @@ function DeviceDetailRouteWrapper({
       }
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return offAll;
   }, [deviceId]);
 
   // Fallback device from list if detailed device is loading
@@ -663,10 +621,8 @@ function DeviceDetailRouteWrapper({
       showHero={false}
       devices={devices}
       isConnected={isConnected}
-      activeAlertsCount={activeAlertsCount}
       actionMessage={actionMessage}
       currentUser={currentUser}
-      onRefresh={fetchDeviceData}
       onLogout={onLogout}
       onGoToLanding={onGoToLanding}
       onNavigate={onNavigate}

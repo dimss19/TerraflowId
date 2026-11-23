@@ -3,12 +3,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
   Waves, 
-  TrendingUp, 
-  TrendingDown, 
   Clock, 
   Anchor, 
-  Layers, 
-  BarChart2, 
   ChevronRight,
   FileText,
   Download,
@@ -16,22 +12,14 @@ import {
   RefreshCw,
   ChevronLeft,
   Calendar,
-  CheckCircle2,
-  Minus,
-  Maximize2,
-  Minimize2,
   Camera,
   X,
-  FileSpreadsheet,
-  Globe,
-  Radio,
-  Sliders,
-  Thermometer,
   Wifi,
   CirclePlus,
   CircleMinus,
   RotateCcw
 } from 'lucide-react';
+import { authHeaders } from '../lib/api';
 
 // Helper kurva Bezier halus yang stabil
 function createSmoothPath(pts) {
@@ -56,7 +44,7 @@ function createSmoothPath(pts) {
   return d;
 }
 
-export default function AnalysisTab({ device, tidalData, onRefresh }) {
+export default function AnalysisTab({ device, tidalData, onRefresh, authToken }) {
   // --- Historical & Filter State ---
   const [readings, setReadings] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -145,7 +133,7 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
           if (!isNaN(e.getTime())) q.set('end', e.toISOString());
         }
       }
-      const res = await fetch(`/api/readings/${device.device_id}/tidal?${q}`);
+      const res = await fetch(`/api/readings/${device.device_id}/tidal?${q}`, { headers: authHeaders(authToken) });
       const json = await res.json();
       if (json.success) {
         setCustomTidalData(json);
@@ -175,7 +163,7 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
           if (!isNaN(e.getTime())) q.set('end', e.toISOString());
         }
       }
-      const res = await fetch(`/api/readings/${device.device_id}?${q}`);
+      const res = await fetch(`/api/readings/${device.device_id}?${q}`, { headers: authHeaders(authToken) });
       const json = await res.json();
       if (json.success) {
         setReadings(json.data);
@@ -828,7 +816,7 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
         end: eIso,
         limit: 2000
       });
-      const res = await fetch(`/api/readings/${device.device_id}?${q}`);
+      const res = await fetch(`/api/readings/${device.device_id}?${q}`, { headers: authHeaders(authToken) });
       const json = await res.json();
       let dayData = (json.success && Array.isArray(json.data) && json.data.length > 0)
         ? json.data
@@ -1055,7 +1043,7 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
 
   // --- Zoom Logic & Visible Slice ---
   // Zoom Level: 1 = Zoom Out (100% data), >1 = Zoom In (irisan subset data terperinci)
-  const { displaySeries, visibleStartIndex, visibleEndIndex } = useMemo(() => {
+  const { displaySeries } = useMemo(() => {
     if (!series || series.length === 0) {
       return { displaySeries: [], visibleStartIndex: 0, visibleEndIndex: 0 };
     }
@@ -1172,10 +1160,6 @@ export default function AnalysisTab({ device, tidalData, onRefresh }) {
   const minVal = minRaw - spread * 0.15;
   const maxVal = maxRaw + spread * 0.15;
   const valRange = Math.max(0.001, maxVal - minVal);
-
-  const filterStartTime = startDate ? new Date(startDate).getTime() : (series.length ? new Date(series[0].timestamp).getTime() : 0);
-  const filterEndTime = endDate ? new Date(endDate).getTime() : (series.length ? new Date(series[series.length - 1].timestamp).getTime() : 0);
-  const totalDuration = Math.max(1000, filterEndTime - filterStartTime);
 
   const points = useMemo(() => {
     if (!displaySeries || displaySeries.length === 0) return [];

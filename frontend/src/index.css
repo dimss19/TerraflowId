@@ -110,28 +110,6 @@ footer[id],
   box-shadow: 0 8px 28px rgba(0, 56, 130, 0.08);
 }
 
-/* Deep Navy Corporate Highlight Card (Detail Kantor Pusat style) */
-.navy-card {
-  background: var(--bg-navy);
-  color: var(--text-white);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-navy);
-  padding: 28px 24px;
-  position: relative;
-  overflow: hidden;
-}
-
-.navy-card::after {
-  content: '';
-  position: absolute;
-  right: -20px;
-  bottom: -20px;
-  width: 140px;
-  height: 140px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
-  pointer-events: none;
-}
-
 /* Subtle Card for form fields */
 .subtle-panel {
   background: #f4f8fd;
@@ -167,24 +145,6 @@ footer[id],
   background: #ecfdf5;
   color: #059669;
   border: 1px solid #a7f3d0;
-}
-
-.badge-amber {
-  background: #fffbeb;
-  color: #d97706;
-  border: 1px solid #fde68a;
-}
-
-.badge-rose {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-}
-
-.badge-blue {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
 }
 
 /* Pulsing Online Dot */
@@ -454,16 +414,11 @@ footer[id],
   transform-origin: center;
 }
 
-.wave-animated {
-  animation: waterUndulate 8s linear infinite;
-}
-
 /* ==========================================
    INPUTS & FORM CONTROLS
    ========================================== */
 .corporate-input,
-.form-input,
-.input-corporate {
+.form-input {
   display: block;
   width: 100%;
   background: #f8fafc;
@@ -481,23 +436,20 @@ footer[id],
 }
 
 .corporate-input:hover,
-.form-input:hover,
-.input-corporate:hover {
+.form-input:hover {
   border-color: #cbd5e1;
   background: #ffffff;
 }
 
 .corporate-input:focus,
-.form-input:focus,
-.input-corporate:focus {
+.form-input:focus {
   background: #ffffff;
   border-color: #003882;
   box-shadow: 0 0 0 3.5px rgba(0, 56, 130, 0.12);
 }
 
 .corporate-input:disabled,
-.form-input:disabled,
-.input-corporate:disabled {
+.form-input:disabled {
   background: #f1f5f9;
   color: #94a3b8;
   border-color: #e2e8f0;
@@ -506,8 +458,7 @@ footer[id],
 }
 
 .corporate-input::placeholder,
-.form-input::placeholder,
-.input-corporate::placeholder {
+.form-input::placeholder {
   color: #94a3b8;
   font-weight: 400;
 }
@@ -710,19 +661,6 @@ footer[id],
   to { transform: rotate(360deg); }
 }
 
-/* Map Simulation Overlay Tag */
-.map-coords-badge {
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(8px);
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 8px 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
 /* ==========================================
    RESPONSIVE LAYOUT UTILITIES & BREAKPOINTS
    ========================================== */
@@ -776,12 +714,6 @@ footer[id],
   gap: 24px;
 }
 
-.metrics-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-}
-
 .tab-nav-bar {
   display: flex;
   gap: 8px;
@@ -817,28 +749,6 @@ footer[id],
 .landing-section {
   padding: 80px 40px;
 }
-
-.calibration-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 24px;
-}
-
-.two-col-inputs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.modal-responsive-card {
-  max-width: 520px;
-  width: 94%;
-  max-height: 90vh;
-  overflow-y: auto;
-  padding: clamp(20px, 4vw, 32px);
-  position: relative;
-}
-
 
 /* Tablet & Smaller Screens (<= 1024px) */
 @media (max-width: 1024px) {
@@ -877,12 +787,6 @@ footer[id],
     display: none;
   }
 
-
-  .metrics-summary-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
   .tab-icon {
     display: inline-flex !important;
     align-items: center;
@@ -908,23 +812,10 @@ footer[id],
   .subtle-panel {
     padding: 12px;
   }
-
-  .calibration-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .two-col-inputs {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
 }
 
 /* Extra Small Mobile (<= 480px) */
 @media (max-width: 480px) {
-  .metrics-summary-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
 
   .header-top-bar {
     flex-direction: column;

@@ -2,17 +2,15 @@ import React from 'react';
 import { 
   Radio, 
   MapPin, 
-  Waves, 
   AlertTriangle, 
   ChevronRight, 
   CheckCircle2, 
-  XCircle, 
   RefreshCw,
   PlusCircle,
-  Activity,
   User,
   ExternalLink
 } from 'lucide-react';
+import { isDeviceOnline } from '../lib/device';
 
 export default function DeviceOverview({ 
   devices = [], 
@@ -35,20 +33,8 @@ export default function DeviceOverview({
     }
   };
 
-  // Periodic Auto Refresh data from backend (otomatis 10 detik tanpa dropdown manual)
-  React.useEffect(() => {
-    const autoTimer = setInterval(() => {
-      if (onRefresh) onRefresh(true);
-    }, 10000);
-
-    return () => clearInterval(autoTimer);
-  }, [onRefresh]);
-
-  const isDeviceOnline = (lastSeen) => {
-    if (!lastSeen) return false;
-    const diffSeconds = (Date.now() - new Date(lastSeen).getTime()) / 1000;
-    return diffSeconds < 120; // Online if seen within 2 minutes
-  };
+  // Tidak ada polling sendiri di sini: App.jsx sudah me-refresh daftar
+  // perangkat tiap 15 detik dan status live datang lewat Socket.IO.
 
   const totalDevices = devices.length;
   const onlineDevices = devices.filter(d => isDeviceOnline(d.last_seen)).length;

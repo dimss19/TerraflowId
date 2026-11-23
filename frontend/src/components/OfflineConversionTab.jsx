@@ -1,7 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Upload, 
-  Download, 
   FileSpreadsheet, 
   FileText, 
   CheckCircle2, 
@@ -11,12 +10,13 @@ import {
   Database, 
   Sliders
 } from 'lucide-react';
+import { calcWaterLevel } from '../lib/device';
 
 export default function OfflineConversionTab({ device, authToken, onRefresh }) {
   // Parameter kalibrasi resmi dari konfigurasi Admin stasiun
   const sensorHeightCm = Number(device?.sensor_height_cm) || 600.0;
-  const calibOffset = Number(device?.offset_cm) || 0.0;
-  const calibSlope = Number(device?.slope) || 1.0;
+  const calibOffset = Number(device?.calibrated_offset) || 0.0;
+  const calibSlope = Number(device?.calibrated_slope) || 1.0;
 
   // File parsing & data states
   const [fileName, setFileName] = useState('');
@@ -146,8 +146,8 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
             const pad = (n) => String(n).padStart(2, '0');
             timeStr = `${pad(hour)}:${pad(minute)}:00`;
           }
-          // Kolom date/time pada CSV MicroSD berasal dari RTC perangkat
-          // yang berzona WIB - koreksi manual operator pada kolom ini
+          // Kolom date/time pada CSV MicroSD berasal dari jam internal
+          // perangkat (disinkron via NTP/server) yang berzona WIB - koreksi manual operator pada kolom ini
           // tetap dihormati karena epoch diturunkan dari date+time.
           epochSec = wibEpoch(dateStr, hour, minute, second);
         } else if (idxTs >= 0 && parts[idxTs]) {
@@ -181,7 +181,7 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
         if (idxWl >= 0 && parts[idxWl] !== '' && !isNaN(parseFloat(parts[idxWl]))) {
           waterLevelCm = parseFloat(parts[idxWl]);
         } else {
-          waterLevelCm = sensorHeightCm - (effectiveDist * calibSlope + calibOffset);
+          waterLevelCm = calcWaterLevel(effectiveDist, { height: sensorHeightCm, offset: calibOffset, slope: calibSlope });
         }
 
         const pad = (n) => String(n).padStart(2, '0');
@@ -330,10 +330,10 @@ export default function OfflineConversionTab({ device, authToken, onRefresh }) {
 
   // Simpan Sekaligus ke Database Stasiun
   const handleSaveToDatabase = async () => {
-    if (parsedRows.length === 0 || isSubmittingToDb) return;
+    if (parsedRows.length === 0 || isSubmittingToDb || !device?.device_id) return;
     setIsSubmittingToDb(true);
     try {
-      const devId = device?.device_id || 'AWLR-001';
+      const devId = device.device_id;
       const records = parsedRows.map(r => ({
         date: r.date,
         hour: r.hour,

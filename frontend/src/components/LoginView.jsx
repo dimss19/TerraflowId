@@ -14,7 +14,6 @@ import {
   Clock,
   X,
   UserPlus,
-  Phone,
   HelpCircle,
   MessageSquare
 } from 'lucide-react';

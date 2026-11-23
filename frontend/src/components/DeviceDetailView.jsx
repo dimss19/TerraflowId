@@ -8,7 +8,6 @@ import {
   Radio, 
   MapPin, 
   RefreshCw,
-  Clock,
   ExternalLink,
   HardDriveDownload
 } from 'lucide-react';
@@ -18,6 +17,7 @@ import AnalysisTab from './AnalysisTab';
 import DeviceTab from './DeviceTab';
 import OfflineConversionTab from './OfflineConversionTab';
 import TestModeTab from './TestModeTab';
+import { isDeviceOnline } from '../lib/device';
 
 export default function DeviceDetailView({ 
   device, 
@@ -37,13 +37,13 @@ export default function DeviceDetailView({
     setSearchParams({ tab: newTab }, { replace: true });
   };
   const [isSpinning, setIsSpinning] = useState(false);
-  const [, setTick] = useState(0);
 
-  // Periodic Auto Refresh data from backend (otomatis 10 detik tanpa dropdown manual)
+  // Refresh cadangan tiap 60 detik. Pembacaan live sudah didorong lewat
+  // Socket.IO; polling ini hanya menyegarkan detail, tidal, dan riwayat.
   React.useEffect(() => {
     const autoTimer = setInterval(() => {
       if (onRefresh) onRefresh(true);
-    }, 10000);
+    }, 60000);
 
     return () => clearInterval(autoTimer);
   }, [onRefresh]);
@@ -59,13 +59,7 @@ export default function DeviceDetailView({
     }
   };
 
-  const isOnline = () => {
-    if (!device?.last_seen) return false;
-    const diffSeconds = (Date.now() - new Date(device.last_seen).getTime()) / 1000;
-    return diffSeconds < 120;
-  };
-
-  const online = isOnline();
+  const online = isDeviceOnline(device?.last_seen);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -248,6 +242,7 @@ export default function DeviceDetailView({
           device={device}
           tidalData={tidalData}
           onRefresh={onRefresh}
+          authToken={authToken}
         />
       )}
 
@@ -265,7 +260,6 @@ export default function DeviceDetailView({
           device={device}
           currentUser={currentUser}
           latestReading={latestReading}
-          activeAlertsCount={activeAlertsCount}
           onCalibrationUpdated={onRefresh}
           authToken={authToken}
         />

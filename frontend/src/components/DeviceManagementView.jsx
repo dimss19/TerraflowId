@@ -5,23 +5,17 @@ import {
   Edit3, 
   Trash2, 
   CheckCircle2, 
-  XCircle, 
   AlertTriangle, 
   ArrowLeft, 
   MapPin, 
   RefreshCw, 
   Search, 
-  Sliders, 
   X, 
   Save, 
   Check, 
-  Compass, 
   Activity,
-  User,
   ExternalLink,
   Copy,
-  Wifi,
-  Smartphone
 } from 'lucide-react';
 
 export default function DeviceManagementView({ 
@@ -170,6 +164,9 @@ export default function DeviceManagementView({
       ...formData,
       assigned_to: formData.assigned_to ? Number(formData.assigned_to) : null
     };
+    // Tinggi sensor (H) stasiun yang sudah ada hanya diubah lewat form
+    // Kalibrasi di tab Perangkat, agar riwayat kalibrasi tetap tercatat.
+    if (isEdit) delete payload.sensor_height_cm;
 
     try {
       const res = await fetch(url, {
@@ -810,10 +807,13 @@ export default function DeviceManagementView({
                   className="form-input mono-text"
                   value={formData.sensor_height_cm}
                   onChange={(e) => setFormData({ ...formData, sensor_height_cm: e.target.value })}
-                  required
+                  disabled={Boolean(editingDevice)}
+                  required={!editingDevice}
                 />
                 <span className="form-helper">
-                  Jarak vertikal dari bibir sensor ke titik nol acuan elevasi hidrometri (50 - 2000 cm)
+                  {editingDevice
+                    ? 'Untuk stasiun yang sudah terdaftar, ubah tinggi sensor melalui form Kalibrasi di tab Perangkat (riwayat kalibrasi ikut tercatat).'
+                    : 'Jarak vertikal dari bibir sensor ke titik nol acuan elevasi hidrometri (50 - 2000 cm)'}
                 </span>
               </div>
 

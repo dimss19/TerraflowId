@@ -1,26 +1,15 @@
 import React from 'react';
 import { 
   Compass, 
-  Activity, 
   ShieldCheck, 
   Cpu, 
   HardDrive, 
   Radio, 
-  MapPin, 
-  Phone, 
-  Mail, 
   ArrowRight, 
   CheckCircle2, 
-  ExternalLink,
-  Database,
   KeyRound,
-  FileText,
-  Globe,
-  Share2,
   Waves,
-  TrendingUp,
   Battery,
-  Thermometer
 } from 'lucide-react';
 
 export default function LandingPageView({ onGoToLogin }) {

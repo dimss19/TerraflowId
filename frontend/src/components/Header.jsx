@@ -1,24 +1,20 @@
 import React, { useState } from 'react';
 import { 
   Compass, 
-  RotateCcw, 
-  AlertTriangle 
 } from 'lucide-react';
 import AdminMenu from './AdminMenu';
+import { isDeviceOnline } from '../lib/device';
 
 export default function Header({ 
   device, 
   devices = [],
   isConnected, 
-  activeAlertsCount,
-  onRefresh,
   currentUser,
   onLogout,
   onGoToLanding,
   onNavigate,
   showHero = true
 }) {
-  const [toastMessage, setToastMessage] = useState(null);
   const [, setTick] = useState(0);
 
   // Re-evaluate freshness every 10 seconds
@@ -26,12 +22,6 @@ export default function Header({
     const timer = setInterval(() => setTick((t) => t + 1), 10000);
     return () => clearInterval(timer);
   }, []);
-
-  const isDeviceOnline = (dev) => {
-    if (!dev || !dev.last_seen) return false;
-    const diffSeconds = (Date.now() - new Date(dev.last_seen).getTime()) / 1000;
-    return diffSeconds < 120;
-  };
 
   // Determine true status badge: Never show LIVE if device or stations are offline
   let statusBadge = {
@@ -54,8 +44,8 @@ export default function Header({
     };
   } else {
     // Live telemetry stays active whenever ANY device is online (e.g. AWLR-002 online while AWLR-001 is offline)
-    const isCurrentOnline = device && isDeviceOnline(device);
-    const isAnyStationOnline = Array.isArray(devices) && devices.some(d => isDeviceOnline(d));
+    const isCurrentOnline = device && isDeviceOnline(device.last_seen);
+    const isAnyStationOnline = Array.isArray(devices) && devices.some(d => isDeviceOnline(d?.last_seen));
     const hasLiveTelemetry = isCurrentOnline || isAnyStationOnline;
 
     if (hasLiveTelemetry) {
@@ -78,11 +68,6 @@ export default function Header({
       };
     }
   }
-
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000);
-  };
 
   return (
     <header style={{ marginBottom: '28px' }}>
@@ -179,25 +164,6 @@ export default function Header({
             Siap mendukung monitoring elevasi pasang surut air laut, muara, dan sungai secara terpadu dengan transmisi data real-time, pencatatan offline mandiri, dan kompensasi cerdas.
           </p>
 
-          {/* Toast Notification */}
-          {toastMessage && (
-            <div style={{
-              marginTop: '16px',
-              padding: '10px 16px',
-              borderRadius: '8px',
-              background: '#ffffff',
-              border: '1px solid #bfdbfe',
-              boxShadow: '0 4px 14px rgba(0, 56, 130, 0.08)',
-              color: '#003882',
-              fontSize: '0.88rem',
-              fontWeight: 600,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              {toastMessage}
-            </div>
-          )}
         </div>
       )}
     </header>

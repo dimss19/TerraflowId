@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
+import React, { useState, useEffect } from 'react';
 import { 
   Sliders, 
   Save, 
@@ -8,39 +7,93 @@ import {
   RefreshCw, 
   Calculator, 
   ShieldCheck, 
-  ArrowRight,
   ShieldAlert,
   Cpu,
   Radio,
   HardDrive,
   RotateCcw,
   HardDriveDownload,
-  Check,
   AlertTriangle,
   Activity,
   HelpCircle,
   X,
   Info,
-  Play,
-  Square,
-  Zap,
-  Timer,
-  Terminal,
-  Trash2,
-  Power,
-  Moon,
-  ToggleLeft,
-  ToggleRight,
-  Droplet
 } from 'lucide-react';
+import { calcWaterLevel } from '../lib/device';
+import { apiFetch } from '../lib/api';
 
-export default function DeviceTab({ 
+// ===========================================================================
+//  Komponen diagnostik: aturan "null BUKAN sehat"
+// ===========================================================================
+//  Seluruh perbaikan ini berangkat dari satu masalah: firmware melaporkan
+//  nilai kesehatan yang di-hardcode "sehat", sehingga dashboard tetap hijau
+//  pada alat yang kartunya tidak terpasang. Dua komponen di bawah memastikan
+//  kesalahan itu tidak terulang di sisi UI: data yang tidak dilaporkan
+//  dirender ABU-ABU dengan teks eksplisit, tidak pernah hijau.
+// ===========================================================================
+
+const DIAG_TONE = {
+  ok:      { bg: '#ecfdf5', border: '#a7f3d0', fg: '#059669' },
+  bad:     { bg: '#fef2f2', border: '#fecaca', fg: '#dc2626' },
+  unknown: { bg: '#f8fafc', border: '#cbd5e1', fg: '#94a3b8' },
+  neutral: { bg: '#f8fafc', border: '#e2e8f0', fg: '#475569' }
+};
+
+function DiagTile({ icon: Icon, label, state, value, neutralWhenFalse = false }) {
+  // state === null/undefined -> TIDAK DILAPORKAN, bukan sehat.
+  const tone = state === true ? DIAG_TONE.ok
+    : state === false ? (neutralWhenFalse ? DIAG_TONE.neutral : DIAG_TONE.bad)
+    : DIAG_TONE.unknown;
+
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: '10px',
+      background: tone.bg, border: `1px solid ${tone.border}`
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {Icon ? <Icon size={15} color={tone.fg} style={{ flexShrink: 0 }} /> : null}
+        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b' }}>{label}</span>
+      </div>
+      <div className="mono-text" style={{
+        fontSize: '0.92rem', fontWeight: 800, color: tone.fg, marginTop: '6px'
+      }}>
+        {value != null && value !== '' ? value : 'tidak dilaporkan'}
+      </div>
+    </div>
+  );
+}
+
+function DiagCounter({ label, value, alertAbove, alertBelow }) {
+  const num = value != null && value !== '' ? Number(value) : null;
+  let tone = DIAG_TONE.neutral;
+  if (num === null || Number.isNaN(num)) {
+    tone = DIAG_TONE.unknown;
+  } else if (alertAbove != null && num > alertAbove) {
+    tone = DIAG_TONE.bad;
+  } else if (alertBelow != null && num < alertBelow) {
+    tone = DIAG_TONE.bad;
+  }
+
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: '10px',
+      background: tone.bg, border: `1px solid ${tone.border}`
+    }}>
+      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b' }}>{label}</span>
+      <div className="mono-text" style={{
+        fontSize: '1.15rem', fontWeight: 800, color: tone.fg, marginTop: '4px'
+      }}>
+        {num !== null && !Number.isNaN(num) ? num : '--'}
+      </div>
+    </div>
+  );
+}
+
+export default function DeviceTab({
   device, 
   currentUser,
   latestReading, 
-  activeAlertsCount = 0,
   onCalibrationUpdated,
-  onActionTriggered,
   authToken
 }) {
   const isAdmin = currentUser?.role === 'admin';
@@ -88,6 +141,8 @@ export default function DeviceTab({
   const [loadingInterval, setLoadingInterval] = useState(false);
   const [intervalFeedback, setIntervalFeedback] = useState(null);
 
+  const [isSpinningDiag, setIsSpinningDiag] = useState(false);
+
   const handleRefreshAlerts = async () => {
     setIsSpinningAlerts(true);
     try {
@@ -98,6 +153,44 @@ export default function DeviceTab({
       }, 750);
     }
   };
+
+  const handleRefreshDiagnostics = async () => {
+    setIsSpinningDiag(true);
+    try {
+      await fetchDiagnostics();
+    } finally {
+      setTimeout(() => {
+        setIsSpinningDiag(false);
+      }, 750);
+    }
+  };
+
+  // Penyebab boot. Memakai fallback ke string mentah (bukan undefined) supaya
+  // nilai baru dari firmware tidak pernah menghasilkan sel kosong di UI.
+  const bootReasonInfo = (() => {
+    const map = {
+      DEEPSLEEP_WAKE: { label: 'Bangun terjadwal - operasi normal', concerning: false },
+      POWERON_RESET: { label: 'Dinyalakan dari kondisi mati', concerning: false },
+      SW_RESTART: { label: 'Restart atas perintah (portal/MQTT)', concerning: false },
+      WDT_RESET: { label: 'Reboot dipaksa watchdog - firmware pernah menggantung', concerning: true },
+      BROWNOUT_RST: { label: 'Reboot akibat tegangan drop - periksa baterai & rangkaian daya', concerning: true },
+      SW_CPU_RESET: { label: 'Reboot akibat panic firmware', concerning: true },
+      OTHER_RESET: { label: 'Penyebab boot tidak dikenali', concerning: true }
+    };
+    const raw = diagnostics?.boot_reason;
+    if (!raw) return { label: 'Penyebab boot tidak dilaporkan', concerning: false };
+    return map[raw] || { label: `Penyebab boot: ${raw}`, concerning: false };
+  })();
+
+  const diagHasConcern = !!diagnostics && (
+    bootReasonInfo.concerning ||
+    diagnostics.sd_card_ok === false ||
+    diagnostics.sensor_ok === false ||
+    Number(diagnostics.write_fail_count) > 0 ||
+    Number(diagnostics.watchdog_count) > 0 ||
+    Number(diagnostics.brownout_count) > 0 ||
+    Number(diagnostics.panic_count) > 0
+  );
 
   useEffect(() => {
     if (device) {
@@ -118,12 +211,8 @@ export default function DeviceTab({
   const fetchAlerts = async () => {
     if (!device?.device_id) return;
     try {
-      const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
-      const res = await fetch(`/api/alerts/${device.device_id}?status=active`, { headers });
-      const json = await res.json();
-      if (json.success) {
-        setAlerts(json.data);
-      }
+      const json = await apiFetch(`/api/alerts/${device.device_id}?status=active`, { token: authToken });
+      setAlerts(json.data);
     } catch (e) {
       console.error('Error fetching alerts:', e);
     }
@@ -132,10 +221,8 @@ export default function DeviceTab({
   const fetchDiagnostics = async () => {
     if (!device?.device_id) return;
     try {
-      const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
-      const res = await fetch(`/api/diagnostics/${device.device_id}`, { headers });
-      const json = await res.json();
-      if (json.success && json.data.length > 0) {
+      const json = await apiFetch(`/api/diagnostics/${device.device_id}`, { token: authToken });
+      if (json.data.length > 0) {
         setDiagnostics(json.data[0]);
       }
     } catch (e) {
@@ -148,36 +235,24 @@ export default function DeviceTab({
   const currentHeight = Number(device?.sensor_height_cm) || 600.0;
   const currentOffset = Number(device?.calibrated_offset) || 0.0;
   const currentSlope = Number(device?.calibrated_slope) || 1.0;
-  const currentCalcLevel = +(currentHeight - (rawDist * currentSlope + currentOffset)).toFixed(2);
+  const currentCalcLevel = +calcWaterLevel(rawDist, { height: currentHeight, offset: currentOffset, slope: currentSlope }).toFixed(2);
 
   const simHeight = Number(formData.sensor_height_cm) || 600.0;
   const simOffset = Number(formData.offset_cm) || 0.0;
   const simSlope = Number(formData.slope) || 1.0;
-  const simCalcLevel = +(simHeight - (rawDist * simSlope + simOffset)).toFixed(2);
+  const simCalcLevel = +calcWaterLevel(rawDist, { height: simHeight, offset: simOffset, slope: simSlope }).toFixed(2);
   const deltaLevel = +(simCalcLevel - currentCalcLevel).toFixed(2);
 
   const handleCalibrationSubmit = async (e) => {
     e.preventDefault();
+    if (!device?.device_id) return;
     setLoadingCalib(true);
     setCalibFeedback(null);
 
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      const res = await fetch(`/api/calibration/${device?.device_id || 'AWLR-001'}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(formData)
-      });
-      const json = await res.json();
-
-      if (json.success) {
-        setCalibFeedback({ type: 'success', text: 'Parameter konfigurasi sensor berhasil disimpan di server.' });
-        if (onCalibrationUpdated) onCalibrationUpdated();
-      } else {
-        setCalibFeedback({ type: 'error', text: json.error || 'Gagal menyimpan kalibrasi' });
-      }
+      await apiFetch(`/api/calibration/${device.device_id}`, { token: authToken, method: 'POST', body: formData });
+      setCalibFeedback({ type: 'success', text: 'Parameter konfigurasi sensor berhasil disimpan di server.' });
+      if (onCalibrationUpdated) onCalibrationUpdated();
     } catch (err) {
       setCalibFeedback({ type: 'error', text: err.message });
     } finally {
@@ -187,20 +262,14 @@ export default function DeviceTab({
 
   const handleResolveAlert = async (alertId) => {
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      const res = await fetch(`/api/alerts/${alertId}/resolve`, {
+      await apiFetch(`/api/alerts/${alertId}/resolve`, {
+        token: authToken,
         method: 'PATCH',
-        headers,
-        body: JSON.stringify({ resolved_by: 'Operator AWLR' })
+        body: { resolved_by: 'Operator AWLR' }
       });
-      const json = await res.json();
-      if (json.success) {
-        setActionFeedback('Peringatan telah diselesaikan');
-        fetchAlerts();
-        setTimeout(() => setActionFeedback(null), 3500);
-      }
+      setActionFeedback('Peringatan telah diselesaikan');
+      fetchAlerts();
+      setTimeout(() => setActionFeedback(null), 3500);
     } catch (e) {
       console.error('Error resolving alert:', e);
     }
@@ -209,22 +278,10 @@ export default function DeviceTab({
   const handleRemoteCommand = async (commandName, endpoint, body = null) => {
     setLoadingAction(true);
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: body ? JSON.stringify(body) : undefined
-      });
-      const json = await res.json();
-      if (json.success) {
-        setActionFeedback(`${json.message || `Perintah ${commandName} berhasil dikirim`}`);
-      } else {
-        setActionFeedback(`Gagal: ${json.error}`);
-      }
+      const json = await apiFetch(endpoint, { token: authToken, method: 'POST', body: body ?? undefined });
+      setActionFeedback(json.message || `Perintah ${commandName} berhasil dikirim`);
     } catch (e) {
-      setActionFeedback(`Error: ${e.message}`);
+      setActionFeedback(`Gagal: ${e.message}`);
     } finally {
       setLoadingAction(false);
       setTimeout(() => setActionFeedback(null), 4000);
@@ -236,21 +293,12 @@ export default function DeviceTab({
     setLoadingInterval(true);
     setIntervalFeedback(null);
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      const res = await fetch(`/api/devices/${device.device_id}/interval`, {
+      const json = await apiFetch(`/api/devices/${device.device_id}/interval`, {
+        token: authToken,
         method: 'POST',
-        headers,
-        body: JSON.stringify({ sampling_interval_sec: selectedInterval })
+        body: { sampling_interval_sec: selectedInterval }
       });
-      const json = await res.json();
-      if (json.success) {
-        setIntervalFeedback({ type: 'success', text: json.message });
-        if (onActionTriggered) onActionTriggered('interval_updated');
-      } else {
-        setIntervalFeedback({ type: 'error', text: json.error || 'Gagal mengubah interval' });
-      }
+      setIntervalFeedback({ type: 'success', text: json.message });
     } catch (err) {
       setIntervalFeedback({ type: 'error', text: err.message });
     } finally {
@@ -887,11 +935,11 @@ export default function DeviceTab({
           marginTop: '20px'
         }}>
           {[
-            { sec: 60, title: '1 Menit', sub: 'Mode Uji / Kalibrasi', battery: 'Mode Cepat' },
-            { sec: 900, title: '15 Menit', sub: 'Standar AWLR Hidrologi', battery: 'Optimal (Rekomendasi)', recommended: true },
-            { sec: 1800, title: '30 Menit', sub: 'Mode Hemat Daya', battery: 'Hemat Baterai' },
-            { sec: 3600, title: '1 Jam', sub: 'Ultra Hemat Daya', battery: 'Ultra Hemat' },
-            { sec: 7200, title: '2 Jam', sub: 'Siaga Panjang', battery: 'Maksimum Daya' }
+            { sec: 60, title: '1 Menit', sub: 'Mode Uji / Kalibrasi', efficiency: 'Mode Cepat' },
+            { sec: 900, title: '15 Menit', sub: 'Standar AWLR Hidrologi', efficiency: 'Optimal (Rekomendasi)', recommended: true },
+            { sec: 1800, title: '30 Menit', sub: 'Mode Hemat Daya', efficiency: 'Hemat Daya' },
+            { sec: 3600, title: '1 Jam', sub: 'Ultra Hemat Daya', efficiency: 'Ultra Hemat' },
+            { sec: 7200, title: '2 Jam', sub: 'Siaga Panjang', efficiency: 'Maksimum Daya' }
           ].map((item) => {
             const isSelected = selectedInterval === item.sec;
             return (
@@ -938,7 +986,7 @@ export default function DeviceTab({
                   fontSize: '0.72rem',
                   color: isSelected ? '#0284c7' : '#94a3b8'
                 }}>
-                  Efisiensi: <strong>{item.battery}</strong>
+                  Efisiensi: <strong>{item.efficiency}</strong>
                 </div>
               </div>
             );
@@ -985,36 +1033,6 @@ export default function DeviceTab({
             <div style={{ fontSize: '0.76rem', color: '#64748b' }}>Perintah eksekusi langsung ke perangkat saat online via MQTT</div>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => handleRemoteCommand('Nyalakan Sensor', `/api/devices/${device.device_id}/sensor-power`, { power: true })}
-              disabled={loadingAction}
-              className="btn btn-secondary"
-              style={{ fontSize: '0.78rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#16a34a' }}
-              title="Aktifkan switch daya High-Side P-MOSFET sensor A16"
-            >
-              <Zap size={14} />
-              <span>Nyalakan Sensor (ON)</span>
-            </button>
-            <button
-              onClick={() => handleRemoteCommand('Matikan Sensor', `/api/devices/${device.device_id}/sensor-power`, { power: false })}
-              disabled={loadingAction}
-              className="btn btn-secondary"
-              style={{ fontSize: '0.78rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#dc2626' }}
-              title="Putus switch daya High-Side P-MOSFET sensor A16"
-            >
-              <Power size={14} />
-              <span>Matikan Sensor (OFF)</span>
-            </button>
-            <button
-              onClick={() => handleRemoteCommand('Masuk Deep Sleep', `/api/devices/${device.device_id}/sleep`)}
-              disabled={loadingAction}
-              className="btn btn-secondary"
-              style={{ fontSize: '0.78rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#2563eb' }}
-              title="Perintahkan perangkat masuk mode hemat daya Deep Sleep segera"
-            >
-              <Moon size={14} />
-              <span>Deep Sleep Sekarang</span>
-            </button>
             <button
               onClick={() => handleRemoteCommand('Restart Perangkat', `/api/devices/${device.device_id}/restart`)}
               disabled={loadingAction}
@@ -1141,6 +1159,137 @@ export default function DeviceTab({
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* ========================================================= */}
+      {/* SECTION 4: KESEHATAN PERANGKAT (DIAGNOSTIK FIRMWARE)      */}
+      {/* ========================================================= */}
+      {/* Panel ini merender state `diagnostics` yang sebelumnya sudah  */}
+      {/* di-fetch tapi tidak pernah ditampilkan sama sekali. Aturan    */}
+      {/* utamanya: nilai yang TIDAK dilaporkan perangkat harus terlihat */}
+      {/* jelas berbeda dari nilai sehat - jangan pernah menampilkan    */}
+      {/* "OK" untuk data yang sebenarnya tidak ada.                    */}
+      <div className="corporate-card" style={{ padding: '28px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Cpu size={20} color={diagHasConcern ? '#dc2626' : '#059669'} />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+              Kesehatan Perangkat
+            </h3>
+          </div>
+          <button
+            onClick={handleRefreshDiagnostics}
+            disabled={isSpinningDiag}
+            className="btn btn-secondary"
+            style={{ padding: '6px 12px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <RefreshCw size={13} className={isSpinningDiag ? 'spin' : ''} />
+            <span>Segarkan Diagnostik</span>
+          </button>
+        </div>
+
+        {!diagnostics ? (
+          <div style={{
+            padding: '24px', borderRadius: '10px', background: '#f8fafc',
+            border: '1px dashed #cbd5e1', color: '#64748b', fontSize: '0.88rem',
+            fontWeight: 600, display: 'flex', alignItems: 'flex-start', gap: '10px'
+          }}>
+            <Info size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              Belum ada laporan diagnostik dari perangkat ini.
+              <div style={{ fontWeight: 500, marginTop: '6px', lineHeight: 1.5 }}>
+                Firmware mengirim laporan sekali setiap kali bangun dari deep sleep.
+                Bila tetap kosong setelah satu siklus penuh, perangkat belum memakai
+                firmware yang mendukung pelaporan diagnostik.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Baris penyebab boot - informasi paling penting untuk membedakan
+                alat sehat dari alat yang reboot berulang di lapangan */}
+            <div style={{
+              padding: '14px 18px', borderRadius: '10px', marginBottom: '16px',
+              background: bootReasonInfo.concerning ? '#fef2f2' : '#ecfdf5',
+              border: `1px solid ${bootReasonInfo.concerning ? '#fecaca' : '#a7f3d0'}`,
+              display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
+            }}>
+              {bootReasonInfo.concerning
+                ? <AlertTriangle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+                : <CheckCircle2 size={18} color="#059669" style={{ flexShrink: 0 }} />}
+              <div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                  {bootReasonInfo.label}
+                </div>
+                <div className="mono-text" style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '3px' }}>
+                  {diagnostics.boot_reason || 'tidak dilaporkan'}
+                  {diagnostics.timestamp ? ` - ${new Date(diagnostics.timestamp).toLocaleString('id-ID')}` : ''}
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+              gap: '10px'
+            }}>
+              <DiagTile icon={HardDrive} label="Kartu MicroSD"
+                state={diagnostics.sd_card_ok}
+                value={diagnostics.sd_status || (diagnostics.sd_card_ok === true ? 'ok' : null)} />
+
+              <DiagTile icon={Radio} label="Sensor A16"
+                state={diagnostics.sensor_ok}
+                value={diagnostics.sensor_error
+                  || (diagnostics.sensor_fail_streak > 0 ? `gagal ${diagnostics.sensor_fail_streak}x berturut` : null)
+                  || (diagnostics.sensor_ok === true ? 'normal' : null)} />
+
+              <DiagTile icon={Activity} label="Daya Sensor (GPIO 9)"
+                state={diagnostics.sensor_power_on}
+                value={diagnostics.sensor_power_on === true ? 'menyala'
+                  : diagnostics.sensor_power_on === false ? 'dimatikan' : null}
+                neutralWhenFalse />
+
+              <DiagCounter label="Gagal tulis SD" value={diagnostics.write_fail_count} alertAbove={0} />
+              <DiagCounter label="Antrean belum terkirim" value={diagnostics.pending_unsent} alertAbove={10} />
+              <DiagCounter label="Reboot watchdog" value={diagnostics.watchdog_count} alertAbove={0} />
+              <DiagCounter label="Brownout (tegangan drop)" value={diagnostics.brownout_count} alertAbove={0} />
+              <DiagCounter label="Panic firmware" value={diagnostics.panic_count} alertAbove={0} />
+              <DiagCounter label="Boot sebenarnya" value={diagnostics.boot_count} />
+              <DiagCounter label="Bangun terjadwal" value={diagnostics.wake_count} />
+
+              <DiagCounter label="Sisa heap (KB)"
+                value={diagnostics.free_heap_bytes != null ? Math.round(diagnostics.free_heap_bytes / 1024) : null}
+                alertBelow={20} />
+              <DiagCounter label="Sinyal WiFi (dBm)" value={diagnostics.wifi_rssi} alertBelow={-85} />
+            </div>
+
+            <div style={{
+              marginTop: '14px', paddingTop: '14px', borderTop: '1px solid #e2e8f0',
+              display: 'flex', gap: '20px', flexWrap: 'wrap',
+              fontSize: '0.78rem', color: '#64748b'
+            }}>
+              <span>
+                Versi firmware:{' '}
+                <strong className="mono-text" style={{ color: '#0f172a' }}>
+                  {diagnostics.firmware_version || 'tidak dilaporkan'}
+                </strong>
+              </span>
+              <span>
+                Suhu die ESP32:{' '}
+                <strong className="mono-text" style={{ color: '#0f172a' }}>
+                  {diagnostics.esp_temp_c != null ? `${Number(diagnostics.esp_temp_c).toFixed(1)} C` : 'tidak dilaporkan'}
+                </strong>
+                <span style={{ marginLeft: '6px' }}>(bukan suhu lingkungan)</span>
+              </span>
+              <span>
+                Uptime sejak bangun:{' '}
+                <strong className="mono-text" style={{ color: '#0f172a' }}>
+                  {diagnostics.uptime_sec != null ? `${diagnostics.uptime_sec} dtk` : 'tidak dilaporkan'}
+                </strong>
+              </span>
+            </div>
+          </>
         )}
       </div>
 

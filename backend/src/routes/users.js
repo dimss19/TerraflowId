@@ -1,19 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const argon2 = require('argon2');
+const { hashPassword } = require('../utils/password');
 const { query } = require('../db/connection');
-const { authenticateToken } = require('./auth');
-
-// Middleware: Require Admin Role
-function requireAdmin(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ 
-      success: false, 
-      error: 'Akses ditolak: Operasi ini memerlukan hak akses Administrator' 
-    });
-  }
-  next();
-}
+const { authenticateToken, requireAdmin } = require('./auth');
 
 // All user management routes require valid token + admin privileges
 router.use(authenticateToken);
@@ -75,12 +64,7 @@ router.post('/', async (req, res) => {
       }
 
       // Securely hash password with Argon2id
-      const passwordHash = await argon2.hash(password, {
-        type: argon2.argon2id,
-        memoryCost: 65536,
-        timeCost: 3,
-        parallelism: 4
-      });
+      const passwordHash = await hashPassword(password);
 
       const insertResult = await query(`
         INSERT INTO users (username, email, password_hash, full_name, role, phone, avatar_url, is_active, is_approved)
@@ -168,12 +152,7 @@ router.post('/', async (req, res) => {
       if (typeof password !== 'string' || password.length < 8) {
         return res.status(400).json({ success: false, error: 'Kata sandi baru minimal 8 karakter' });
       }
-      const newHash = await argon2.hash(password, {
-        type: argon2.argon2id,
-        memoryCost: 65536,
-        timeCost: 3,
-        parallelism: 4
-      });
+      const newHash = await hashPassword(password);
       updateClauses.push(`password_hash = $${paramIdx++}`);
       params.push(newHash);
     }

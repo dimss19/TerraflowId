@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const argon2 = require('argon2');
+const { hashPassword } = require('../utils/password');
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const { query } = require('../db/connection');
@@ -183,12 +184,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Hash password securely with Argon2id
-    const passwordHash = await argon2.hash(password, {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4
-    });
+    const passwordHash = await hashPassword(password);
 
     const insertResult = await query(`
       INSERT INTO users (username, email, password_hash, full_name, role, phone, is_active, is_approved)
@@ -291,12 +287,7 @@ router.post('/forgot-password/reset-password', async (req, res) => {
     }
 
     // Hash new password
-    const newHash = await argon2.hash(new_password, {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4
-    });
+    const newHash = await hashPassword(new_password);
 
     // Update user password
     await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE LOWER(email) = $2', [newHash, cleanEmail]);
@@ -345,7 +336,7 @@ router.post('/google', async (req, res) => {
 
       // Dummy secure hash for google auth accounts
       const randomSecret = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      const dummyHash = await argon2.hash(randomSecret, { type: argon2.argon2id });
+      const dummyHash = await hashPassword(randomSecret);
 
       const insertRes = await query(`
         INSERT INTO users (username, email, password_hash, full_name, role, is_active, is_approved, google_id)
@@ -535,12 +526,7 @@ router.patch('/password', authenticateToken, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Kata sandi saat ini tidak sesuai' });
     }
 
-    const newHash = await argon2.hash(new_password, {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4
-    });
+    const newHash = await hashPassword(new_password);
 
     await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, userId]);
 

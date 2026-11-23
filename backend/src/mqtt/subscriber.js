@@ -2,6 +2,7 @@ const mqtt = require('mqtt');
 const config = require('../config');
 const { query } = require('../db/connection');
 const { parseTelemetryTimestamp, alignToMinute } = require('../utils/timestamp');
+const { getActiveCalibration, calcWaterLevel } = require('../services/calibration');
 const { evaluateReadingRules, evaluateDiagnosticsRules } = require('../services/alertRules');
 
 let mqttClient = null;
@@ -27,7 +28,7 @@ function initSubscriber() {
   mqttClient.on('connect', () => {
     console.log('[MQTT Subscriber] Connected to broker successfully!');
     
-    // Subscribe to all device topics (supporting both direct and devices namespace patterns)
+    // Pola topik firmware: terraflow/<device_id>/<subtopic> (lihat firmware/src/mqtt_client.cpp)
     const topics = [
       'terraflow/+/data',
       'terraflow/+/data/bulk',
@@ -35,15 +36,7 @@ function initSubscriber() {
       'terraflow/+/diagnostics',
       'terraflow/+/status',
       'terraflow/+/calibration/response',
-      'terraflow/+/command/test_mode/response',
-      'terraflow/devices/+/telemetry',
-      'terraflow/devices/+/data',
-      'terraflow/devices/+/data/bulk',
-      'terraflow/devices/+/alert',
-      'terraflow/devices/+/diagnostics',
-      'terraflow/devices/+/status',
-      'terraflow/devices/+/calibration/response',
-      'terraflow/devices/+/command/test_mode/response'
+      'terraflow/+/command/test_mode/response'
     ];
 
     mqttClient.subscribe(topics, (err) => {
@@ -60,19 +53,8 @@ function initSubscriber() {
       const parts = topic.split('/');
       if (parts.length < 3 || parts[0] !== 'terraflow') return;
 
-      let deviceId;
-      let subtopic;
-      if (parts[1] === 'devices' && parts.length >= 4) {
-        deviceId = parts[2];
-        subtopic = parts.slice(3).join('/');
-      } else {
-        deviceId = parts[1];
-        subtopic = parts.slice(2).join('/');
-      }
-
-      if (subtopic === 'telemetry') {
-        subtopic = 'data';
-      }
+      const deviceId = parts[1];
+      const subtopic = parts.slice(2).join('/');
 
       const data = JSON.parse(payload.toString());
       await handleMessage(deviceId, subtopic, data);
@@ -86,6 +68,26 @@ function initSubscriber() {
   });
 
   return mqttClient;
+}
+
+// Kirim alert baru ke seluruh klien WebSocket.
+function emitAlerts(alerts) {
+  if (!ioInstance || !Array.isArray(alerts)) return;
+  for (const alert of alerts) {
+    ioInstance.emit('alert:new', alert);
+  }
+}
+
+// Evaluasi rule alert berbasis pembacaan lalu broadcast hasilnya.
+// Tidak pernah melempar error: kegagalan rule engine tidak boleh
+// menggagalkan penyimpanan data.
+async function runReadingRules(deviceId, row) {
+  if (!row) return;
+  try {
+    emitAlerts(await evaluateReadingRules(deviceId, row));
+  } catch (e) {
+    console.warn('[Rule Engine] error:', e.message);
+  }
 }
 
 async function handleMessage(deviceId, subtopic, data) {
@@ -107,12 +109,8 @@ async function handleMessage(deviceId, subtopic, data) {
     await handleDiagnostics(deviceId, data);
   } else if (subtopic === 'status') {
     const isOnline = data.status === 'online';
-    if (isOnline) {
-      await query(
-        'UPDATE devices SET last_seen = NOW() WHERE device_id = $1',
-        [deviceId]
-      ).catch(() => {});
-    } else {
+    // Status online: last_seen sudah diperbarui di awal handleMessage.
+    if (!isOnline) {
       // Explicit offline status (e.g. LWT or disconnect) sets last_seen to past so it registers offline
       await query(
         "UPDATE devices SET last_seen = NOW() - INTERVAL '1 hour' WHERE device_id = $1",
@@ -173,18 +171,10 @@ async function handleSingleReading(deviceId, data) {
 
   if (rawDist != null) {
     try {
-      const calibRes = await query(
-        `SELECT sensor_height_cm, offset_cm, slope 
-         FROM calibrations 
-         WHERE device_id = $1 AND is_active = true 
-         ORDER BY applied_at DESC LIMIT 1`,
-        [deviceId]
-      );
-      if (calibRes.rows.length > 0) {
-        const h = parseFloat(calibRes.rows[0].sensor_height_cm) || 600.0;
-        const off = parseFloat(calibRes.rows[0].offset_cm) || 0.0;
-        const slp = parseFloat(calibRes.rows[0].slope) || 1.0;
-        waterLevel = +(h - (rawDist * slp + off)).toFixed(2);
+      // Hanya hitung ulang bila ada kalibrasi aktif; tanpa itu nilai dari perangkat dipakai.
+      const calib = await getActiveCalibration(deviceId);
+      if (calib) {
+        waterLevel = calcWaterLevel(rawDist, calib);
       }
     } catch (e) {
       console.warn('[Calibration Rule Warning]', e.message);
@@ -194,15 +184,19 @@ async function handleSingleReading(deviceId, data) {
   const insertSql = `
     INSERT INTO readings (
       device_id, timestamp, raw_distance_cm, water_level_cm,
-      temperature_c, signal_quality, sd_status, reading_count, source
+      temperature_c, signal_quality, sd_status, reading_count, source,
+      sensor_error, write_fail_count
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     ON CONFLICT (device_id, timestamp) DO UPDATE SET
       water_level_cm = EXCLUDED.water_level_cm,
       raw_distance_cm = EXCLUDED.raw_distance_cm,
       temperature_c = EXCLUDED.temperature_c,
       signal_quality = EXCLUDED.signal_quality,
-      source = EXCLUDED.source
+      source = EXCLUDED.source,
+      sd_status = EXCLUDED.sd_status,
+      sensor_error = EXCLUDED.sensor_error,
+      write_fail_count = EXCLUDED.write_fail_count
     RETURNING *
   `;
 
@@ -213,12 +207,31 @@ async function handleSingleReading(deviceId, data) {
     waterLevel,
     data.temperature_c != null ? Number(data.temperature_c) : null,
     data.signal_quality != null ? Number(data.signal_quality) : null,
-    data.sd_status || 'ok',
+    // JANGAN pasang fallback `|| 'ok'` di sini. Firmware kini mengirim status
+    // MicroSD yang sebenarnya; mengubah nilai kosong/undefined menjadi 'ok'
+    // berarti backend ikut memalsukan kesehatan perangkat - persis masalah
+    // yang sedang kita hilangkan di sisi firmware.
+    data.sd_status != null ? String(data.sd_status).slice(0, 20) : null,
     data.reading_count != null ? Number(data.reading_count) : null,
-    data.source || (isTestMode ? 'test' : 'live')
+    data.source || (isTestMode ? 'test' : 'live'),
+    data.sensor_error != null ? String(data.sensor_error).slice(0, 20) : null,
+    data.write_fail_count != null ? Number(data.write_fail_count) : null
   ];
 
-  const res = await query(insertSql, values);
+  // Insert dibungkus try/catch lokal. Sebelumnya kegagalan DB hanya tertangkap
+  // catch-all terluar yang mencetak err.message tanpa payload, sehingga satu
+  // siklus telemetri bisa hilang total tanpa petunjuk penyebab - kasus nyata:
+  // error 22001 (value too long) dari sd_status VARCHAR(10).
+  let res;
+  try {
+    res = await query(insertSql, values);
+  } catch (err) {
+    console.error(
+      `[MQTT Telemetry GAGAL SIMPAN] Device: ${deviceId} | Kode: ${err.code || '-'} | ${err.message}\n` +
+      `  Payload yang ditolak: ${JSON.stringify(data)}`
+    );
+    throw err;
+  }
   const savedRow = res.rows[0];
   console.log(`[MQTT Telemetry] Device: ${deviceId} | Raw: ${rawDist} cm | Level: ${waterLevel} cm | Temp: ${data.temperature_c}°C | Source: ${data.source || (isTestMode ? 'test' : 'live')}`);
 
@@ -234,7 +247,6 @@ async function handleSingleReading(deviceId, data) {
     };
 
     ioInstance.emit('sensor:data', livePayload);
-    ioInstance.emit('telemetry', { device_id: deviceId, data: livePayload });
 
     if (isTestMode) {
       ioInstance.emit('test:reading', { device_id: deviceId, data: livePayload });
@@ -242,30 +254,28 @@ async function handleSingleReading(deviceId, data) {
   }
 
   // Evaluasi rule alert (SENSOR_ANOMALY, dll.) terhadap pembacaan ini
-  if (savedRow) {
-    try {
-      const alerts = await evaluateReadingRules(deviceId, savedRow);
-      if (ioInstance) {
-        for (const alert of alerts) {
-          ioInstance.emit('alert:new', alert);
-        }
-      }
-    } catch (e) {
-      console.warn('[Rule Engine] error:', e.message);
-    }
-  }
+  await runReadingRules(deviceId, savedRow);
 }
 
 async function handleBulkReadings(deviceId, payload) {
   const records = payload.records || [];
   let savedCount = 0;
+  let skippedCount = 0;
 
   const failedTimestamps = [];
 
   for (const item of records) {
     // Timestamp: field `timestamp` (epoch) menjadi sumber utama, fallback
     // date+jam diinterpretasi sebagai WIB. Lihat utils/timestamp.js.
-    let ts = parseTelemetryTimestamp(item) || new Date();
+    let ts = parseTelemetryTimestamp(item);
+    if (!ts) {
+      // Jam perangkat belum sinkron saat record ini dicatat (timestamp =
+      // uptime). Waktu aslinya tidak bisa dipulihkan; jangan disimpan sebagai
+      // 1970 dan jangan dimasukkan ke failed_timestamps (akan dikirim ulang
+      // tanpa henti). Dihitung sebagai "skipped" di ACK.
+      skippedCount++;
+      continue;
+    }
 
     // Align timestamp to the exact minute (:00 seconds)
     ts = alignToMinute(ts);
@@ -275,8 +285,9 @@ async function handleBulkReadings(deviceId, payload) {
         device_id, timestamp, raw_distance_cm, water_level_cm,
         temperature_c, signal_quality, sd_status, reading_count, source
       )
-      VALUES ($1, $2, $3, $4, $5, $6, 'ok', $7, 'sd_buffer')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'sd_buffer')
       ON CONFLICT (device_id, timestamp) DO NOTHING
+      RETURNING *
     `;
 
     try {
@@ -287,23 +298,13 @@ async function handleBulkReadings(deviceId, payload) {
         item.water_level_cm != null ? Number(item.water_level_cm) : null,
         item.temperature_c != null ? Number(item.temperature_c) : null,
         item.signal_quality != null ? Number(item.signal_quality) : null,
+        item.sd_status != null ? String(item.sd_status).slice(0, 20) : null,
         item.reading_count != null ? Number(item.reading_count) : null
       ]);
       savedCount++;
 
       // Evaluasi rule alert untuk data offline yang disinkronkan
-      if (inserted.rows[0]) {
-        try {
-          const alerts = await evaluateReadingRules(deviceId, inserted.rows[0]);
-          if (ioInstance) {
-            for (const alert of alerts) {
-              ioInstance.emit('alert:new', alert);
-            }
-          }
-        } catch (e) {
-          console.warn('[Rule Engine] error:', e.message);
-        }
-      }
+      await runReadingRules(deviceId, inserted.rows[0]);
     } catch (e) {
       console.warn('[Bulk Insert Warning]', e.message);
       // Catat timestamp yang gagal agar perangkat hanya mengulang baris ini
@@ -328,6 +329,7 @@ async function handleBulkReadings(deviceId, payload) {
     records_total: totalRecords,
     records_saved: savedCount,
     records_failed: failedTimestamps.length,
+    records_skipped: skippedCount,
     failed_timestamps: failedTimestamps,
     timestamp: Math.floor(Date.now() / 1000)
   });
@@ -348,7 +350,8 @@ async function handleBulkReadings(deviceId, payload) {
 }
 
 async function handleAlert(deviceId, data) {
-  const ts = data.timestamp ? new Date(typeof data.timestamp === 'number' && data.timestamp < 1e11 ? data.timestamp * 1000 : data.timestamp) : new Date();
+  // Waktu terima server dipakai bila jam perangkat belum sinkron (uptime).
+  const ts = parseTelemetryTimestamp(data) || new Date();
   
   const insertSql = `
     INSERT INTO device_alerts (
@@ -376,35 +379,54 @@ async function handleAlert(deviceId, data) {
 }
 
 async function handleDiagnostics(deviceId, data) {
-  const ts = data.timestamp ? new Date(typeof data.timestamp === 'number' && data.timestamp < 1e11 ? data.timestamp * 1000 : data.timestamp) : new Date();
+  // Waktu terima server dipakai bila jam perangkat belum sinkron (uptime).
+  const ts = parseTelemetryTimestamp(data) || new Date();
   
+  // Helper: hanya mengubah nilai yang BENAR-BENAR ada. Nilai yang tidak
+  // dikirim perangkat disimpan sebagai NULL, bukan ditebak dengan default
+  // optimistis. Versi lama memakai `data.wifi_rssi || -70` (sinyal palsu),
+  // `data.sd_card_ok !== false` (undefined dianggap sehat), dan
+  // `data.boot_reason || 'NORMAL'` - semuanya menyembunyikan data yang hilang.
+  const num = (v) => (v != null && v !== '' ? Number(v) : null);
+  const bool = (v) => (typeof v === 'boolean' ? v : null);
+  const str = (v, max) => (v != null && v !== '' ? String(v).slice(0, max) : null);
+
   const insertSql = `
     INSERT INTO device_diagnostics (
       device_id, timestamp, boot_reason, uptime_sec, boot_count,
       watchdog_count, brownout_count, panic_count, free_heap_bytes,
       wifi_rssi, sd_card_ok, sensor_ok, esp_temp_c,
-      pending_unsent, firmware_version
+      pending_unsent, firmware_version,
+      wake_count, sd_status, sensor_error, sensor_fail_streak,
+      sensor_power_on, write_fail_count
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+            $16, $17, $18, $19, $20, $21)
     RETURNING *
   `;
 
   const res = await query(insertSql, [
     deviceId,
     ts,
-    data.boot_reason || 'NORMAL',
-    data.uptime_sec || 0,
-    data.boot_count || 1,
-    data.watchdog_count || 0,
-    data.brownout_count || 0,
-    data.panic_count || 0,
-    data.free_heap_bytes || 0,
-    data.wifi_rssi || -70,
-    data.sd_card_ok !== false,
-    data.sensor_ok !== false,
-    data.esp_temp_c || null,
-    data.pending_unsent || 0,
-    data.firmware_version || '1.0.0'
+    str(data.boot_reason, 30),
+    num(data.uptime_sec),
+    num(data.boot_count),
+    num(data.watchdog_count),
+    num(data.brownout_count),
+    num(data.panic_count),
+    num(data.free_heap_bytes),
+    num(data.wifi_rssi),
+    bool(data.sd_card_ok),
+    bool(data.sensor_ok),
+    num(data.esp_temp_c),
+    num(data.pending_unsent),
+    str(data.firmware_version, 20),
+    num(data.wake_count),
+    str(data.sd_status, 20),
+    str(data.sensor_error, 20),
+    num(data.sensor_fail_streak),
+    bool(data.sensor_power_on),
+    num(data.write_fail_count)
   ]);
 
   const diag = res.rows[0];
@@ -415,12 +437,7 @@ async function handleDiagnostics(deviceId, data) {
   // Evaluasi rule alert berbasis diagnostik (TEMP_HIGH, dll.)
   if (diag) {
     try {
-      const alerts = await evaluateDiagnosticsRules(deviceId, diag);
-      if (ioInstance) {
-        for (const alert of alerts) {
-          ioInstance.emit('alert:new', alert);
-        }
-      }
+      emitAlerts(await evaluateDiagnosticsRules(deviceId, diag));
     } catch (e) {
       console.warn('[Rule Engine] error:', e.message);
     }
@@ -432,4 +449,5 @@ module.exports = {
   setSocketIO,
   getMqttClient: () => mqttClient,
   getSocketIO: () => ioInstance,
+  runReadingRules,
 };

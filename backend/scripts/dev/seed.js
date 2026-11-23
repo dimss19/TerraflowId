@@ -1,4 +1,11 @@
-const { query, pool } = require('./connection');
+// SKRIP PENGEMBANGAN SAJA. Membuat data contoh / akun default dengan
+// password yang tertulis di kode. Jangan dijalankan di server produksi.
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_SEED !== 'true') {
+  console.error('[Seed] Ditolak: NODE_ENV=production. Set ALLOW_DEV_SEED=true bila benar-benar disengaja.');
+  process.exit(1);
+}
+
+const { query, pool } = require('../../src/db/connection');
 
 async function seedData() {
   console.log('[Seed] Seeding initial data for PT Tanah Airku Teknologi...');
@@ -27,8 +34,10 @@ async function seedData() {
     // 2. Seed active calibration
     await query(`
       INSERT INTO calibrations (device_id, sensor_height_cm, offset_cm, slope, applied_at, applied_by, notes, is_active)
-      VALUES ($1, $2, $3, $4, NOW(), $5, $6, true)
-      ON CONFLICT DO NOTHING
+      SELECT $1::varchar, $2, $3, $4, NOW(), $5, $6, true
+      WHERE NOT EXISTS (
+        SELECT 1 FROM calibrations WHERE device_id = $1::varchar AND is_active = true
+      )
     `, [
       'AWLR-001',
       600.00,
@@ -144,8 +153,8 @@ async function seedData() {
         wifi_rssi, sd_card_ok, sensor_ok, esp_temp_c,
         pending_unsent, firmware_version
       )
-      VALUES ($1, NOW(), 'POWERON_RESET', 86400, 1, 0, 0, 0, 168420, -66, true, true, 41.2, 0, '1.0.0')
-      ON CONFLICT DO NOTHING
+      SELECT $1::varchar, NOW(), 'POWERON_RESET', 86400, 1, 0, 0, 0, 168420, -66, true, true, 41.2, 0, '1.0.0'
+      WHERE NOT EXISTS (SELECT 1 FROM device_diagnostics WHERE device_id = $1::varchar)
     `, ['AWLR-001']);
 
     console.log('[Seed] Database seeding completed successfully!');

@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node src/server.js",
     "migrate": "node src/db/migrate.js",
-    "seed": "node src/db/seed.js",
-    "seed:users": "node src/db/seed_users.js",
-    "partitions": "node src/db/ensurePartitions.js"
+    "seed": "node scripts/dev/seed.js",
+    "seed:users": "node scripts/dev/seed_users.js",
+    "partitions": "node src/db/ensurePartitions.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "aedes": "^0.51.2",

@@ -1,170 +1,109 @@
 const { getMqttClient } = require('./subscriber');
 
+const nowSec = () => Math.floor(Date.now() / 1000);
+
 /**
- * Publish calibration configuration to device
- * @param {string} deviceId 
+ * Helper publish tunggal: cek koneksi, kirim JSON, log, dan resolve dengan
+ * `result` (ditambah topic & payload).
+ * @param {string} topic
+ * @param {object} body  objek yang akan di-JSON-kan
+ * @param {object} opts  opsi MQTT (default qos 1)
+ * @param {string} logMsg
+ * @param {object} result field tambahan pada nilai resolve
+ */
+function publishJson(topic, body, opts, logMsg, result = {}) {
+  const client = getMqttClient();
+  if (!client || !client.connected) {
+    return Promise.reject(new Error('MQTT client is not connected to broker'));
+  }
+
+  const payload = JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    client.publish(topic, payload, { qos: 1, ...opts }, (err) => {
+      if (err) return reject(err);
+      console.log(`[MQTT Publisher] ${logMsg} -> ${topic}`);
+      resolve({ success: true, topic, payload, ...result });
+    });
+  });
+}
+
+/**
+ * Kirim konfigurasi kalibrasi ke perangkat.
+ * Saat ini TIDAK dipakai: kalibrasi dihitung di server (lihat api.js POST
+ * /calibration). Dipertahankan karena firmware masih menangani
+ * `calibration/set` dan membalas `calibration/response`.
  * @param {object} params { sensor_height_cm, offset_cm, slope }
  */
 function publishCalibration(deviceId, params) {
-  const client = getMqttClient();
-  if (!client || !client.connected) {
-    throw new Error('MQTT client is not connected to broker');
-  }
-
-  const topic = `terraflow/${deviceId}/calibration/set`;
-  const payload = JSON.stringify({
+  return publishJson(`terraflow/${deviceId}/calibration/set`, {
     cmd: 'set_calibration',
     sensor_height_cm: Number(params.sensor_height_cm),
     offset_cm: Number(params.offset_cm),
     slope: Number(params.slope),
-    timestamp: Math.floor(Date.now() / 1000)
-  });
-
-  return new Promise((resolve, reject) => {
-    client.publish(topic, payload, { qos: 1 }, (err) => {
-      if (err) return reject(err);
-      console.log(`[MQTT Publisher] Pushed calibration to ${topic}:`, payload);
-      resolve({ success: true, topic, payload });
-    });
-  });
+    timestamp: nowSec()
+  }, {}, 'Pushed calibration');
 }
 
 /**
- * Publish remote command to device
- * @param {string} deviceId 
+ * Perintah umum ke perangkat.
  * @param {string} command ('restart', 'sync_request')
  */
 function publishCommand(deviceId, command) {
-  const client = getMqttClient();
-  if (!client || !client.connected) {
-    throw new Error('MQTT client is not connected to broker');
-  }
-
-  const topic = `terraflow/${deviceId}/command/${command}`;
-  const payload = JSON.stringify({
+  return publishJson(`terraflow/${deviceId}/command/${command}`, {
     command,
-    timestamp: Math.floor(Date.now() / 1000)
-  });
-
-  return new Promise((resolve, reject) => {
-    client.publish(topic, payload, { qos: 1 }, (err) => {
-      if (err) return reject(err);
-      console.log(`[MQTT Publisher] Sent command ${command} to ${topic}`);
-      resolve({ success: true, command });
-    });
-  });
+    timestamp: nowSec()
+  }, {}, `Sent command ${command}`, { command });
 }
 
 /**
- * Publish sampling interval configuration to device via retained MQTT message
- * @param {string} deviceId 
+ * Interval sampling via pesan retained.
  * @param {number} intervalSec (e.g. 60, 900, 1800, 3600, 7200)
  */
 function publishSamplingInterval(deviceId, intervalSec) {
-  const client = getMqttClient();
-  if (!client || !client.connected) {
-    throw new Error('MQTT client is not connected to broker');
-  }
-
   const cleanInterval = Math.max(15, Math.min(86400, parseInt(intervalSec, 10) || 900));
-  const topic = `terraflow/${deviceId}/config/interval`;
-  const payload = JSON.stringify({
+  // Retain = true sangat krusial: broker menyimpan pesan ini agar ESP32 yang
+  // bangun dari Deep Sleep langsung menerimanya.
+  return publishJson(`terraflow/${deviceId}/config/interval`, {
     cmd: 'set_interval',
     sampling_interval_sec: cleanInterval,
     interval_min: Math.round(cleanInterval / 60),
-    timestamp: Math.floor(Date.now() / 1000)
-  });
-
-  return new Promise((resolve, reject) => {
-    // Retain = true sangat krusial: broker menyimpan pesan ini agar ESP32 yang bangun dari Deep Sleep langsung menerimanya
-    client.publish(topic, payload, { qos: 1, retain: true }, (err) => {
-      if (err) return reject(err);
-      console.log(`[MQTT Publisher] Pushed retained interval config (${cleanInterval}s) to ${topic}`);
-      resolve({ success: true, topic, payload, intervalSec: cleanInterval });
-    });
-  });
+    timestamp: nowSec()
+  }, { retain: true }, `Pushed retained interval config (${cleanInterval}s)`, { intervalSec: cleanInterval });
 }
 
 /**
- * Publish test mode command to device (streaming telemetry every 1s)
- * @param {string} deviceId 
- * @param {boolean} enabled 
- * @param {number} durationSec (default 300 = 5 minutes)
+ * Mode uji (streaming telemetri tiap 1 detik).
+ * @param {boolean} enabled
+ * @param {number} durationSec (default 300 = 5 menit)
  */
 function publishTestMode(deviceId, enabled, durationSec = 300) {
-  const client = getMqttClient();
-  if (!client || !client.connected) {
-    throw new Error('MQTT client is not connected to broker');
-  }
-
-  const topic = `terraflow/${deviceId}/command/test_mode`;
-  const payload = JSON.stringify({
+  return publishJson(`terraflow/${deviceId}/command/test_mode`, {
     cmd: 'test_mode',
     test_mode: Boolean(enabled),
     enabled: Boolean(enabled),
     duration_sec: Number(durationSec) || 300,
-    timestamp: Math.floor(Date.now() / 1000)
-  });
-
-  return new Promise((resolve, reject) => {
-    client.publish(topic, payload, { qos: 1 }, (err) => {
-      if (err) return reject(err);
-      console.log(`[MQTT Publisher] Pushed test mode (${enabled ? 'ON' : 'OFF'}) to ${topic}`);
-      resolve({ success: true, topic, enabled, durationSec });
-    });
-  });
+    timestamp: nowSec()
+  }, {}, `Pushed test mode (${enabled ? 'ON' : 'OFF'})`, { enabled, durationSec });
 }
 
 /**
- * Publish sensor power command to device
- * @param {string} deviceId 
- * @param {boolean} powerOn 
+ * Daya sensor (high-side switch GPIO 9).
+ * @param {boolean} powerOn
  */
 function publishSensorPower(deviceId, powerOn) {
-  const client = getMqttClient();
-  if (!client || !client.connected) {
-    throw new Error('MQTT client is not connected to broker');
-  }
-
-  const topic = `terraflow/${deviceId}/command/sensor_power`;
-  const payload = JSON.stringify({
+  return publishJson(`terraflow/${deviceId}/command/sensor_power`, {
     power: Boolean(powerOn),
     state: powerOn ? 1 : 0,
-    timestamp: Math.floor(Date.now() / 1000)
-  });
-
-  return new Promise((resolve, reject) => {
-    client.publish(topic, payload, { qos: 1 }, (err) => {
-      if (err) return reject(err);
-      console.log(`[MQTT Publisher] Pushed sensor power (${powerOn ? 'ON' : 'OFF'}) to ${topic}`);
-      resolve({ success: true, topic, power: powerOn });
-    });
-  });
+    timestamp: nowSec()
+  }, {}, `Pushed sensor power (${powerOn ? 'ON' : 'OFF'})`, { power: powerOn });
 }
 
-/**
- * Publish deep sleep command to device
- * @param {string} deviceId 
- */
+/** Perintah deep sleep. */
 function publishSleepCommand(deviceId) {
-  const client = getMqttClient();
-  if (!client || !client.connected) {
-    throw new Error('MQTT client is not connected to broker');
-  }
-
-  const topic = `terraflow/${deviceId}/command/sleep`;
-  const payload = JSON.stringify({
+  return publishJson(`terraflow/${deviceId}/command/sleep`, {
     cmd: 'sleep',
-    timestamp: Math.floor(Date.now() / 1000)
-  });
-
-  return new Promise((resolve, reject) => {
-    client.publish(topic, payload, { qos: 1 }, (err) => {
-      if (err) return reject(err);
-      console.log(`[MQTT Publisher] Sent deep sleep command to ${topic}`);
-      resolve({ success: true, topic });
-    });
-  });
+    timestamp: nowSec()
+  }, {}, 'Sent deep sleep command');
 }
 
 module.exports = {

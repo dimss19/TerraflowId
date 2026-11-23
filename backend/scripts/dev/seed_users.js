@@ -1,23 +1,20 @@
-const argon2 = require('argon2');
-const { query, pool } = require('./connection');
+// SKRIP PENGEMBANGAN SAJA. Membuat data contoh / akun default dengan
+// password yang tertulis di kode. Jangan dijalankan di server produksi.
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_SEED !== 'true') {
+  console.error('[Seed] Ditolak: NODE_ENV=production. Set ALLOW_DEV_SEED=true bila benar-benar disengaja.');
+  process.exit(1);
+}
+
+const { hashPassword } = require('../../src/utils/password');
+const { query, pool } = require('../../src/db/connection');
 
 async function seedUsers() {
   console.log('[Seed Users] Creating default administrative accounts with Argon2...');
   
   try {
-    const adminPasswordHash = await argon2.hash('Terraflow2024!', {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4
-    });
+    const adminPasswordHash = await hashPassword('Terraflow2024!');
 
-    const operatorPasswordHash = await argon2.hash('Operator2024!', {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4
-    });
+    const operatorPasswordHash = await hashPassword('Operator2024!');
 
     await query(`
       INSERT INTO users (username, email, password_hash, full_name, phone, role, is_active)

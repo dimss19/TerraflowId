@@ -25,6 +25,15 @@ const FUTURE_GUARD_MS = 10 * 60 * 1000;
 // Batas atas epoch "detik" agar tidak tertukar dengan milidetik.
 // 1e11 detik = tahun 5138, 1e11 ms = 1973.
 const EPOCH_SECONDS_MAX = 1e11;
+// Ambang waktu "jam sudah tersinkron" - sama dengan TIME_SYNCED_EPOCH_MIN di
+// firmware/src/timekeeping.h. Bila jam perangkat belum sinkron, firmware
+// mengirim uptime (detik sejak boot) dan tanggal "1970-01-xx". Nilai seperti
+// itu bukan waktu nyata dan tidak boleh disimpan sebagai tahun 1970.
+const MIN_VALID_EPOCH_MS = 1700000000 * 1000;
+
+function isPlausible(date) {
+  return date instanceof Date && date.getTime() >= MIN_VALID_EPOCH_MS;
+}
 
 /**
  * Ubah nilai timestamp menjadi Date.
@@ -85,6 +94,8 @@ function guardFutureRtc(date) {
 /**
  * Parse timestamp satu record telemetry/offline.
  * Field `timestamp` menang; date+jam hanya dipakai sebagai fallback.
+ * Mengembalikan null bila tidak ada waktu yang masuk akal (mis. jam
+ * perangkat belum sinkron) - pemanggil yang menentukan fallback-nya.
  * @param {object} item
  * @returns {Date|null}
  */
@@ -92,9 +103,10 @@ function parseTelemetryTimestamp(item) {
   if (!item) return null;
 
   const primary = guardFutureRtc(toDate(item.timestamp));
-  if (primary) return primary;
+  if (isPlausible(primary)) return primary;
 
-  return fromWibParts(item.date, item.hour, item.minute, item.second);
+  const fallback = fromWibParts(item.date, item.hour, item.minute, item.second);
+  return isPlausible(fallback) ? fallback : null;
 }
 
 /**
@@ -111,6 +123,7 @@ function alignToMinute(date) {
 module.exports = {
   WIB_OFFSET_MS,
   EPOCH_SECONDS_MAX,
+  MIN_VALID_EPOCH_MS,
   toDate,
   fromWibParts,
   guardFutureRtc,

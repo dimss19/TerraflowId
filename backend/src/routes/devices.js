@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db/connection');
 const { authenticateToken, requireAdmin } = require('./auth');
+const { requireDeviceAccess } = require('../middleware/deviceAccess');
 const { publishCommand, publishSamplingInterval, publishTestMode, publishSensorPower, publishSleepCommand } = require('../mqtt/publisher');
 
 // ==========================================
@@ -129,18 +130,9 @@ router.get('/:device_id', authenticateToken, async (req, res) => {
 // ==========================================
 
 // POST /api/devices/:device_id/restart - Trigger remote reboot
-router.post('/:device_id/restart', authenticateToken, async (req, res) => {
+router.post('/:device_id/restart', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   try {
-    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
-    if (devCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
-    }
-
-    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
-    }
-
     await publishCommand(device_id, 'restart');
     res.json({ success: true, message: `Perintah restart telah dikirim ke perangkat ${device_id}` });
   } catch (err) {
@@ -150,18 +142,9 @@ router.post('/:device_id/restart', authenticateToken, async (req, res) => {
 });
 
 // POST /api/devices/:device_id/sync - Trigger remote SD sync
-router.post('/:device_id/sync', authenticateToken, async (req, res) => {
+router.post('/:device_id/sync', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   try {
-    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
-    if (devCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
-    }
-
-    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
-    }
-
     await publishCommand(device_id, 'sync_request');
     res.json({ success: true, message: `Perintah sinkronisasi manual telah dikirim ke perangkat ${device_id}` });
   } catch (err) {
@@ -171,7 +154,7 @@ router.post('/:device_id/sync', authenticateToken, async (req, res) => {
 });
 
 // POST /api/devices/:device_id/interval - Atur interval sampling pembacaan alat via MQTT (Retain)
-router.post('/:device_id/interval', authenticateToken, async (req, res) => {
+router.post('/:device_id/interval', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const { sampling_interval_sec } = req.body;
 
@@ -184,15 +167,6 @@ router.post('/:device_id/interval', authenticateToken, async (req, res) => {
   }
 
   try {
-    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
-    if (devCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
-    }
-
-    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
-    }
-
     // 1. Simpan ke database devices
     await query(
       'UPDATE devices SET sampling_interval_sec = $1, updated_at = NOW() WHERE device_id = $2',
@@ -238,20 +212,11 @@ function getTestModeStatus(deviceId) {
 }
 
 // POST /api/devices/:device_id/test-mode - Toggle test mode (streaming 1 detik)
-router.post('/:device_id/test-mode', authenticateToken, async (req, res) => {
+router.post('/:device_id/test-mode', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const { enabled, duration_sec } = req.body;
 
   try {
-    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
-    if (devCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
-    }
-
-    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
-    }
-
     const isEnabled = enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
     const duration = Math.max(10, Math.min(1800, parseInt(duration_sec, 10) || 300)); // 10s - 30m
 
@@ -282,7 +247,7 @@ router.post('/:device_id/test-mode', authenticateToken, async (req, res) => {
 });
 
 // GET /api/devices/:device_id/test-mode - Ambil status real-time mode uji 1 detik
-router.get('/:device_id/test-mode', authenticateToken, async (req, res) => {
+router.get('/:device_id/test-mode', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   try {
     const status = getTestModeStatus(device_id);
@@ -297,20 +262,11 @@ router.get('/:device_id/test-mode', authenticateToken, async (req, res) => {
 });
 
 // POST /api/devices/:device_id/sensor-power - Kontrol manual daya sensor DYP-A16 (High-Side Switch)
-router.post('/:device_id/sensor-power', authenticateToken, async (req, res) => {
+router.post('/:device_id/sensor-power', authenticateToken, requireAdmin, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const { power } = req.body;
 
   try {
-    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
-    if (devCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
-    }
-
-    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
-    }
-
     const powerOn = power === true || power === 'true' || power === 1 || power === '1' || power === 'on';
     await publishSensorPower(device_id, powerOn);
 
@@ -326,19 +282,10 @@ router.post('/:device_id/sensor-power', authenticateToken, async (req, res) => {
 });
 
 // POST /api/devices/:device_id/sleep - Perintah masuk Deep Sleep manual untuk pengujian
-router.post('/:device_id/sleep', authenticateToken, async (req, res) => {
+router.post('/:device_id/sleep', authenticateToken, requireAdmin, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
 
   try {
-    const devCheck = await query('SELECT device_id, assigned_to FROM devices WHERE device_id = $1', [device_id]);
-    if (devCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Perangkat tidak ditemukan' });
-    }
-
-    if (req.user.role === 'operator' && devCheck.rows[0].assigned_to !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Akses ditolak: Stasiun ini tidak ditugaskan kepada Anda' });
-    }
-
     await publishSleepCommand(device_id);
 
     res.json({
@@ -352,7 +299,7 @@ router.post('/:device_id/sleep', authenticateToken, async (req, res) => {
 });
 
 // GET /api/devices/:device_id/test-readings - Ambil data stream telemetri terbaru untuk mode pengujian
-router.get('/:device_id/test-readings', authenticateToken, async (req, res) => {
+router.get('/:device_id/test-readings', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const limit = Math.min(100, Math.max(10, parseInt(req.query.limit, 10) || 50));
   try {

@@ -1,18 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../db/connection');
-const { publishCalibration, publishCommand } = require('../mqtt/publisher');
 const { analyzeTidalReadings } = require('../services/tidalAnalysis');
 const { parseTelemetryTimestamp, alignToMinute } = require('../utils/timestamp');
-const { evaluateReadingRules } = require('../services/alertRules');
+const { getSocketIO, runReadingRules } = require('../mqtt/subscriber');
+const { getDeviceCalibration, calcWaterLevel } = require('../services/calibration');
 const { authenticateToken, requireAdmin } = require('./auth');
+const { checkDeviceAccess, requireDeviceAccess } = require('../middleware/deviceAccess');
+const { addDateRange } = require('../utils/dateRange');
 
 // ==========================================
 // 1. READINGS & TELEMETRY
 // ==========================================
 
 // GET /api/readings/:device_id/latest - Get most recent reading
-router.get('/readings/:device_id/latest', async (req, res) => {
+router.get('/readings/:device_id/latest', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const normalizedId = (device_id || '').trim().replace(/\s+/g, '-');
   try {
@@ -34,7 +36,7 @@ router.get('/readings/:device_id/latest', async (req, res) => {
 });
 
 // GET /api/readings/:device_id - Historical readings with date range filter
-router.get('/readings/:device_id', async (req, res) => {
+router.get('/readings/:device_id', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const normalizedId = (device_id || '').trim().replace(/\s+/g, '-');
   const { start, end, limit = 500 } = req.query;
@@ -42,30 +44,14 @@ router.get('/readings/:device_id', async (req, res) => {
   const maxLimit = Math.min(2000, Math.max(1, parseInt(limit, 10) || 500));
   const conditions = ['(device_id = $1 OR device_id = $2)'];
   const params = [device_id, normalizedId];
-  let paramIdx = 3;
-
-  if (start) {
-    const startDate = new Date(start);
-    if (!isNaN(startDate.getTime())) {
-      conditions.push(`timestamp >= $${paramIdx++}`);
-      params.push(startDate.toISOString());
-    }
-  }
-
-  if (end) {
-    const endDate = new Date(end);
-    if (!isNaN(endDate.getTime())) {
-      conditions.push(`timestamp <= $${paramIdx++}`);
-      params.push(endDate.toISOString());
-    }
-  }
+  addDateRange(conditions, params, start, end);
 
   params.push(maxLimit);
   const sql = `
     SELECT * FROM readings
     WHERE ${conditions.join(' AND ')}
     ORDER BY timestamp DESC
-    LIMIT $${paramIdx}
+    LIMIT $${params.length}
   `;
 
   try {
@@ -82,7 +68,7 @@ router.get('/readings/:device_id', async (req, res) => {
 // ==========================================
 
 // GET /api/readings/:device_id/tidal - Tidal curve and stats with flexible date/time filtering
-router.get('/readings/:device_id/tidal', async (req, res) => {
+router.get('/readings/:device_id/tidal', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const normalizedId = (device_id || '').trim().replace(/\s+/g, '-');
   const { hours = 24, start, end } = req.query;
@@ -92,18 +78,7 @@ router.get('/readings/:device_id/tidal', async (req, res) => {
     if (start || end) {
       const conditions = ['(device_id = $1 OR device_id = $2)'];
       const params = [device_id, normalizedId];
-      let pIdx = 3;
-
-      if (start) {
-        conditions.push(`timestamp >= $${pIdx}`);
-        params.push(new Date(start).toISOString());
-        pIdx++;
-      }
-      if (end) {
-        conditions.push(`timestamp <= $${pIdx}`);
-        params.push(new Date(end).toISOString());
-        pIdx++;
-      }
+      addDateRange(conditions, params, start, end);
 
       result = await query(`
         SELECT timestamp, water_level_cm, raw_distance_cm, temperature_c
@@ -234,7 +209,7 @@ router.post('/calibration/:device_id', authenticateToken, requireAdmin, async (r
 });
 
 // GET /api/calibration/:device_id/history - Calibration history
-router.get('/calibration/:device_id/history', async (req, res) => {
+router.get('/calibration/:device_id/history', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   try {
     const result = await query(`
@@ -255,7 +230,7 @@ router.get('/calibration/:device_id/history', async (req, res) => {
 // ==========================================
 
 // GET /api/alerts/:device_id - Device alerts
-router.get('/alerts/:device_id', async (req, res) => {
+router.get('/alerts/:device_id', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const { status, limit = 100 } = req.query;
 
@@ -291,6 +266,12 @@ router.patch('/alerts/:id/resolve', authenticateToken, async (req, res) => {
   const operatorName = req.user?.fullName || req.user?.username || resolved_by || 'Operator Lapangan';
 
   try {
+    const alertRes = await query('SELECT device_id FROM device_alerts WHERE id = $1', [id]);
+    if (alertRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Alert tidak ditemukan' });
+    }
+    if (!(await checkDeviceAccess(req, res, alertRes.rows[0].device_id))) return;
+
     const result = await query(`
       UPDATE device_alerts
       SET resolved = true, resolved_at = NOW(), resolved_by = $1
@@ -309,7 +290,7 @@ router.patch('/alerts/:id/resolve', authenticateToken, async (req, res) => {
 });
 
 // GET /api/diagnostics/:device_id - Diagnostics snapshots
-router.get('/diagnostics/:device_id', async (req, res) => {
+router.get('/diagnostics/:device_id', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   try {
     const result = await query(`
@@ -330,29 +311,13 @@ router.get('/diagnostics/:device_id', async (req, res) => {
 // ==========================================
 
 // GET /api/export/:device_id - Export CSV
-router.get('/export/:device_id', async (req, res) => {
+router.get('/export/:device_id', authenticateToken, requireDeviceAccess, async (req, res) => {
   const { device_id } = req.params;
   const { start, end, format = 'csv', aggregate = 'raw', tz = 'wib', unit = 'm' } = req.query;
 
   const conditions = ['device_id = $1'];
   const params = [device_id];
-  let paramIdx = 2;
-
-  if (start) {
-    const s = new Date(start);
-    if (!isNaN(s.getTime())) {
-      conditions.push(`timestamp >= $${paramIdx++}`);
-      params.push(s.toISOString());
-    }
-  }
-
-  if (end) {
-    const e = new Date(end);
-    if (!isNaN(e.getTime())) {
-      conditions.push(`timestamp <= $${paramIdx++}`);
-      params.push(e.toISOString());
-    }
-  }
+  addDateRange(conditions, params, start, end);
 
   try {
     const result = await query(`
@@ -500,31 +465,8 @@ router.get('/export/:device_id', async (req, res) => {
 // 6. KONVERSI & SINKRONISASI DATA OFFLINE
 // ==========================================
 
-// Helper to resolve calibration parameters for a device
-async function getDeviceCalibration(deviceId) {
-  try {
-    const res = await query(
-      `SELECT sensor_height_cm, offset_cm, slope 
-       FROM calibrations 
-       WHERE device_id = $1 AND is_active = true 
-       ORDER BY applied_at DESC LIMIT 1`,
-      [deviceId]
-    );
-    if (res.rows.length > 0) {
-      return {
-        height: parseFloat(res.rows[0].sensor_height_cm) || 600.0,
-        offset: parseFloat(res.rows[0].offset_cm) || 0.0,
-        slope: parseFloat(res.rows[0].slope) || 1.0
-      };
-    }
-  } catch (err) {
-    console.warn('[Get Calibration Warning]', err.message);
-  }
-  return { height: 600.0, offset: 0.0, slope: 1.0 };
-}
-
 // POST /api/readings/offline-sync - Synchronize single offline record (supports 1 record per minute rhythm)
-router.post('/readings/offline-sync', async (req, res) => {
+router.post('/readings/offline-sync', authenticateToken, async (req, res) => {
   try {
     const {
       device_id,
@@ -545,6 +487,7 @@ router.post('/readings/offline-sync', async (req, res) => {
     if (!device_id) {
       return res.status(400).json({ success: false, error: 'device_id wajib disertakan' });
     }
+    if (!(await checkDeviceAccess(req, res, device_id))) return;
     // Sumber waktu: `timestamp` (epoch) menjadi utama; date+jam fallback
     // yang diinterpretasi sebagai WIB. Lihat utils/timestamp.js.
     if (timestamp === undefined && (!date || hour === undefined || minute === undefined)) {
@@ -573,7 +516,7 @@ router.post('/readings/offline-sync', async (req, res) => {
         calibOffset = calibOffset != null ? calibOffset : devCalib.offset;
         calibSlope = calibSlope != null ? calibSlope : devCalib.slope;
       }
-      finalWaterLevel = calibHeight - (effDist * calibSlope + calibOffset);
+      finalWaterLevel = calcWaterLevel(effDist, { height: calibHeight, offset: calibOffset, slope: calibSlope });
     }
 
     const insertSql = `
@@ -581,7 +524,7 @@ router.post('/readings/offline-sync', async (req, res) => {
         device_id, timestamp, raw_distance_cm, water_level_cm,
         temperature_c, signal_quality, sd_status, reading_count, source
       )
-      VALUES ($1, $2, $3, $4, $5, 100, 'ok', 0, 'offline_sync')
+      VALUES ($1, $2, $3, $4, $5, NULL, NULL, 0, 'offline_sync')
       ON CONFLICT (device_id, timestamp) DO UPDATE SET
         water_level_cm = EXCLUDED.water_level_cm,
         raw_distance_cm = EXCLUDED.raw_distance_cm,
@@ -594,38 +537,23 @@ router.post('/readings/offline-sync', async (req, res) => {
       parsedDate.toISOString(),
       rawDist,
       finalWaterLevel,
-      28.0
+      req.body.temperature_c != null ? parseFloat(req.body.temperature_c) : null
     ]);
 
     const savedRow = resDb.rows[0];
 
     // Emit live WebSocket update so UI monitoring charts stream this playback
     try {
-      const { getSocketIO } = require('../mqtt/subscriber');
-      const io = getSocketIO ? getSocketIO() : null;
+      const io = getSocketIO();
       if (io && savedRow) {
         io.emit('sensor:data', savedRow);
-        io.emit('telemetry', { device_id, data: savedRow });
       }
     } catch (wsErr) {
       console.warn('[WS Emit Warning]', wsErr.message);
     }
 
     // Evaluasi rule alert (SENSOR_ANOMALY, dll.)
-    if (savedRow) {
-      try {
-        const alerts = await evaluateReadingRules(device_id, savedRow);
-        const { getSocketIO } = require('../mqtt/subscriber');
-        const io = getSocketIO ? getSocketIO() : null;
-        if (io) {
-          for (const alert of alerts) {
-            io.emit('alert:new', alert);
-          }
-        }
-      } catch (ruleErr) {
-        console.warn('[Rule Engine] error:', ruleErr.message);
-      }
-    }
+    await runReadingRules(device_id, savedRow);
 
     res.json({
       success: true,
@@ -639,12 +567,13 @@ router.post('/readings/offline-sync', async (req, res) => {
 });
 
 // POST /api/readings/offline-batch - Bulk convert & insert offline records
-router.post('/readings/offline-batch', async (req, res) => {
+router.post('/readings/offline-batch', authenticateToken, async (req, res) => {
   try {
     const { device_id, records, recalculate = false, sensor_height_cm, offset_cm, slope } = req.body;
     if (!device_id || !Array.isArray(records) || records.length === 0) {
       return res.status(400).json({ success: false, error: 'device_id dan array records wajib disertakan' });
     }
+    if (!(await checkDeviceAccess(req, res, device_id))) return;
 
     let devCalib = null;
     if (recalculate) {
@@ -669,7 +598,7 @@ router.post('/readings/offline-batch', async (req, res) => {
 
       let waterLevel = item.water_level_cm != null ? parseFloat(item.water_level_cm) : null;
       if (recalculate && effDist != null && devCalib) {
-        waterLevel = devCalib.height - (effDist * devCalib.slope + devCalib.offset);
+        waterLevel = calcWaterLevel(effDist, devCalib);
       }
 
       try {
@@ -678,7 +607,7 @@ router.post('/readings/offline-batch', async (req, res) => {
             device_id, timestamp, raw_distance_cm, water_level_cm,
             temperature_c, signal_quality, sd_status, reading_count, source
           )
-          VALUES ($1, $2, $3, $4, $5, 100, 'ok', 0, 'offline_sync')
+          VALUES ($1, $2, $3, $4, $5, NULL, NULL, 0, 'offline_sync')
           ON CONFLICT (device_id, timestamp) DO UPDATE SET
             water_level_cm = EXCLUDED.water_level_cm,
             raw_distance_cm = EXCLUDED.raw_distance_cm,
@@ -689,7 +618,7 @@ router.post('/readings/offline-batch', async (req, res) => {
           parsedDate.toISOString(),
           rawDist,
           waterLevel,
-          28.0
+          item.temperature_c != null ? parseFloat(item.temperature_c) : null
         ]);
         savedCount++;
         lastInsertedRow = inserted.rows[0] || null;
@@ -699,20 +628,7 @@ router.post('/readings/offline-batch', async (req, res) => {
     }
 
     // Evaluasi rule alert untuk data offline yang disinkronkan
-    if (lastInsertedRow) {
-      try {
-        const alerts = await evaluateReadingRules(device_id, lastInsertedRow);
-        const { getSocketIO } = require('../mqtt/subscriber');
-        const io = getSocketIO ? getSocketIO() : null;
-        if (io) {
-          for (const alert of alerts) {
-            io.emit('alert:new', alert);
-          }
-        }
-      } catch (ruleErr) {
-        console.warn('[Rule Engine] error:', ruleErr.message);
-      }
-    }
+    await runReadingRules(device_id, lastInsertedRow);
 
     res.json({
       success: true,

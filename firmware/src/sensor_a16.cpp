@@ -33,7 +33,7 @@ void SensorA16::attachUart() {
   // dibuang - keduanya membatalkan konfigurasi yang tidak mungkin terjadi.
   RS485Serial.end();
   // Listen-only: TX = PIN_RS485_TX (-1 = tidak dipakai). Sensor UART Auto tidak butuh
-  // trigger; pin RX sensor (kabel kuning) dipull-up agar output "terproses" (stabil).
+  // trigger; pin RX sensor (kabel kuning) di-GND-kan -> mode real-time (~500 ms).
   RS485Serial.begin(9600, SERIAL_8N1, PIN_RS485_RX, PIN_RS485_TX);
   delay(15);
   flushRx();
@@ -74,7 +74,7 @@ void SensorA16::begin() {
   if (PIN_SENSOR_PWR >= 0) {
     Serial.printf("      - Sakelar Daya Sensor: GPIO %d (Active HIGH via P-MOSFET)\n", PIN_SENSOR_PWR);
   }
-  Serial.println("      - Sensor RX (Kabel Kuning) -> pull-up 10k ke VCC Switched sensor (output terproses)");
+  Serial.println("      - Sensor RX (Kabel Kuning) -> GND (mode real-time, respons ~500 ms)");
   Serial.println("      - Baudrate: 9600 8N1, mode listen-only (tanpa trigger)");
 }
 
@@ -365,9 +365,9 @@ A16Reading SensorA16::readFilteredDistance(int sampleCount) {
 
   if (framesTotal == 0) {
     Serial.printf("[A16 DIAGNOSTIK] Tidak ada frame dari sensor pada GPIO %d (Terminal SDA). Periksa:\n", PIN_RS485_RX);
-    Serial.println("  1. Terminal Pin 1 (SDA) -> Kabel Putih (TX Sensor)");
-    Serial.println("  2. Terminal Pin 4 (GND) -> Kabel Kuning & Kabel Hitam (GND & Mode Real-Time)");
-    Serial.println("  3. Terminal Pin 3 (5V)  -> Kabel Merah (VCC Sensor)");
+    Serial.println("  1. Terminal [8]   -> Kabel Putih (TX Sensor)");
+    Serial.println("  2. Terminal [GND] -> Kabel Kuning & Kabel Hitam (GND & Mode Real-Time)");
+    Serial.println("  3. Drain IRF4905  -> Kabel Merah (VCC Sensor, disakelar GPIO 9)");
   }
 
   // Jika sebelumnya ada jarak valid dan sensor hanya drop sesaat (<10 menit):

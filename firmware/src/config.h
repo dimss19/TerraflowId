@@ -97,8 +97,9 @@
 // - Pin [9]  (GPIO 9, SCL I2C) : Kontrol sakelar daya, lihat PIN_SENSOR_PWR
 // - Pin [5V]                   : Source P-MOSFET -> Sensor VCC (Kabel Merah)
 // - Pin [GND]                  : Ground -> Sensor GND (Kabel Hitam)
-// Kabel Kuning (RX sensor) disambung lewat R 10k ke VCC_SW (drain MOSFET),
-// BUKAN ke GPIO mana pun - supaya tidak ada back-powering saat sensor mati.
+// Kabel Kuning (RX sensor) = pemilih mode, disambung langsung ke GND -> mode
+// REAL-TIME (respons ~500 ms). BUKAN ke GPIO mana pun - supaya tidak ada
+// back-powering saat sensor mati. (HIGH/lepas = mode processed, 2,5-7,5 s.)
 #define PIN_RS485_TX          -1  // Tidak dipakai: varian UART Auto tidak butuh trigger
 #define PIN_RS485_RX          8   // ESP32 RX2 (GPIO 8 = SDA I2C!) <- A16 TX (Putih)
 

@@ -82,8 +82,23 @@ protocol v1 agar Nginx tetap mengetahui IP asli klien.
 | Password | `/root/.terraflow_mqtt` (root-only, chmod 600) |
 
 Broker **menolak** koneksi tanpa kredensial maupun dengan kredensial salah.
-Tersimpan juga di `firmware/src/config.h` (bisa diubah lewat portal lokal
-perangkat `/settings` → `mq_host`, `mq_port`, `mq_user`, `mq_pass`).
+Di firmware, kredensial dibaca dari `firmware/src/config_secrets.h`
+(di-gitignore, dibuat dengan `firmware/setup-secrets.sh`) dan bisa diubah lewat
+portal lokal perangkat `/settings` → `mq_host`, `mq_port`, `mq_user`, `mq_pass`.
+
+Di server, `backend/.env` wajib berisi `MQTT_USER`/`MQTT_PASS`. Bila kosong,
+broker Aedes berjalan **tanpa autentikasi** (log: `Authentication DISABLED`).
+
+#### Format `/root/.terraflow_mqtt`
+
+Berkas ini **berformat env**, bukan password polos. Nilai `MQTT_PASS` yang
+tertulis di sini adalah password MQTT sebenarnya; nilai `MQTT_PASS` di
+`backend/.env` harus sama. Nilai rahasia tidak perlu ditampilkan di log/chat.
+
+```env
+MQTT_USER=terraflow
+MQTT_PASS=<password MQTT rahasia>
+```
 
 ### Kredensial default aplikasi (seed)
 
@@ -153,7 +168,7 @@ sudo /var/www/terraflow/deploy.sh
 | 22/tcp | SSH |
 | 80/tcp | HTTP + MQTT (multiplexer) |
 | 443/tcp | HTTPS (menunggu Security Group) |
-| 1883/tcp | MQTT langsung (menunggu Security Group) |
+| ~~1883/tcp~~ | Ditutup (27 Nov 2026). Broker hanya bind `127.0.0.1`; MQTT publik lewat :80 |
 
 ```bash
 ufw status verbose
@@ -247,13 +262,13 @@ meneruskan port 22 dan 80. Tambahkan:
 | Protokol | Port | Sumber | Fungsi |
 |---|---|---|---|
 | TCP | 443 | `0.0.0.0/0` | HTTPS (sertifikat sudah siap) |
-| TCP | 1883 | `0.0.0.0/0` atau IP perangkat AWLR | MQTT langsung (alternatif multiplexer) |
 
 _consoles_ → Cloud Virtual Machine → Instance → Security Groups → Aturan masuk.
 
 Verifikasi dari luar: `nc -zv 43.134.53.192 443`
 
-> Port 1883 bersifat opsional — MQTT sudah bisa diakses lewat port 80.
+> Port 1883 **jangan** dibuka — broker hanya bind `127.0.0.1` dan MQTT publik
+> sudah dilayani lewat port 80 (multiplexer).
 > Membuka 443 memberi akses HTTPS.
 
 ### 7.2 Aktifkan redirect HTTPS (setelah 7.1 selesai)
@@ -479,8 +494,17 @@ curl -s -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
   "http://43.134.53.192/socket.io/?EIO=4&transport=websocket" --max-time 4
 
-# Uji autentikasi & pub/sub MQTT (melalui port 80 publik)
-node /root/mqtt-auth-test.js 43.134.53.192 80
+# Uji autentikasi MQTT (melalui port 80 publik)
+# Tanpa kredensial -> harus ditolak (bad user name or password)
+mosquitto_sub -h 43.134.53.192 -p 80 -t '#' -C 1 -W 5
+# Dengan kredensial -> menerima pesan device
+mosquitto_sub -h 43.134.53.192 -p 80 -u terraflow   -P "$(sed -n 's/^MQTT_PASS=//p' /root/.terraflow_mqtt | head -n1)"   -t 'terraflow/#' -v -C 3 -W 180
+
+# Jangan publish ke topic device asli untuk pengujian (backend menyimpannya
+# sebagai data). Untuk uji relay pakai mis. `terraflow/_test/relay-check`;
+# suffix tidak boleh `data`, `data/bulk`, `alert`, `diagnostics`, `status`,
+# `calibration/response`, atau `command/test_mode/response`
+# (lihat backend/src/mqtt/subscriber.js).
 ```
 
 ### Service & timer tambahan

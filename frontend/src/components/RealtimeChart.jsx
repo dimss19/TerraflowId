@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useId } from 'react';
 import { Activity, Clock, Zap } from 'lucide-react';
 
 /**
@@ -15,8 +15,11 @@ import { Activity, Clock, Zap } from 'lucide-react';
  *    - Titik pertama dari deret terbaru menjadi acuan "Awal Pembacaan" dan titik terakhir menjadi "Terkini".
  */
 
-// Helper untuk menghasilkan kurva Bezier halus yang stabil
-function createSmoothPath(pts) {
+// Helper untuk menghasilkan kurva Bezier halus yang stabil.
+// Titik kontrol dijepit ke [minY, maxY] agar kurva tidak melewati batas area plot
+// saat data melonjak tajam (overshoot Catmull-Rom).
+function createSmoothPath(pts, minY = -Infinity, maxY = Infinity) {
+  const clampY = (y) => Math.min(maxY, Math.max(minY, y));
   if (!pts || pts.length === 0) return '';
   if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
   if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
@@ -29,9 +32,9 @@ function createSmoothPath(pts) {
     const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
 
     const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp1y = clampY(p1.y + (p2.y - p0.y) / 6);
     const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    const cp2y = clampY(p2.y - (p3.y - p1.y) / 6);
 
     d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
   }
@@ -42,6 +45,7 @@ export default function RealtimeChart({ readings = [] }) {
   const [sliderIndex, setSliderIndex] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const svgRef = useRef(null);
+  const clipId = `rt-plot-${useId().replace(/:/g, '')}`;
 
   // Ambil hanya data yang memiliki timestamp dan water_level_cm yang valid
   const validReadings = (readings || []).filter(d => {
@@ -125,7 +129,10 @@ export default function RealtimeChart({ readings = [] }) {
   const maxRaw = Math.max(...values);
   const spread = maxRaw - minRaw;
   const paddingVal = spread < 2 ? 10 : Math.max(4, spread * 0.15);
-  const minVal = Math.max(0, Math.floor(minRaw - paddingVal));
+  // Tanpa batas bawah 0: tinggi muka air bisa negatif terhadap titik acuan
+  // (atau berasal dari pembacaan error). Sebelumnya dijepit ke 0, sehingga
+  // titik negatif tergambar di luar area plot dan menembus kartu.
+  const minVal = Math.floor(minRaw - paddingVal);
   const maxVal = Math.ceil(maxRaw + paddingVal);
   const range = Math.max(5, maxVal - minVal);
   const currentVal = values[totalCount - 1];
@@ -152,7 +159,7 @@ export default function RealtimeChart({ readings = [] }) {
     return { x, y, data: d, index: idx };
   });
 
-  const pathD = totalCount > 1 ? createSmoothPath(points) : '';
+  const pathD = totalCount > 1 ? createSmoothPath(points, paddingY, svgHeight - paddingY) : '';
   const areaD = totalCount > 1
     ? `${pathD} L ${points[points.length - 1].x} ${svgHeight - paddingY} L ${points[0].x} ${svgHeight - paddingY} Z`
     : '';
@@ -299,6 +306,9 @@ export default function RealtimeChart({ readings = [] }) {
               <stop offset="0%" stopColor="#003882" stopOpacity="0.18" />
               <stop offset="100%" stopColor="#003882" stopOpacity="0.0" />
             </linearGradient>
+            <clipPath id={clipId}>
+              <rect x={paddingLeft - 6} y={paddingY - 6} width={usableWidth + 12} height={usableHeight + 12} />
+            </clipPath>
             <filter id="realtimeBadgeShadow" x="-20%" y="-20%" width="140%" height="140%">
               <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.2" />
             </filter>
@@ -334,6 +344,7 @@ export default function RealtimeChart({ readings = [] }) {
             );
           })}
 
+          <g clipPath={`url(#${clipId})`}>
           {/* Area Fill */}
           {areaD && (
             <path d={areaD} fill="url(#realtimeAreaGrad)" className="chart-animated-area" />
@@ -386,6 +397,8 @@ export default function RealtimeChart({ readings = [] }) {
               />
             );
           })}
+
+          </g>
 
           {/* ======================================================== */}
           {/* SLIDING CROSSHAIR, INTERSECTION POINT & DARK TOOLTIP */}
